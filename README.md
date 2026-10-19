@@ -28,7 +28,10 @@ A PR is merged only when all of these hold:
 - every check on the head commit passed, and at least one ran unless the
   repo sets `require_checks: false` (a check GitHub marked stale after it
   sat unfinished for 14 days blocks the merge until it is rerun; a commit
-  less than 30 minutes old with no checks yet waits for CI to start);
+  less than 30 minutes old with no checks yet waits for CI to start). With
+  `merge_without_checks_after: 10m`, a commit that has gone 10 minutes
+  without any check merges anyway, for repos whose CI only runs for some
+  paths;
 - GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`);
 - nothing was cut off: a PR with more than 100 commits or 100 checks is
   skipped rather than judged on partial data.

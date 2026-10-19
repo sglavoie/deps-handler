@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/cli/go-gh/v2/pkg/term"
+	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/policy"
 	"github.com/sglavoie/deps-merger/internal/runner"
 )
@@ -47,6 +48,8 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, links bool) {
 	checks := "checks required"
 	if !p.RequireChecks {
 		checks = "checks optional"
+	} else if p.MergeWithoutChecksAfter > 0 {
+		checks = fmt.Sprintf("checks required unless none after %s", config.ShortDuration(p.MergeWithoutChecksAfter))
 	}
 	method := p.MergeMethod
 	if res.MergeMethod != "" && res.MergeMethod != p.MergeMethod {

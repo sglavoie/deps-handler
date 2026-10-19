@@ -246,10 +246,17 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	case len(stale) > 0:
 		return skip("stale checks: %s (rerun them or comment @dependabot recreate)", strings.Join(stale, ", "))
 	case len(checks) == 0 && p.RequireChecks:
-		if repo.FetchedAt.Sub(pushedAt(pr)) < checksGrace {
+		age := repo.FetchedAt.Sub(pushedAt(pr))
+		switch after := p.MergeWithoutChecksAfter; {
+		case after > 0 && age < after:
+			return wait(upToDate, "no checks reported yet; merging without them in %s", config.ShortDuration((after - age).Round(time.Minute)))
+		case after > 0:
+			// No CI started in time: merge as if checks were optional.
+		case age < checksGrace:
 			return wait(upToDate, "no checks reported yet for a new commit")
+		default:
+			return skip("no checks ran (set require_checks: false or merge_without_checks_after to opt in)")
 		}
-		return skip("no checks ran (set require_checks: false to opt in)")
 	}
 
 	switch pr.Mergeable {
@@ -264,6 +271,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	case "CLEAN", "HAS_HOOKS":
 		safe = d
 		safe.Action, safe.Reason = ActionMerge, "checks green, within policy"
+		if len(checks) == 0 {
+			safe.Reason = "no checks ran, within policy"
+		}
 	case "BEHIND":
 		if at, ok := rebaseRequested(pr, viewer); ok {
 			if age := repo.FetchedAt.Sub(at); age >= rebaseTimeout {

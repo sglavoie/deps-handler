@@ -10,18 +10,20 @@ func TestParseAppliesDefaultsAndOverrides(t *testing.T) {
 	cfg, err := Parse([]byte(`
 defaults:
   merge_method: merge
+  merge_without_checks_after: 10m
 repos:
   - acme/Billing
   - repo: acme/auth-worker
     require_checks: false
     max_update_type: major
     agent_review: false
+    merge_without_checks_after: "0"
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
 	a, b := cfg.Repos[0].Policy, cfg.Repos[1].Policy
-	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true}) {
+	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, MergeWithoutChecksAfter: 10 * time.Minute}) {
 		t.Errorf("Billing policy = %+v", a)
 	}
 	if b != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMajor, RequireChecks: false, AgentReview: false}) {
@@ -45,6 +47,8 @@ func TestParseRejectsBadInput(t *testing.T) {
 		"zero timeout":  "agent: {timeout: 0s}\nrepos: [a/b]",
 		"agent field":   "agent: {claude: {config: x}}\nrepos: [a/b]",
 		"bad budget":    "agent: {claude: {max_budget_usd: -1}}\nrepos: [a/b]",
+		"bad no-checks": "repos: [{repo: a/b, merge_without_checks_after: soon}]",
+		"neg no-checks": "repos: [{repo: a/b, merge_without_checks_after: -1m}]",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected error", name)
@@ -53,16 +57,16 @@ func TestParseRejectsBadInput(t *testing.T) {
 }
 
 func TestParseAcceptsEveryEntryField(t *testing.T) {
-	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: false, agent_review: false, skip: true}\n"
+	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: false, agent_review: false, merge_without_checks_after: 5m, skip: true}\n"
 	if _, err := Parse([]byte(in)); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"repo", "skip", "merge_method", "max_update_type", "require_checks", "agent_review"} {
+	for _, k := range []string{"repo", "skip", "merge_method", "max_update_type", "require_checks", "agent_review", "merge_without_checks_after"} {
 		if !entryKeys[k] {
 			t.Errorf("entryKeys lacks %q", k)
 		}
 	}
-	if len(entryKeys) != 6 {
+	if len(entryKeys) != 7 {
 		t.Errorf("entryKeys = %v", entryKeys)
 	}
 }

@@ -143,10 +143,10 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 			Suggestions: []string{"approve these PRs, or let Dependabot PRs merge without review"},
 		})
 	}
-	if len(noChecks) > 0 && p.RequireChecks {
+	if len(noChecks) > 0 && p.RequireChecks && p.MergeWithoutChecksAfter == 0 {
 		out = append(out, Finding{
 			Kind:    FindingNoChecks,
-			Summary: "no checks ran on these Dependabot PRs; add CI or opt in with require_checks: false",
+			Summary: "no checks ran on these Dependabot PRs; add CI or opt in with require_checks: false or merge_without_checks_after",
 			PRs:     noChecks,
 		})
 	}

@@ -71,6 +71,21 @@ func TestEvaluate(t *testing.T) {
 		{name: "no checks with opt-in merges", action: ActionMerge,
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks = nil },
 			policy: func(p *config.Policy) { p.RequireChecks = false }},
+		{name: "no checks waits for merge_without_checks_after", action: ActionWait, reason: "merging without them in 5m",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = nil
+				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-5 * time.Minute)
+			},
+			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 10 * time.Minute }},
+		{name: "no checks after merge_without_checks_after merges", action: ActionMerge, reason: "no checks ran",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = nil
+				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-11 * time.Minute)
+			},
+			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 10 * time.Minute }},
+		{name: "merge_without_checks_after ignores failing checks", action: ActionSkip, reason: "failing checks: build",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckFailed },
+			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = time.Minute }},
 		{name: "human commit", action: ActionSkip, reason: "modified by sglavoie",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Commits = append(pr.Commits, github.Commit{OID: "abcdef123", Authors: []github.Author{{Login: "sglavoie"}}})

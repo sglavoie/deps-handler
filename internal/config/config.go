@@ -61,10 +61,26 @@ type Policy struct {
 	MergeMethod   string     `json:"merge_method"`
 	MaxUpdateType UpdateType `json:"max_update_type"`
 	RequireChecks bool       `json:"require_checks"`
+	// MergeWithoutChecksAfter lets a PR that required checks merge once its
+	// latest commit has gone this long without any, as on a repo whose CI
+	// only runs for some paths. Zero never merges such a PR.
+	MergeWithoutChecksAfter time.Duration `json:"merge_without_checks_after"`
 	// AgentReview lets the AI agent judge updates the policy alone would
 	// not merge (over max_update_type, or of unknown size) when a run asks
 	// for agent reviews.
 	AgentReview bool `json:"agent_review"`
+}
+
+// ShortDuration formats d as the config would write it: 10m, not 10m0s.
+func ShortDuration(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
 }
 
 // Repo is one configured repository with its resolved policy.
@@ -127,6 +143,8 @@ type overrides struct {
 	MaxUpdateType *string `yaml:"max_update_type"`
 	RequireChecks *bool   `yaml:"require_checks"`
 	AgentReview   *bool   `yaml:"agent_review"`
+	// MergeWithoutChecksAfter is a duration such as "10m"; "0" turns it off.
+	MergeWithoutChecksAfter *string `yaml:"merge_without_checks_after"`
 }
 
 type repoEntry struct {
@@ -303,6 +321,13 @@ func apply(base Policy, o overrides) (Policy, error) {
 	}
 	if o.AgentReview != nil {
 		p.AgentReview = *o.AgentReview
+	}
+	if o.MergeWithoutChecksAfter != nil {
+		d, err := time.ParseDuration(*o.MergeWithoutChecksAfter)
+		if err != nil || d < 0 {
+			return p, fmt.Errorf("invalid merge_without_checks_after %q (want a duration such as 10m, or 0)", *o.MergeWithoutChecksAfter)
+		}
+		p.MergeWithoutChecksAfter = d
 	}
 	return p, nil
 }
