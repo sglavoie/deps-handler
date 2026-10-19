@@ -1,0 +1,61 @@
+package dependabot
+
+import (
+	"testing"
+
+	"github.com/sglavoie/deps-merger/internal/config"
+)
+
+const groupMsg = "build(deps): bump the go group\n\nBumps stuff.\n\n---\nupdated-dependencies:\n" +
+	"- dependency-name: cloud.google.com/go/compute\n  dependency-version: 1.72.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-minor-patch\n" +
+	"- dependency-name: github.com/aws/aws-sdk-go-v2\n  dependency-version: 1.47.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-minor-patch\n" +
+	"...\n\nSigned-off-by: dependabot[bot] <support@github.com>"
+
+func TestParseCommitMessageGroup(t *testing.T) {
+	deps := ParseCommitMessage(groupMsg)
+	if len(deps) != 2 {
+		t.Fatalf("got %d deps", len(deps))
+	}
+	if deps[0].Name != "cloud.google.com/go/compute" || deps[0].UpdateType != config.UpdateMinor || deps[0].Group != "go-minor-patch" {
+		t.Errorf("deps[0] = %+v", deps[0])
+	}
+	if g := Grade(deps); g != config.UpdateMinor {
+		t.Errorf("Grade = %s", g)
+	}
+}
+
+func TestParseCommitMessageWithoutBlock(t *testing.T) {
+	if deps := ParseCommitMessage("Fix typo"); deps != nil {
+		t.Fatalf("got %v", deps)
+	}
+}
+
+func TestGrade(t *testing.T) {
+	d := func(u config.UpdateType) Dependency { return Dependency{UpdateType: u} }
+	cases := []struct {
+		deps []Dependency
+		want config.UpdateType
+	}{
+		{nil, config.UpdateUnknown},
+		{[]Dependency{d(config.UpdatePatch)}, config.UpdatePatch},
+		{[]Dependency{d(config.UpdateMinor), d(config.UpdateMajor)}, config.UpdateMajor},
+		{[]Dependency{d(config.UpdatePatch), d(config.UpdateUnknown)}, config.UpdateUnknown},
+	}
+	for _, c := range cases {
+		if got := Grade(c.deps); got != c.want {
+			t.Errorf("Grade(%v) = %s, want %s", c.deps, got, c.want)
+		}
+	}
+}
+
+func TestIsCommitAuthor(t *testing.T) {
+	if !IsCommitAuthor("dependabot[bot]", "", "") {
+		t.Error("login dependabot[bot]")
+	}
+	if !IsCommitAuthor("", "dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com") {
+		t.Error("name/email fallback")
+	}
+	if IsCommitAuthor("sglavoie", "dependabot[bot]", "") {
+		t.Error("a real login must win over a spoofable name")
+	}
+}

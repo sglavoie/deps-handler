@@ -1,0 +1,24 @@
+# deps-merger config. Copy to ~/.config/deps-merger/config.yaml.
+#
+# defaults apply to every repo; any repo entry can override them.
+#   merge_method:    squash | merge | rebase (falls back to what the repo allows)
+#   max_update_type: patch | minor | major   (largest semver bump merged)
+#   require_checks:  true = a PR with no CI checks is never merged
+defaults:
+  merge_method: squash
+  max_update_type: minor
+  require_checks: true
+
+repos:
+  - acme/Billing
+  - acme/docs
+  - acme/Storefront
+  - acme/Ingest
+  - acme/Gateway
+  - acme/Orders
+  - acme/Mirror
+  - acme/Metrics
+  - acme/Search
+  - acme/Monitor
+  - repo: acme/auth-worker
+    require_checks: false   # no CI on this repo: explicit opt-in
