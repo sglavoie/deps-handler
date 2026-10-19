@@ -31,9 +31,13 @@ type Cache struct {
 }
 
 type cacheEntry struct {
-	Verdict    policy.Verdict `json:"verdict"`
-	Agent      string         `json:"agent"`
-	ReviewedAt time.Time      `json:"reviewed_at"`
+	Verdict policy.Verdict `json:"verdict"`
+	Agent   string         `json:"agent"`
+	// HeadOID is the commit reviewed. A rejection holds for that commit
+	// only: once Dependabot rebases the PR, the base it now sits on may
+	// have dealt with what the agent objected to.
+	HeadOID    string    `json:"head_oid,omitempty"`
+	ReviewedAt time.Time `json:"reviewed_at"`
 }
 
 // Entry is one cached verdict.
@@ -41,7 +45,9 @@ type Entry struct {
 	Key        string
 	Agent      string
 	ReviewedAt time.Time
-	Verdict    policy.Verdict
+	// Expires is when the verdict stops being reused.
+	Expires time.Time
+	Verdict policy.Verdict
 }
 
 // OpenCache reads the cache at path; a missing file is an empty cache.
@@ -68,12 +74,13 @@ func readEntries(path string) (map[string]cacheEntry, error) {
 	return entries, nil
 }
 
-// Get returns the verdict stored under key, unless it has expired.
-func (c *Cache) Get(key string) *policy.Verdict {
+// Get returns the verdict stored under key for the PR at head, unless it
+// has expired or is a rejection of another head.
+func (c *Cache) Get(key, head string) *policy.Verdict {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.entries[key]
-	if !ok || c.expired(e) {
+	if !ok || c.expired(e) || !e.Verdict.Approved && e.HeadOID != "" && e.HeadOID != head {
 		return nil
 	}
 	return &e.Verdict
@@ -86,19 +93,19 @@ func (c *Cache) Entries() []Entry {
 	var out []Entry
 	for k, e := range c.entries {
 		if !c.expired(e) {
-			out = append(out, Entry{Key: k, Agent: e.Agent, ReviewedAt: e.ReviewedAt, Verdict: e.Verdict})
+			out = append(out, Entry{Key: k, Agent: e.Agent, ReviewedAt: e.ReviewedAt, Expires: e.ReviewedAt.Add(CacheTTL), Verdict: e.Verdict})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
 }
 
-// Put stores a verdict and writes the cache.
-func (c *Cache) Put(key, agent string, v policy.Verdict) error {
+// Put stores the verdict on the PR at head and writes the cache.
+func (c *Cache) Put(key, head, agent string, v policy.Verdict) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.update(func(entries map[string]cacheEntry) {
-		entries[key] = cacheEntry{Verdict: v, Agent: agent, ReviewedAt: c.now()}
+		entries[key] = cacheEntry{Verdict: v, Agent: agent, HeadOID: head, ReviewedAt: c.now()}
 	})
 }
 
@@ -111,7 +118,7 @@ func (c *Cache) Forget(target string) (int, error) {
 	n := 0
 	err := c.update(func(entries map[string]cacheEntry) {
 		for k := range entries {
-			if matches(k, target) {
+			if Matches(k, target) {
 				delete(entries, k)
 				n++
 			}
@@ -120,9 +127,9 @@ func (c *Cache) Forget(target string) (int, error) {
 	return n, err
 }
 
-// matches reports whether key ("owner/name#7 lib@2.0.0") is target or
-// starts with it up to a "#" or a space.
-func matches(key, target string) bool {
+// Matches reports whether key ("owner/name#7 lib@2.0.0") is target or
+// starts with it up to a "#" or a space, ignoring case.
+func Matches(key, target string) bool {
 	if len(key) < len(target) || !strings.EqualFold(key[:len(target)], target) {
 		return false
 	}
@@ -132,8 +139,18 @@ func matches(key, target string) bool {
 func (c *Cache) expired(e cacheEntry) bool { return c.now().Sub(e.ReviewedAt) > CacheTTL }
 
 // update applies change to the entries on disk, drops expired ones and
-// writes them back. c.mu must be held.
+// writes them back, holding a lock file so that another process's write
+// cannot land between the read and the write and be lost. c.mu must be
+// held.
 func (c *Cache) update(change func(map[string]cacheEntry)) error {
+	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
+		return err
+	}
+	unlock, err := waitLock(c.path + ".lock")
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	entries, err := readEntries(c.path)
 	if err != nil {
 		return err
@@ -147,9 +164,6 @@ func (c *Cache) update(change func(map[string]cacheEntry)) error {
 	c.entries = entries
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(c.path), ".verdicts-*")

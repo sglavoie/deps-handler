@@ -212,3 +212,15 @@ func TestDiagnoseAgentVerdicts(t *testing.T) {
 		t.Errorf("held majors = %+v", f)
 	}
 }
+
+func TestDiagnoseArchived(t *testing.T) {
+	repo := testutil.Repo(testutil.PR(1))
+	repo.Archived = true
+	f := findings(repo)
+	if len(f[FindingArchived]) != 1 || !strings.Contains(f[FindingArchived][0].Suggestions[0], "skip: true") {
+		t.Fatalf("findings = %+v", f)
+	}
+	if f := findings(testutil.Repo(testutil.PR(1))); len(f[FindingArchived]) != 0 {
+		t.Fatalf("an active repo is not archived: %+v", f)
+	}
+}

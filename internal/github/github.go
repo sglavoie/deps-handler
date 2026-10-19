@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -490,6 +491,89 @@ func Transient(err error) bool {
 	}
 	var ne net.Error
 	return errors.As(err, &ne) && ne.Timeout()
+}
+
+// MaxRateLimitWait is the longest Backoff waits for a rate limit to lift;
+// a longer one fails the call rather than stall the run.
+const MaxRateLimitWait = 2 * time.Minute
+
+// RateLimited reports whether GitHub refused a call for exceeding a rate
+// limit and, if so, how long it asked to wait before the next one.
+func RateLimited(err error) (time.Duration, bool) {
+	var he *api.HTTPError
+	if errors.As(err, &he) {
+		if he.StatusCode != 403 && he.StatusCode != 429 {
+			return 0, false
+		}
+		if s, err := strconv.Atoi(he.Headers.Get("Retry-After")); err == nil {
+			return time.Duration(s) * time.Second, true
+		}
+		if he.Headers.Get("X-Ratelimit-Remaining") == "0" {
+			if reset, err := strconv.ParseInt(he.Headers.Get("X-Ratelimit-Reset"), 10, 64); err == nil {
+				return max(0, time.Until(time.Unix(reset, 0))), true
+			}
+		}
+		// A secondary rate limit may come without either header; GitHub
+		// then asks for at least a minute's pause.
+		if he.StatusCode == 429 || strings.Contains(strings.ToLower(he.Message), "rate limit") {
+			return time.Minute, true
+		}
+		return 0, false
+	}
+	var ge *api.GraphQLError
+	if errors.As(err, &ge) {
+		for _, e := range ge.Errors {
+			if e.Type == "RATE_LIMITED" {
+				return time.Minute, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// Backoff says how long to pause before making a failed call again, and
+// whether to make it again at all: pause after a transient failure, and as
+// long as GitHub asks after a rate limit, unless that is over
+// MaxRateLimitWait.
+func Backoff(err error, pause time.Duration) (time.Duration, bool) {
+	if d, ok := RateLimited(err); ok {
+		return d, d <= MaxRateLimitWait
+	}
+	return pause, Transient(err)
+}
+
+// Again calls read, and once more after the pause Backoff gives when it
+// fails in a way that may pass, so one hiccup does not fail a scheduled
+// run. sleep waits for a duration unless ctx ends first; nil uses a timer.
+func Again[T any](ctx context.Context, pause time.Duration, sleep func(context.Context, time.Duration) error, read func() (T, error)) (T, error) {
+	v, err := read()
+	if err == nil || ctx.Err() != nil {
+		return v, err
+	}
+	d, ok := Backoff(err, pause)
+	if !ok {
+		return v, err
+	}
+	if sleep == nil {
+		sleep = Sleep
+	}
+	if err := sleep(ctx, d); err != nil {
+		var zero T
+		return zero, err
+	}
+	return read()
+}
+
+// Sleep waits for d, or until ctx ends.
+func Sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // Retryable reports whether a failed merge may succeed once GitHub catches

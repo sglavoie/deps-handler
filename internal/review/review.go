@@ -57,9 +57,9 @@ func NewRequest(rc config.Repo, d policy.Decision) Request {
 }
 
 // Key identifies the update under review: the PR and the versions it moves
-// to. A rebase changes the head commit but not the update, so its verdict
-// still holds; when Dependabot does not record versions, the head commit
-// stands in for them.
+// to. A rebase changes the head commit but not the update, so an approval
+// still holds (the cache drops a rejection then); when Dependabot does not
+// record versions, the head commit stands in for them.
 func (r Request) Key() string {
 	deps := make([]string, 0, len(r.Dependencies))
 	versioned := len(r.Dependencies) > 0
@@ -107,7 +107,9 @@ func (r *AgentReviewer) Review(ctx context.Context, req Request) (policy.Verdict
 }
 
 func (r *AgentReviewer) review(ctx context.Context, req Request) (policy.Verdict, error) {
-	details, err := r.Details.PullRequestDetails(ctx, req.Owner, req.Name, req.Number)
+	details, err := github.Again(ctx, 3*time.Second, nil, func() (*github.PullRequestDetails, error) {
+		return r.Details.PullRequestDetails(ctx, req.Owner, req.Name, req.Number)
+	})
 	if err != nil {
 		return policy.Verdict{}, fmt.Errorf("fetch PR details: %w", err)
 	}

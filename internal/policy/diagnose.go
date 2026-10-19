@@ -25,6 +25,9 @@ const (
 	FindingHeldUnknown FindingKind = "held-unknown"
 	// FindingNoChecks means the repository runs no CI on Dependabot PRs.
 	FindingNoChecks FindingKind = "no-checks"
+	// FindingArchived means the repository is archived, so none of its
+	// Dependabot PRs can merge.
+	FindingArchived FindingKind = "archived"
 	// FindingReadOnly means the viewer cannot merge in this repository.
 	FindingReadOnly FindingKind = "read-only"
 	// FindingTruncated means GitHub has more open Dependabot PRs than one
@@ -65,6 +68,13 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		return out
 	}
 
+	if repo.Archived {
+		out = append(out, Finding{
+			Kind:        FindingArchived,
+			Summary:     "the repository is archived; its Dependabot PRs cannot merge",
+			Suggestions: []string{"set skip: true on it in the config, or unarchive it"},
+		})
+	}
 	if !repo.CanWrite() {
 		out = append(out, Finding{
 			Kind:    FindingReadOnly,

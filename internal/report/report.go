@@ -43,6 +43,9 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		method = fmt.Sprintf("%s; %s not allowed", res.MergeMethod, p.MergeMethod)
 	}
 	header := fmt.Sprintf("(%s, up to %s, %s", method, p.MaxUpdateType, checks)
+	if !p.AgentReview {
+		header += ", no agent review"
+	}
 	if res.Permission != "" {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
@@ -68,6 +71,9 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", d.Number)}, {text: d.Grade.String(), color: gradeColor(d.Grade)}, {text: l, color: labelColor(l)}, {text: d.Reason}, {text: truncate(d.Title), url: d.URL}})
 	}
 	table(w, s, "  ", rows)
+	for _, warning := range res.Warnings {
+		fmt.Fprintf(w, "  %s %s\n", s.paint(yellow, "warning:"), warning)
+	}
 
 	if len(res.Findings) > 0 {
 		fmt.Fprintln(w, "  "+s.paint(bold+";"+yellow, "needs attention:"))
@@ -101,7 +107,7 @@ func Progress(w io.Writer, res runner.RepoResult) {
 		fmt.Fprintf(w, "%s: %s %s\n", res.Repo, s.paint(red, "error:"), res.Error)
 		return
 	}
-	fmt.Fprintf(w, "%s: %s (%d PRs)\n", res.Repo, s.paint(green, "done"), len(res.Decisions))
+	fmt.Fprintf(w, "%s: %s (%s)\n", res.Repo, s.paint(green, "done"), plural(len(res.Decisions), "PR"))
 }
 
 // Summary writes the totals line across all repositories.
@@ -185,6 +191,14 @@ func truncate(s string) string {
 		return s
 	}
 	return string(r[:titleWidth-1]) + "…"
+}
+
+// plural writes n things, as "1 PR" or "2 PRs".
+func plural(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 func prList(prs []int) string {

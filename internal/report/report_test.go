@@ -219,3 +219,24 @@ func TestSummaryColors(t *testing.T) {
 		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
 }
+
+func TestRepoShowsWarningsAndAgentReviewOff(t *testing.T) {
+	res := applied
+	res.Policy.AgentReview = false
+	res.Warnings = []string{"#1: verdict not cached: disk full"}
+	var b bytes.Buffer
+	Repo(&b, true, res)
+	for _, want := range []string{"checks required, no agent review, write access)", "\n  warning: #1: verdict not cached: disk full\n"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("missing %q in:\n%s", want, b.String())
+		}
+	}
+}
+
+func TestProgressSingular(t *testing.T) {
+	var b bytes.Buffer
+	Progress(&b, runner.RepoResult{Repo: "o/r", Decisions: []policy.Decision{decision(1, policy.ActionWait, "")}})
+	if b.String() != "o/r: done (1 PR)\n" {
+		t.Fatalf("got %q", b.String())
+	}
+}

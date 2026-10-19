@@ -3,12 +3,17 @@ package review
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+// ErrHeadMoved means a pull request's head is no longer the commit the
+// policy judged, as when Dependabot pushed since the repository was read.
+var ErrHeadMoved = errors.New("head moved")
 
 // Workspace keeps one shallow checkout per repository for agents to read,
 // reused across runs so a large repository is not cloned for every review.
@@ -47,7 +52,7 @@ func (w *Workspace) Checkout(ctx context.Context, owner, name string, number int
 		return "", err
 	}
 	if got != headOID {
-		return "", fmt.Errorf("head of #%d moved from %.7s to %.7s", number, headOID, got)
+		return "", fmt.Errorf("%w: #%d went from %.7s to %.7s", ErrHeadMoved, number, headOID, got)
 	}
 	if err := w.git(ctx, dir, "checkout", "-q", "--detach", "--force", "FETCH_HEAD"); err != nil {
 		return "", err
@@ -56,6 +61,45 @@ func (w *Workspace) Checkout(ctx context.Context, owner, name string, number int
 		return "", err
 	}
 	return dir, nil
+}
+
+// Prune removes the checkouts of repositories not in keep (as
+// "owner/name"), such as ones dropped from the config, and the owner
+// directories left empty.
+func (w *Workspace) Prune(keep map[string]bool) error {
+	owners, err := os.ReadDir(w.Root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, o := range owners {
+		if !o.IsDir() {
+			continue
+		}
+		ownerDir := filepath.Join(w.Root, o.Name())
+		names, err := os.ReadDir(ownerDir)
+		if err != nil {
+			return err
+		}
+		left := len(names)
+		for _, n := range names {
+			if keep[o.Name()+"/"+n.Name()] {
+				continue
+			}
+			if err := os.RemoveAll(filepath.Join(ownerDir, n.Name())); err != nil {
+				return err
+			}
+			left--
+		}
+		if left == 0 {
+			if err := os.Remove(ownerDir); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (w *Workspace) url(owner, name string) string {

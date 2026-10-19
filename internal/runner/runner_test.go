@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -27,6 +28,11 @@ type fakeClient struct {
 	// transient fails a PR's merge with this error that many times first.
 	transient  map[int]int
 	unknownFor int
+	// mergeErrs fail a PR's next merges with these errors, in order;
+	// mergedAnyway makes such a failure merge the PR all the same, as a
+	// merge that timed out on its way back can.
+	mergeErrs    map[int][]error
+	mergedAnyway map[int]bool
 	// fetchErrs are returned by the next fetches, in order.
 	fetchErrs []error
 }
@@ -61,6 +67,13 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 		f.transient[n]--
 		return &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}
 	}
+	var err error
+	if errs := f.mergeErrs[n]; len(errs) > 0 {
+		err, f.mergeErrs[n] = errs[0], errs[1:]
+		if !f.mergedAnyway[n] {
+			return err
+		}
+	}
 	f.merges = append(f.merges, n)
 	var keep []github.PullRequest
 	for _, pr := range f.repo.PullRequests {
@@ -70,7 +83,7 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 	}
 	f.repo.PullRequests = keep
 	f.unknownFor = 2
-	return nil
+	return err
 }
 
 func (f *fakeClient) Comment(_ context.Context, _, _ string, n int, body string) error {
@@ -322,7 +335,9 @@ func TestEventsCarryPRURL(t *testing.T) {
 type fakeReviewer struct {
 	verdicts map[int]policy.Verdict
 	fail     map[int]bool
-	calls    []int
+	// errs fail a PR's next reviews with these errors, in order.
+	errs  map[int][]error
+	calls []int
 	// onReview runs before each review, for checking what happened first.
 	onReview func(review.Request)
 }
@@ -334,6 +349,10 @@ func (f *fakeReviewer) Review(_ context.Context, req review.Request) (policy.Ver
 	}
 	if f.fail[req.Number] {
 		return policy.Verdict{}, errors.New("claude: exit status 1")
+	}
+	if errs := f.errs[req.Number]; len(errs) > 0 {
+		f.errs[req.Number] = errs[1:]
+		return policy.Verdict{}, errs[0]
 	}
 	if v, ok := f.verdicts[req.Number]; ok {
 		return v, nil
@@ -422,5 +441,107 @@ func TestAgentVerdictsAreCached(t *testing.T) {
 	}
 	if len(rv.calls) != 1 {
 		t.Fatalf("reviews %v; want the second run to reuse the verdict", rv.calls)
+	}
+}
+
+func TestTimedOutMergeThatWentThroughIsReportedMerged(t *testing.T) {
+	fc := &fakeClient{
+		repo:         testutil.Repo(testutil.PR(1)),
+		mergeErrs:    map[int][]error{1: {&api.HTTPError{StatusCode: 502}}},
+		mergedAnyway: map[int]bool{1: true},
+	}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(fc.merges) != "[1]" || len(res.Events) != 1 || res.Events[0].Kind != EventMerged || res.Failed() {
+		t.Fatalf("merges %v, events %+v", fc.merges, res.Events)
+	}
+	if !strings.Contains(res.Events[0].Detail, "squash, after") {
+		t.Fatalf("detail %q should say GitHub failed first", res.Events[0].Detail)
+	}
+}
+
+func TestTimedOutMergeThatDidNotGoThroughIsRetried(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {&api.HTTPError{StatusCode: 504}}}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(fc.merges) != "[1]" || len(res.Events) != 1 || res.Events[0].Detail != "squash" || res.Failed() {
+		t.Fatalf("merges %v, events %+v", fc.merges, res.Events)
+	}
+}
+
+func TestRateLimitedWriteIsMadeAgain(t *testing.T) {
+	limited := &api.HTTPError{StatusCode: 403, Message: "secondary rate limit", Headers: map[string][]string{"Retry-After": {"20"}}}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {limited}}}
+	r := newRunner(fc, true)
+	var slept []time.Duration
+	r.Sleep = func(_ context.Context, d time.Duration) error { slept = append(slept, d); return nil }
+	res := r.RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(fc.merges) != "[1]" || res.Failed() || len(slept) == 0 || slept[0] != 20*time.Second {
+		t.Fatalf("merges %v, slept %v, events %+v", fc.merges, slept, res.Events)
+	}
+}
+
+func TestAgentApprovalIsNamedOnTheMerge(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	res := reviewRunner(c, &fakeReviewer{}, true).RunRepo(context.Background(), repoCfg)
+	if len(res.Events) != 1 || res.Events[0].Detail != "squash, approved by claude" {
+		t.Fatalf("events %+v", res.Events)
+	}
+}
+
+func TestHeadMovedDuringReviewIsReviewedAgain(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{errs: map[int][]error{1: {fmt.Errorf("checkout: %w", review.ErrHeadMoved)}}}
+	r := reviewRunner(c, rv, true)
+	r.MaxReviews = 1
+	res := r.RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(c.merges) != "[1]" || fmt.Sprint(rv.calls) != "[1 1]" || res.Failed() {
+		t.Fatalf("merges %v, reviews %v, result %+v", c.merges, rv.calls, res)
+	}
+}
+
+func TestHeadThatKeepsMovingWaitsForNextRun(t *testing.T) {
+	moved := fmt.Errorf("checkout: %w", review.ErrHeadMoved)
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{errs: map[int][]error{1: {moved, moved, moved}}}
+	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
+	d := res.Decisions[0]
+	if len(c.merges) != 0 || len(rv.calls) != 2 || res.Failed() || d.Action != policy.ActionReview || !strings.Contains(d.Reason, "head moved") {
+		t.Fatalf("merges %v, reviews %v, decision %+v", c.merges, rv.calls, d)
+	}
+}
+
+func TestUncachedVerdictIsAWarning(t *testing.T) {
+	dir := t.TempDir()
+	cache, err := review.OpenCache(dir + "/state/verdicts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A file where the state directory should be makes every write fail.
+	if err := os.WriteFile(dir+"/state", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	r := reviewRunner(c, &fakeReviewer{}, true)
+	r.Verdicts = cache
+	res := r.RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(c.merges) != "[1]" || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "#1: verdict not cached") {
+		t.Fatalf("merges %v, warnings %q", c.merges, res.Warnings)
+	}
+}
+
+func TestCachedRejectionLapsesWhenTheHeadMoves(t *testing.T) {
+	cache, err := review.OpenCache(t.TempDir() + "/verdicts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr := testutil.PR(1, "lib:major")
+	rv := &fakeReviewer{verdicts: map[int]policy.Verdict{1: {Summary: "no"}}}
+	for _, head := range []string{"sha1", "sha1", "rebased"} {
+		pr.HeadOID, pr.ChecksOID = head, head
+		r := reviewRunner(&fakeClient{repo: testutil.Repo(pr)}, rv, false)
+		r.Verdicts = cache
+		r.RunRepo(context.Background(), repoCfg)
+	}
+	if len(rv.calls) != 2 {
+		t.Fatalf("reviews %v; want the rebase alone to bring a new review", rv.calls)
 	}
 }

@@ -14,6 +14,20 @@ import (
 // share checkouts. It fails at once when another process holds it; the
 // lock goes when release is called or the process exits.
 func Lock(path string) (release func(), err error) {
+	release, err = flock(path, syscall.LOCK_EX|syscall.LOCK_NB)
+	if errors.Is(err, syscall.EWOULDBLOCK) {
+		return nil, fmt.Errorf("another deps-merger run is reviewing updates (it holds %s)", path)
+	}
+	return release, err
+}
+
+// waitLock takes the lock file at path, waiting for another process to
+// release it.
+func waitLock(path string) (release func(), err error) {
+	return flock(path, syscall.LOCK_EX)
+}
+
+func flock(path string, how int) (release func(), err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -21,11 +35,8 @@ func Lock(path string) (release func(), err error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := syscall.Flock(int(f.Fd()), how); err != nil {
 		f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another deps-merger run is reviewing updates (it holds %s)", path)
-		}
 		return nil, err
 	}
 	return func() { f.Close() }, nil

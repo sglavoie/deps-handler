@@ -13,6 +13,7 @@ deps-merger run --open            # only repos with open Dependabot PRs
 deps-merger run -r Storefront --json  # one repo, machine-readable
 deps-merger run --review --apply  # let an AI agent judge majors too
 deps-merger verdicts              # the agent's cached verdicts
+deps-merger verdicts acme/Storefront --json  # one repo's, with concerns
 ```
 
 ## What counts as safe
@@ -49,7 +50,12 @@ rebased.
 
 Merges happen one at a time per repository, with the head SHA pinned,
 re-reading state after each. A merge GitHub rejects with 405 or 409, as it
-can right after another merge, is retried once. Up to four repositories are
+can right after another merge, is retried once. So is one that fails with
+a 502, 503, 504 or a timeout, which may have merged anyway: if the PR is no
+longer open when the repository is read again, it is reported merged, with
+the error GitHub gave. A merge or comment GitHub refuses for a rate limit
+is made again after the pause GitHub asks for, up to two minutes; other
+writes wait meanwhile, since the limit applies to the user. Up to four repositories are
 processed at once, but merges and comments are never sent concurrently.
 
 PRs not opened by Dependabot are never fetched: the query asks GitHub only
@@ -87,6 +93,10 @@ interrupted.
 The agent never merges anything. An approved PR is evaluated again and
 merged (or rebased) like any other: Dependabot's signed commits, green
 checks, mergeability and the pinned head SHA are all checked again first.
+The report names the agent on the merge (`squash, approved by claude`).
+If Dependabot pushes to a PR as its review starts, the new head is
+evaluated and reviewed instead; a head that moves again is left for the
+next run rather than counted as a failed review.
 A rejection is reported with the agent's concerns under "needs
 attention"; a review that fails or times out leaves the PR alone and makes
 the run exit 1. The PR description is treated as untrusted: the prompt
@@ -96,17 +106,23 @@ markers carrying a random token, so the description cannot fake its own end.
 Reviews run after the run's other merges, two at a time, at most
 `--max-reviews` (default 10) per run. Verdicts are kept for 14 days in
 `~/.local/state/deps-merger/verdicts.json`, keyed by the PR and the
-versions it moves to, so a rebase does not trigger a new review but a new
-version does. `deps-merger verdicts` lists them; `deps-merger verdicts
-forget acme/Storefront#42` (or a whole `owner/name`) has those updates
-reviewed again on the next run. Only one `--review` run works at a time:
-a second one, such as an overlapping cron job, fails at once rather than
-share the checkouts.
+versions it moves to: a new version is always reviewed again. An approval
+survives a rebase; a rejection does not, since the base branch the PR now
+sits on may have dealt with what the agent objected to. A verdict that
+cannot be saved is reported as a warning (and under `warnings` in
+`--json`). `deps-merger verdicts` lists them, optionally only for some
+repositories or PRs, with `--json` for their concerns; `deps-merger
+verdicts forget acme/Storefront#42` (or a whole `owner/name`) has those
+updates reviewed again on the next run. Only one `--review` run works at a
+time: a second one, such as an overlapping cron job, fails at once rather
+than share the checkouts. Each `--review` run removes the checkouts of
+repositories no longer in the config.
 
 Configure the agent under `agent:` in the config. `claude.config_dir` is
 passed as `CLAUDE_CONFIG_DIR`, picking the Claude Code account and
 settings to use; `codex.home` is passed as `CODEX_HOME`. Set
-`agent_review: false` on a repo to keep the agent out of it.
+`agent_review: false` on a repo to keep the agent out of it; its report
+header then says `no agent review`.
 
 ## What needs attention
 
@@ -127,7 +143,7 @@ Under each repo the report lists, without acting on them:
   deps-merger never gives;
 - **stalled rebases**: a rebase request Dependabot ignored for a day, with
   `@dependabot recreate` as the fix;
-- **no checks** and **read-only** repositories;
+- **no checks**, **read-only** and **archived** repositories;
 - **truncated**: more than 100 open Dependabot PRs, so only the oldest 100
   were evaluated;
 - **agent rejected** / **agent failed**: an update the agent judged unsafe,
@@ -135,14 +151,18 @@ Under each repo the report lists, without acting on them:
 
 ## Scripting
 
-A dry run never writes, so `deps-merger run` is safe to schedule. For
+A dry run never writes to GitHub, so `deps-merger run` is safe to
+schedule. With `--review` it still runs the agent, which costs what a
+review costs, and caches its verdicts: a later `--apply` merges what a dry
+run's review approved without asking the agent again. For
 `deps-merger run --apply` from cron or CI, the exit status is:
 
 - `0`: every repository was processed and every write succeeded;
 - `1`: a repository could not be processed, a merge or rebase request
   failed, or an agent review could not be done (the report says which).
   A read GitHub fails with a 502, 503 or 504, a timeout or "Something
-  went wrong" is tried once more before the repository counts as failed;
+  went wrong" is tried once more before the repository counts as failed,
+  as is one refused for a rate limit that lifts within two minutes;
 - `130`: interrupted (Ctrl-C or `SIGTERM`).
 
 `--json` prints `{"apply": bool, "results": [...]}` with one result per
@@ -152,7 +172,8 @@ repository: `repo`, `policy`, `permission`, `decisions` (one per PR, with
 reviewed it), `findings` (`kind`, `summary`, `prs`, `details`,
 `suggestions`), `events` (the writes made:
 `merged`, `merge-failed`, `rebase-requested`, `rebase-failed`, each with the
-PR's `url` and `grade`), `merge_method` (the one merges use) and `error`
+PR's `url` and `grade`), `merge_method` (the one merges use), `warnings`
+when something went wrong without stopping the run, and `error`
 when the repository could not be read (`interrupted` if the run was
 stopped). Durations such as `policy.merge_without_checks_after` are written
 as in the config (`"10m"`, `"0s"`). Lists are always arrays, never `null`. When stderr is a terminal,

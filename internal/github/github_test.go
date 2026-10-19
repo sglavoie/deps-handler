@@ -7,8 +7,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 )
@@ -72,6 +74,73 @@ func TestTransient(t *testing.T) {
 		if got := Transient(err); got != want {
 			t.Errorf("Transient(%v) = %t, want %t", err, got, want)
 		}
+	}
+}
+
+func TestRateLimited(t *testing.T) {
+	soon := strconv.FormatInt(time.Now().Add(30*time.Second).Unix(), 10)
+	for name, c := range map[string]struct {
+		err  error
+		want time.Duration
+		ok   bool
+	}{
+		"retry-after": {&api.HTTPError{StatusCode: 403, Headers: http.Header{"Retry-After": {"7"}}}, 7 * time.Second, true},
+		"429":         {&api.HTTPError{StatusCode: 429}, time.Minute, true},
+		"secondary":   {&api.HTTPError{StatusCode: 403, Message: "You have exceeded a secondary rate limit"}, time.Minute, true},
+		"forbidden":   {&api.HTTPError{StatusCode: 403, Message: "Resource not accessible by integration"}, 0, false},
+		"graphql":     {&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Type: "RATE_LIMITED"}}}, time.Minute, true},
+		"other":       {errors.New("boom"), 0, false},
+	} {
+		if got, ok := RateLimited(c.err); got != c.want || ok != c.ok {
+			t.Errorf("%s: RateLimited = %s, %t; want %s, %t", name, got, ok, c.want, c.ok)
+		}
+	}
+	reset := &api.HTTPError{StatusCode: 403, Headers: http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {soon}}}
+	if d, ok := RateLimited(reset); !ok || d <= 0 || d > 30*time.Second {
+		t.Errorf("reset: RateLimited = %s, %t", d, ok)
+	}
+}
+
+func TestBackoff(t *testing.T) {
+	for name, c := range map[string]struct {
+		err  error
+		want time.Duration
+		ok   bool
+	}{
+		"transient":  {&api.HTTPError{StatusCode: 502}, time.Second, true},
+		"rate limit": {&api.HTTPError{StatusCode: 429, Headers: http.Header{"Retry-After": {"5"}}}, 5 * time.Second, true},
+		"too long":   {&api.HTTPError{StatusCode: 429, Headers: http.Header{"Retry-After": {"3600"}}}, time.Hour, false},
+		"permanent":  {&api.HTTPError{StatusCode: 404}, time.Second, false},
+	} {
+		if got, ok := Backoff(c.err, time.Second); got != c.want || ok != c.ok {
+			t.Errorf("%s: Backoff = %s, %t; want %s, %t", name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestAgain(t *testing.T) {
+	var slept []time.Duration
+	sleep := func(_ context.Context, d time.Duration) error { slept = append(slept, d); return nil }
+	calls := 0
+	read := func(errs ...error) func() (int, error) {
+		calls = 0
+		return func() (int, error) {
+			calls++
+			if calls <= len(errs) {
+				return 0, errs[calls-1]
+			}
+			return calls, nil
+		}
+	}
+	ctx := context.Background()
+	if v, err := Again(ctx, time.Second, sleep, read(&api.HTTPError{StatusCode: 503})); v != 2 || err != nil || fmt.Sprint(slept) != "[1s]" {
+		t.Fatalf("transient: %d, %v, slept %v", v, err, slept)
+	}
+	if _, err := Again(ctx, time.Second, sleep, read(&api.HTTPError{StatusCode: 503}, &api.HTTPError{StatusCode: 503})); err == nil || calls != 2 {
+		t.Fatalf("twice: %v after %d calls", err, calls)
+	}
+	if _, err := Again(ctx, time.Second, sleep, read(&api.HTTPError{StatusCode: 404})); err == nil || calls != 1 {
+		t.Fatalf("permanent: %v after %d calls", err, calls)
 	}
 }
 

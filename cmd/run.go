@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/cli/go-gh/v2/pkg/term"
@@ -81,11 +82,11 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			client, err := github.New()
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			viewer, err := client.Viewer(ctx)
+			viewer, err := github.Again(ctx, 3*time.Second, nil, func() (string, error) { return client.Viewer(ctx) })
 			if err != nil {
 				if ctx.Err() != nil {
 					return errInterrupted
@@ -108,7 +109,7 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 			}
 			r := runner.New(client, viewer, apply)
 			if agent != nil {
-				release, err := setupReviews(r, cfg.Agent, agent, client, maxReviews)
+				release, err := setupReviews(r, cfg, agent, client, maxReviews)
 				if err != nil {
 					return err
 				}
@@ -167,10 +168,14 @@ func newAgent(cfg config.Agent, name string) (review.Agent, error) {
 	return agent, nil
 }
 
+// newClient builds the GitHub client; tests replace it.
+var newClient = github.New
+
 // setupReviews gives r an agent reviewer with its checkouts and verdict
 // cache in the XDG cache and state directories. It holds a lock until
-// release is called, so a second review run cannot share the checkouts.
-func setupReviews(r *runner.Runner, cfg config.Agent, agent review.Agent, client github.Client, maxReviews int) (release func(), err error) {
+// release is called, so a second review run cannot share the checkouts,
+// and removes the checkouts of repositories no longer in the config.
+func setupReviews(r *runner.Runner, cfg *config.Config, agent review.Agent, client github.Client, maxReviews int) (release func(), err error) {
 	cacheDir, err := config.CacheDir()
 	if err != nil {
 		return nil, err
@@ -188,11 +193,20 @@ func setupReviews(r *runner.Runner, cfg config.Agent, agent review.Agent, client
 		return nil, err
 	}
 	token, _ := auth.TokenForHost("github.com")
+	ws := &review.Workspace{Root: filepath.Join(cacheDir, "checkouts"), Token: token}
+	keep := map[string]bool{}
+	for _, rc := range cfg.Repos {
+		keep[rc.FullName()] = true
+	}
+	if err := ws.Prune(keep); err != nil {
+		release()
+		return nil, fmt.Errorf("prune checkouts: %w", err)
+	}
 	r.Reviewer = &review.AgentReviewer{
 		Agent:     agent,
 		Details:   client,
-		Workspace: &review.Workspace{Root: filepath.Join(cacheDir, "checkouts"), Token: token},
-		Timeout:   cfg.Timeout,
+		Workspace: ws,
+		Timeout:   cfg.Agent.Timeout,
 	}
 	r.AgentName, r.Verdicts, r.MaxReviews = agent.Name(), verdicts, maxReviews
 	return release, nil

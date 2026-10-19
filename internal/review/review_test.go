@@ -283,7 +283,7 @@ func TestWorkspaceCheckout(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "junk")); !errors.Is(err, os.ErrNotExist) {
 		t.Error("leftover files should be cleaned")
 	}
-	if _, err := w.Checkout(context.Background(), "o", "r", 7, "0000000"); err == nil || !strings.Contains(err.Error(), "moved") {
+	if _, err := w.Checkout(context.Background(), "o", "r", 7, "0000000"); !errors.Is(err, ErrHeadMoved) {
 		t.Fatalf("a moved head must fail: %v", err)
 	}
 }
@@ -296,7 +296,7 @@ func TestCache(t *testing.T) {
 	}
 	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	c.now = func() time.Time { return now }
-	if err := c.Put("k", "claude", policy.Verdict{Approved: true, Summary: "ok"}); err != nil {
+	if err := c.Put("k", "sha", "claude", policy.Verdict{Approved: true, Summary: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	c2, err := OpenCache(path)
@@ -304,11 +304,11 @@ func TestCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	c2.now = c.now
-	if v := c2.Get("k"); v == nil || !v.Approved || v.Summary != "ok" {
+	if v := c2.Get("k", "sha"); v == nil || !v.Approved || v.Summary != "ok" {
 		t.Fatalf("reloaded verdict = %+v", v)
 	}
 	now = now.Add(CacheTTL + time.Second)
-	if v := c2.Get("k"); v != nil {
+	if v := c2.Get("k", "sha"); v != nil {
 		t.Fatal("expired verdicts must not be reused")
 	}
 	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
@@ -323,10 +323,10 @@ func TestCacheKeepsOtherWriters(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "verdicts.json")
 	a, _ := OpenCache(path)
 	b, _ := OpenCache(path)
-	if err := a.Put("o/r#1 lib@2.0.0", "claude", policy.Verdict{Approved: true}); err != nil {
+	if err := a.Put("o/r#1 lib@2.0.0", "sha", "claude", policy.Verdict{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Put("o/r#2 lib@3.0.0", "codex", policy.Verdict{}); err != nil {
+	if err := b.Put("o/r#2 lib@3.0.0", "sha", "codex", policy.Verdict{}); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := OpenCache(path)
@@ -339,7 +339,7 @@ func TestCacheForget(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "verdicts.json")
 	c, _ := OpenCache(path)
 	for _, k := range []string{"o/r#1 a@1", "o/r#1 b@1", "o/r#10 a@1", "o/rx#1 a@1", "p/q#3 a@1"} {
-		if err := c.Put(k, "claude", policy.Verdict{}); err != nil {
+		if err := c.Put(k, "sha", "claude", policy.Verdict{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -354,5 +354,42 @@ func TestCacheForget(t *testing.T) {
 	reopened, _ := OpenCache(path)
 	if got := reopened.Entries(); len(got) != 1 || got[0].Key != "o/rx#1 a@1" {
 		t.Fatalf("left = %+v", got)
+	}
+}
+
+func TestWorkspacePrune(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"o/keep/.git", "o/gone/.git", "p/gone/.git"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := &Workspace{Root: root}
+	if err := w.Prune(map[string]bool{"o/keep": true}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]bool{"o/keep": true, "o/gone": false, "p": false} {
+		if _, err := os.Stat(filepath.Join(root, path)); (err == nil) != want {
+			t.Errorf("%s exists = %t, want %t", path, err == nil, want)
+		}
+	}
+	if err := (&Workspace{Root: filepath.Join(root, "none")}).Prune(nil); err != nil {
+		t.Fatalf("a missing root is nothing to prune: %v", err)
+	}
+}
+
+func TestCacheRejectionHoldsForItsHeadOnly(t *testing.T) {
+	c, _ := OpenCache(filepath.Join(t.TempDir(), "verdicts.json"))
+	if err := c.Put("rejected", "sha1", "claude", policy.Verdict{Summary: "no"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Put("approved", "sha1", "claude", policy.Verdict{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Get("rejected", "sha1") == nil || c.Get("rejected", "sha2") != nil {
+		t.Error("a rejection must hold for its head and lapse on a new one")
+	}
+	if c.Get("approved", "sha2") == nil {
+		t.Error("an approval must survive a rebase")
 	}
 }

@@ -71,7 +71,7 @@ func TestVerdicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for k, approved := range map[string]bool{"o/a#1 lib@2.0.0": true, "o/a#2 x@3.0.0": false} {
-		if err := cache.Put(k, "claude", policy.Verdict{Approved: approved, Summary: "because"}); err != nil {
+		if err := cache.Put(k, "sha", "claude", policy.Verdict{Approved: approved, Summary: "because"}); err != nil {
 			t.Fatal(err)
 		}
 	}
