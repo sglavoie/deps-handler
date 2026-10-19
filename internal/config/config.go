@@ -190,15 +190,39 @@ func (e *repoEntry) UnmarshalYAML(n *yaml.Node) error {
 		return nil
 	}
 	// Node.Decode does not inherit the decoder's KnownFields, so check here.
-	if n.Kind == yaml.MappingNode {
+	if err := checkEntryKeys(n); err != nil {
+		return err
+	}
+	type plain repoEntry
+	return n.Decode((*plain)(e))
+}
+
+// checkEntryKeys rejects unknown keys in a repo entry, following YAML merge
+// keys ("<<: *shared") into the mappings they pull in.
+func checkEntryKeys(n *yaml.Node) error {
+	if n.Kind == yaml.AliasNode {
+		n = n.Alias
+	}
+	switch n.Kind {
+	case yaml.SequenceNode: // <<: [*a, *b]
+		for _, c := range n.Content {
+			if err := checkEntryKeys(c); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
 		for i := 0; i < len(n.Content); i += 2 {
-			if k := n.Content[i]; !entryKeys[k.Value] {
+			k := n.Content[i]
+			if k.Tag == "!!merge" {
+				if err := checkEntryKeys(n.Content[i+1]); err != nil {
+					return err
+				}
+			} else if !entryKeys[k.Value] {
 				return fmt.Errorf("line %d: unknown field %q in repo entry", k.Line, k.Value)
 			}
 		}
 	}
-	type plain repoEntry
-	return n.Decode((*plain)(e))
+	return nil
 }
 
 type file struct {
@@ -434,19 +458,27 @@ func parseAgent(e agentEntry) (Agent, error) {
 		return a, fmt.Errorf("claude.max_budget_usd must be a non-negative number, not %v", b)
 	}
 	var err error
-	if a.Claude.ConfigDir, err = expandHome(a.Claude.ConfigDir); err != nil {
+	if a.Claude.ConfigDir, err = expandHome("claude.config_dir", a.Claude.ConfigDir); err != nil {
 		return a, err
 	}
-	if a.Codex.Home, err = expandHome(a.Codex.Home); err != nil {
+	if a.Codex.Home, err = expandHome("codex.home", a.Codex.Home); err != nil {
 		return a, err
 	}
 	return a, nil
 }
 
 // expandHome replaces a leading ~ with the home directory, as a shell
-// would for a path written in the config.
-func expandHome(path string) (string, error) {
+// would for a path written in the config. Any other path must be absolute:
+// a relative one would depend on where deps-merger runs from, which under
+// cron is rarely where the config is.
+func expandHome(field, path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
 	if path != "~" && !strings.HasPrefix(path, "~/") {
+		if !filepath.IsAbs(path) {
+			return "", fmt.Errorf("%s %q must be an absolute path or start with ~/", field, path)
+		}
 		return path, nil
 	}
 	home, err := os.UserHomeDir()

@@ -33,7 +33,7 @@ func TestVerdictsRejectsUnknownWords(t *testing.T) {
 		{"verdicts", "acme/x#seven"},
 	} {
 		code, out, stderr := run(args...)
-		if code != 1 || out != "" || !strings.Contains(stderr, "is neither a command nor a target") || !strings.Contains(stderr, `"verdicts forget"`) {
+		if code != 2 || out != "" || !strings.Contains(stderr, "is neither a command nor a target") || !strings.Contains(stderr, `"verdicts forget"`) {
 			t.Errorf("%v: code %d, out %q, stderr %q", args, code, out, stderr)
 		}
 	}
@@ -67,11 +67,18 @@ func TestVerdictsShowHeadOfRejection(t *testing.T) {
 		t.Fatalf("code %d:\n%s", code, out)
 	}
 	code, out, _ = run("verdicts", "--json")
-	var got []struct {
-		HeadOID string `json:"head_oid"`
+	var doc struct {
+		Verdicts []struct {
+			HeadOID  string `json:"head_oid"`
+			Approved bool
+		}
 	}
-	if err := json.Unmarshal([]byte(out), &got); code != 0 || err != nil || len(got) != 2 {
+	if err := json.Unmarshal([]byte(out), &doc); code != 0 || err != nil || len(doc.Verdicts) != 2 {
 		t.Fatalf("json: code %d, %v:\n%s", code, err, out)
+	}
+	got := doc.Verdicts
+	if got[0].Approved || !got[1].Approved {
+		t.Fatalf("approved = %t, %t", got[0].Approved, got[1].Approved)
 	}
 	// An approval survives a rebase: it holds for any head.
 	if got[0].HeadOID != "0123456789abcdef" || got[1].HeadOID != "any" {

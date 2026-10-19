@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sglavoie/deps-merger/internal/config"
+	"github.com/sglavoie/deps-merger/internal/report"
 	"github.com/sglavoie/deps-merger/internal/review"
 	"github.com/spf13/cobra"
 )
@@ -144,7 +145,7 @@ func verdictWord(e review.Entry) string {
 
 // clipSummary keeps the table readable: the full text is in --json.
 func clipSummary(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
+	s = strings.Join(strings.Fields(report.Plain(s)), " ")
 	if r := []rune(s); len(r) > summaryWidth {
 		return string(r[:summaryWidth-1]) + "…"
 	}
@@ -155,6 +156,7 @@ func verdictsJSON(cmd *cobra.Command, entries []review.Entry) error {
 	type verdict struct {
 		Update     string    `json:"update"`
 		Verdict    string    `json:"verdict"`
+		Approved   bool      `json:"approved"`
 		Agent      string    `json:"agent"`
 		HeadOID    string    `json:"head_oid"`
 		ReviewedAt time.Time `json:"reviewed_at"`
@@ -168,11 +170,14 @@ func verdictsJSON(cmd *cobra.Command, entries []review.Entry) error {
 		if concerns == nil {
 			concerns = []string{}
 		}
-		out = append(out, verdict{e.Key, verdictWord(e), e.Agent, heldForOID(e), e.ReviewedAt, e.Expires, e.Verdict.Summary, concerns})
+		out = append(out, verdict{e.Key, verdictWord(e), e.Verdict.Approved, e.Agent, heldForOID(e), e.ReviewedAt, e.Expires, e.Verdict.Summary, concerns})
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	// An object, as run and repos print, so fields can be added later.
+	return enc.Encode(struct {
+		Verdicts []verdict `json:"verdicts"`
+	}{out})
 }
 
 // openVerdicts opens the verdict cache, warning on cmd's stderr when it

@@ -90,6 +90,9 @@ type Runner struct {
 	// writes serialises merges and comments across repositories: GitHub
 	// asks clients not to make concurrent writes for one user.
 	writes sync.Mutex
+	// writesBlocked is the rate limit that refused a write and was not
+	// waited out; later writes in the run are not sent. Guarded by writes.
+	writesBlocked error
 
 	// Reviewer, when set, has an agent judge PRs the policy alone would
 	// not merge because of their size.
@@ -178,20 +181,51 @@ func (r *Runner) comment(ctx context.Context, rc config.Repo, number int, body s
 	return r.write(ctx, func() error { return r.Client.Comment(ctx, rc.Owner, rc.Name, number, body) })
 }
 
+// errNotSent marks a write that never reached GitHub, so it cannot have
+// gone through.
+var errNotSent = errors.New("not sent")
+
+// interruptedInFlight reports whether the run was interrupted while the
+// write that failed with err was on its way, so it may have gone through:
+// it was sent, and GitHub did not refuse it for a rate limit.
+func interruptedInFlight(ctx context.Context, err error) bool {
+	_, limited := github.RateLimited(err)
+	return ctx.Err() != nil && !errors.Is(err, errNotSent) && !limited
+}
+
 // write makes one write at a time across repositories, once more after
 // the pause GitHub asks for when it refuses it for a rate limit. The pause
 // holds back the other repositories' writes too: the limit is the user's.
+// A rate limit that is not waited out, or that refuses the write again,
+// stops the run's later writes from being sent: writing on through it is
+// what GitHub penalises.
 func (r *Runner) write(ctx context.Context, f func() error) error {
 	r.writes.Lock()
 	defer r.writes.Unlock()
+	if r.writesBlocked != nil {
+		return fmt.Errorf("%w: an earlier write hit GitHub's rate limit; a later run tries again", errNotSent)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%w: %w", errNotSent, err)
+	}
 	err := f()
-	if d, ok := github.RateLimited(err); ok && d <= github.MaxRateLimitWait && ctx.Err() == nil {
+	d, ok := github.RateLimited(err)
+	if !ok || ctx.Err() != nil {
+		return err
+	}
+	if d <= github.MaxRateLimitWait {
 		if err := r.Sleep(ctx, d); err != nil {
+			return fmt.Errorf("%w: %w", errNotSent, err)
+		}
+		if err = f(); err == nil {
+			return nil
+		}
+		if _, ok := github.RateLimited(err); !ok {
 			return err
 		}
-		err = f()
 	}
-	return err
+	r.writesBlocked = err
+	return github.NotWaiting(err)
 }
 
 func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
@@ -262,13 +296,15 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		return res
 	}
 	polls := 0
-	rv := &repoReviews{verdicts: map[string]*policy.Verdict{}, moved: map[int]int{}, res: &res}
+	rv := &repoReviews{verdicts: map[string]runVerdict{}, moved: map[int]int{}, res: &res}
 	var judge policy.Judge
 	if r.Reviewer != nil {
 		judge = func(d policy.Decision) *policy.Verdict {
 			key := review.NewRequest(rc, d).Key()
-			if v, ok := rv.verdicts[key]; ok {
-				return v
+			// As in the cache, a rejection holds only for the head it was
+			// given on: Dependabot may have rebased onto a fix since.
+			if v, ok := rv.verdicts[key]; ok && (v.Approved || v.head == d.PR.HeadOID) {
+				return v.Verdict
 			}
 			if r.Verdicts != nil {
 				return r.Verdicts.Get(key, d.PR.HeadOID)
@@ -328,6 +364,10 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 				// If it was not posted, the next run asks again.
 				ev.Detail = joinDetail(ev.Detail, "may not have been posted: "+err.Error())
 				res.Warnings = append(res.Warnings, fmt.Sprintf("#%d: the rebase request may not have been posted: %v", d.Number, err))
+			case interruptedInFlight(ctx, err):
+				// It may have been posted, as above.
+				ev.Detail = joinDetail(ev.Detail, "may not have been posted: interrupted")
+				res.Warnings = append(res.Warnings, fmt.Sprintf("#%d: the rebase request may not have been posted: interrupted", d.Number))
 			default:
 				ev.Kind, ev.Detail = EventRebaseFailed, errText(ctx, err)
 			}
@@ -376,10 +416,10 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			// out may have gone through: if the PR is gone, it did.
 			retried[next.Number] = true
 			delete(attempted, next.Number)
-			if uncertain {
-				ev.Detail = joinDetail(method, r.approval(*next), "after "+err.Error())
-				unsure[next.Number] = pendingMerge{merged: ev, cause: err.Error()}
-			}
+			// Kept pending until it is tried again, so that a PR GitHub
+			// shows unmergeable from now on is still reported failed.
+			ev.Detail = joinDetail(method, r.approval(*next), "after "+err.Error())
+			unsure[next.Number] = pendingMerge{merged: ev, cause: err.Error()}
 			if err := r.Sleep(ctx, r.PollInterval); err != nil {
 				res.Error = errText(ctx, err)
 				return finish()
@@ -399,9 +439,13 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			}
 			continue
 		}
-		if err != nil {
+		switch {
+		case err != nil && methodErr == nil && interruptedInFlight(ctx, err):
+			// GitHub may have made it, and there is no asking now.
+			ev.Kind, ev.Detail = EventMergeFailed, "interrupted; may have merged"
+		case err != nil:
 			ev.Kind, ev.Detail = EventMergeFailed, errText(ctx, err)
-		} else {
+		default:
 			ev.Detail = joinDetail(method, r.approval(*next))
 			polls = 0
 		}
@@ -471,13 +515,19 @@ func joinDetail(parts ...string) string {
 // repoReviews is what one repository's pass knows about its reviews.
 type repoReviews struct {
 	// verdicts holds this run's reviews, failed ones included, so a PR is
-	// reviewed at most once per run.
-	verdicts map[string]*policy.Verdict
+	// reviewed at most once per head in a run.
+	verdicts map[string]runVerdict
 	// moved counts, by PR number, the reviews a PR's head moved under. It
 	// is kept by number, not by key: the key of an update without versions
 	// moves with its head, so each new head would look unreviewed.
 	moved map[int]int
 	res   *RepoResult
+}
+
+// runVerdict is a verdict given in this run, on the PR at head.
+type runVerdict struct {
+	*policy.Verdict
+	head string
 }
 
 // headMoved is the note on a PR whose head kept moving under its review.
@@ -493,24 +543,19 @@ func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []pol
 			continue
 		}
 		if rv.moved[d.Number] > 1 {
-			if !strings.HasSuffix(d.Reason, headMoved) {
-				d.Reason += headMoved
-			}
+			d.Reason += headMoved
 			continue
-		}
-		req := review.NewRequest(rc, *d)
-		key := req.Key()
-		if _, done := rv.verdicts[key]; done {
-			continue // an approval the PR has not caught up with yet
 		}
 		if !r.startReview() {
 			for j := i; j < len(decisions); j++ {
-				if decisions[j].Action == policy.ActionReview {
+				if decisions[j].Action == policy.ActionReview && rv.moved[decisions[j].Number] <= 1 {
 					decisions[j].Reason += fmt.Sprintf(" (review limit of %d reached)", r.MaxReviews)
 				}
 			}
 			return false
 		}
+		req := review.NewRequest(rc, *d)
+		key := req.Key()
 		v, err := r.review(ctx, req)
 		if errors.Is(err, review.ErrHeadMoved) && ctx.Err() == nil {
 			// Dependabot pushed while the review started: not a failure.
@@ -531,7 +576,7 @@ func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []pol
 				rv.res.Warnings = append(rv.res.Warnings, msg)
 			}
 		}
-		rv.verdicts[key] = &v
+		rv.verdicts[key] = runVerdict{&v, req.HeadOID}
 		return true
 	}
 	return false

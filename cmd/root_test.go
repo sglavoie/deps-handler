@@ -126,27 +126,34 @@ func TestVerdicts(t *testing.T) {
 	}
 }
 
-func TestRunErrorsExitOne(t *testing.T) {
+func TestRunErrorsExitCodes(t *testing.T) {
 	cfg := writeConfig(t, "repos:\n  - repo: o/a\n    skip: true\n")
 	active := writeConfig(t, "repos:\n  - o/a\n")
+	missing := filepath.Join(t.TempDir(), "nope.yaml")
 	for name, c := range map[string]struct {
 		args   []string
+		code   int
 		stderr string
 	}{
-		"missing config": {[]string{"run", "-c", filepath.Join(t.TempDir(), "nope.yaml")}, "config not found"},
-		"all skipped":    {[]string{"run", "-c", cfg}, "every configured repo has skip: true"},
-		"unknown repo":   {[]string{"run", "-c", cfg, "-r", "zzz"}, `repo "zzz" is not in the config`},
-		"unexpected arg": {[]string{"run", "extra"}, "unknown command"},
-		"unknown flag":   {[]string{"run", "--nope"}, "unknown flag"},
-		"unknown agent":  {[]string{"run", "-c", active, "--agent", "gemini"}, `unknown agent "gemini" (want claude or codex)`},
-		"bad limit":      {[]string{"run", "-c", active, "--review", "--max-reviews", "-1"}, "--max-reviews must not be negative"},
-		"limit alone":    {[]string{"run", "-c", active, "--max-reviews", "3"}, "--max-reviews needs --review or --agent"},
-		"bad repo name":  {[]string{"run", "-c", writeConfig(t, "repos: [acme/x.git]\n")}, "drop the .git suffix"},
+		"missing config":  {[]string{"run", "-c", missing}, 1, "config not found"},
+		"all skipped":     {[]string{"run", "-c", cfg}, 1, "every configured repo has skip: true"},
+		"unknown repo":    {[]string{"run", "-c", cfg, "-r", "zzz"}, 1, `repo "zzz" is not in the config`},
+		"bad repo name":   {[]string{"run", "-c", writeConfig(t, "repos: [acme/x.git]\n")}, 1, "drop the .git suffix"},
+		"unexpected arg":  {[]string{"run", "extra"}, 2, "unknown command"},
+		"unknown command": {[]string{"nope"}, 2, "unknown command"},
+		"unknown flag":    {[]string{"run", "--nope"}, 2, "unknown flag"},
+		"bad flag value":  {[]string{"run", "--max-reviews", "many"}, 2, "invalid argument"},
+		"missing arg":     {[]string{"verdicts", "forget"}, 2, "requires at least 1 arg"},
+		"unknown agent":   {[]string{"run", "-c", active, "--agent", "gemini"}, 2, `unknown agent "gemini" (want claude or codex)`},
+		"bad limit":       {[]string{"run", "-c", active, "--review", "--max-reviews", "-1"}, 2, "--max-reviews must not be negative"},
+		"limit alone":     {[]string{"run", "-c", active, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
+		// The command line is checked before the config is read.
+		"limit before config": {[]string{"run", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, _, stderr := run(c.args...)
-			if code != 1 || !strings.Contains(stderr, c.stderr) {
-				t.Fatalf("code %d, stderr %q; want 1 containing %q", code, stderr, c.stderr)
+			if code != c.code || !strings.Contains(stderr, c.stderr) {
+				t.Fatalf("code %d, stderr %q; want %d containing %q", code, stderr, c.code, c.stderr)
 			}
 		})
 	}

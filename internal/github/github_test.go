@@ -260,11 +260,13 @@ func TestCoAuthors(t *testing.T) {
 	msg := "bump\n\nSigned-off-by: dependabot[bot] <support@github.com>\n" +
 		"Co-authored-by: Jane Doe <jane@example.com>\n" +
 		"  co-authored-by:   dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\r\n" +
-		"Co-Authored-By: no email here"
+		"Co-Authored-By: no email here\n" +
+		"Co-authored-by : Sam <sam@example.com>"
 	want := []Author{
 		{Name: "Jane Doe", Email: "jane@example.com"},
 		{Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"},
 		{Name: "no email here"},
+		{Name: "Sam", Email: "sam@example.com"},
 	}
 	got := coAuthors(msg)
 	if len(got) != len(want) {
@@ -542,6 +544,17 @@ func TestFetchRepoRateLimitedSaysWhenItLifts(t *testing.T) {
 	_, err = Again(ctx, time.Second, sleep, func() (*Repo, error) { return c.FetchRepo(ctx, "o", "r") })
 	if slept != 0 || err == nil || !strings.Contains(err.Error(), "not waiting up to 40m") {
 		t.Fatalf("slept %d times, err = %v; a limit lifting in 40 minutes should fail at once", slept, err)
+	}
+}
+
+func TestNotWaitingSaysWhenItCannotTell(t *testing.T) {
+	err := NotWaiting(&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Type: "RATE_LIMITED", Message: "limited"}}})
+	if !strings.Contains(err.Error(), "does not say when") || strings.Contains(err.Error(), "1h") {
+		t.Errorf("err = %v; a reset GitHub did not give must not be made up", err)
+	}
+	plain := errors.New("boom")
+	if NotWaiting(plain) != plain {
+		t.Error("an error that is no rate limit must be returned as it is")
 	}
 }
 

@@ -12,7 +12,7 @@ deps-merger run                   # dry run: report only
 deps-merger run --apply           # merge safe PRs
 deps-merger run --open            # only repos with open Dependabot PRs
 deps-merger run -r Storefront --json  # one repo, machine-readable
-deps-merger run --review --apply  # let an AI agent judge majors too
+deps-merger run --review --apply  # let an AI agent judge bigger updates too
 deps-merger verdicts              # the agent's cached verdicts
 deps-merger verdicts acme/Storefront --json  # one repo's, with concerns
 ```
@@ -74,17 +74,24 @@ merged, and it is reported merged, with the error GitHub gave, or failed
 if it was closed without being merged. GitHub can show such a PR open a
 moment longer, so when its retry fails too, the repository is read once
 more before the merge is reported failed. A PR that is still open but not
-mergeable when it would be retried is never left unreported: as the
-repository's pass ends, GitHub is asked again, and the merge is reported
-merged if the PR merged and failed otherwise; if GitHub cannot say, it is
-reported failed with a note that it may have merged. Every request to
+mergeable when it would be retried, after any of these failures, is never
+left unreported: as the repository's pass ends, GitHub is asked again, and
+the merge is reported merged if the PR merged and failed otherwise; if
+GitHub cannot say, it is reported failed with a note that it may have
+merged. A merge in flight when the run is interrupted is reported failed
+with `interrupted; may have merged`, since there is no asking GitHub then;
+a rebase request in flight is reported requested, with a warning. Every request to
 GitHub times out after a minute, so a hung merge cannot hold up the other
 repositories' writes; a merge that times out is handled like a 504. A rebase request that fails
 with a 502, 503, 504 or a timeout may have been posted all the same: it is
 reported requested, with a warning, rather than failed, and a later run
 asks again if it was not. A merge or comment GitHub refuses for a rate limit
 is made again after the pause GitHub asks for, up to two minutes; other
-writes wait meanwhile, since the limit applies to the user. Up to four repositories are
+writes wait meanwhile, since the limit applies to the user. When GitHub
+asks for a longer pause, or refuses the write again, no further merge or
+comment is sent in that run, as writing on through a rate limit is what
+GitHub penalises: each is reported failed (`not sent`), and the next run
+tries again. Up to four repositories are
 processed at once, but merges and comments are never sent concurrently.
 
 PRs not opened by Dependabot are never fetched: the query asks GitHub only
@@ -93,8 +100,9 @@ for `author:app/dependabot`, and the author is checked again locally.
 ## Agent review
 
 Some updates are safe in every way the policy can check but their size:
-a major bump over `max_update_type`, or an update whose size Dependabot
-does not record as semver (a GitHub Action pinned by commit, a Docker
+a bump over `max_update_type` (a major one, or a minor one under
+`max_update_type: patch`), or an update whose size Dependabot does not
+record as semver (a GitHub Action pinned by commit, a Docker
 digest). With `--review`, deps-merger asks an AI agent about those, once
 everything else about them would let them merge or rebase:
 
@@ -105,7 +113,7 @@ deps-merger run --agent codex --apply   # another agent; implies --review
 ```
 
 The agent gets a shallow checkout of the PR's head commit (kept under
-`~/.cache/deps-merger/checkouts` and reused), the PR description with
+`~/.cache/deps-merger/checkouts`, readable by you alone, and reused), the PR description with
 Dependabot's release notes and changelog, and the diff. It looks for
 breaking changes upstream and how the repository uses what changed, then
 answers `approve` or `reject` with its reasons. It runs read-only:
@@ -128,7 +136,10 @@ holds it) or SSH keys, and whatever an agent reads goes to its model
 provider. Something that looks like a GitHub token (`ghp_`, `gho_`,
 `ghu_`, `ghs_`, `ghr_`, `github_pat_`) in the agent's summary or
 concerns is replaced by `[redacted token]` before it is cached or
-reported.
+reported, and so is one in an agent's error output. Control characters
+other than newlines and tabs are dropped from both, and the text report
+drops them from everything it prints, so an answer a prompt injection
+shaped cannot carry escape sequences to your terminal.
 
 The checks the agent is shown are the ones the policy judged, without runs
 that a newer run of the same check in the same workflow, for the same
@@ -155,7 +166,8 @@ will not for a rate limit, is asked for again like any read, and the
 review fails if it still cannot be had, rather than be cached without it.
 A rejection is reported with the agent's concerns under "needs
 attention"; a review that fails or times out leaves the PR alone and makes
-the run exit 1. The PR's title, dependency names and versions, description
+the run exit 1. A review whose time runs out while it fetches the PR or
+checks it out says so, rather than blame the agent, which never ran. The PR's title, dependency names and versions, description
 and diff are treated as untrusted: the prompt tells the agent they cannot
 change its instructions, and fences them with markers carrying a random
 token, so they cannot fake their own end. It says the same of files in the
@@ -210,10 +222,10 @@ Under each repo the report lists, without acting on them:
 - **incompatible updates**: a PR failing its own checks, with the
   `@dependabot ignore …` command that would stop it coming back (only for
   PRs Dependabot alone wrote, whose checks ran on their head commit);
-- **held majors**: major updates that would merge or rebase but for
-  `max_update_type`;
-- **held updates of unknown size**: updates that would merge but for
-  Dependabot not recording a semver bump (a GitHub Action pinned by commit,
+- **held majors** and **held minors**: updates that would merge or rebase
+  but for `max_update_type` (minors only under `max_update_type: patch`);
+- **held updates of unknown size**: updates that would merge or rebase but
+  for Dependabot not recording a semver bump (a GitHub Action pinned by commit,
   a Docker digest), when no agent reviewed them;
 - **review required**: branch protection wants an approving review, which
   deps-merger never gives;
@@ -243,6 +255,9 @@ run's review approved without asking the agent again. For
   as is one refused for a rate limit that lifts within two minutes (for
   GitHub's GraphQL limit, deps-merger asks GitHub when it resets, and does
   not wait when it cannot tell);
+- `2`: the command line is wrong (an unknown command or flag, a missing
+  argument, `--max-reviews` without `--review`); it is checked before the
+  config is read, and nothing runs;
 - `130`: interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`). A second Ctrl-C
   kills deps-merger at once, should the first not stop it.
 
@@ -269,10 +284,17 @@ agent's `use`, `timeout`, `claude` (`model`, `config_dir`,
 `max_budget_usd`) and `codex` (`model`, `home`) as configured, with an
 empty `model` for the agent's default.
 
+`deps-merger verdicts --json` prints `{"verdicts": [...]}`: each verdict's
+`update` (its cache key), `verdict` (`approved` or `rejected`),
+`approved`, `agent`, `head_oid` (the commit a rejection holds for, or
+`any`), `reviewed_at`, `expires`, `summary` and `concerns`.
+
 On a terminal the report is colored: green for merges, cyan for rebases,
 yellow for waits and what needs attention, magenta for agent reviews, red
 for failures and major bumps. `NO_COLOR=1` or `CLICOLOR=0` turns color off;
-`CLICOLOR_FORCE=1` keeps it when the output is piped.
+`CLICOLOR_FORCE=1` keeps it when the output is piped and wins over
+`CLICOLOR=0`, but `NO_COLOR` always wins, as [no-color.org](https://no-color.org)
+asks.
 
 ## Config
 
@@ -306,4 +328,14 @@ checks off) is an error, since it would do nothing; a repo that turns
 checks off while the defaults set it simply does not use it, and its
 resolved policy shows `0s`. The config must be a single YAML document, an
 empty entry under `repos` is an error rather than skipped, and
-`claude.max_budget_usd` must be a finite number.
+`claude.max_budget_usd` must be a finite number. `claude.config_dir` and
+`codex.home` must be absolute or start with `~/`: a relative path would
+depend on the directory deps-merger runs from, which under cron is rarely
+the config's. A repo entry can borrow another's settings with a YAML merge
+key, and the merged fields are checked like any other:
+
+```yaml
+repos:
+  - &strict {repo: acme/Billing, max_update_type: patch}
+  - {<<: *strict, repo: acme/Payments}
+```

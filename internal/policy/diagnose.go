@@ -21,6 +21,9 @@ const (
 	FindingIncompatible FindingKind = "incompatible-update"
 	// FindingHeldMajor is a major update held back by policy alone.
 	FindingHeldMajor FindingKind = "held-major"
+	// FindingHeldMinor is a minor update held back by policy alone, under
+	// max_update_type: patch.
+	FindingHeldMinor FindingKind = "held-minor"
 	// FindingHeldUnknown is an update held back by policy alone because
 	// Dependabot records no semver size for it.
 	FindingHeldUnknown FindingKind = "held-unknown"
@@ -143,16 +146,20 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 				PRs:     []int{d.Number},
 				Details: d.Verdict.Concerns,
 			})
-		case d.heldForSize && d.Grade == config.UpdateMajor:
-			out = append(out, Finding{
-				Kind:    FindingHeldMajor,
-				Summary: fmt.Sprintf("#%d is a major update held only by policy (allow with max_update_type: major%s)", d.Number, orReview(p)),
-				PRs:     []int{d.Number},
-			})
 		case d.heldForSize && d.Grade == config.UpdateUnknown:
 			out = append(out, Finding{
 				Kind:    FindingHeldUnknown,
-				Summary: fmt.Sprintf("#%d would merge, but Dependabot records no semver size for it (merge it by hand%s)", d.Number, orReview(p)),
+				Summary: fmt.Sprintf("#%d is held only because Dependabot records no semver size for it (merge it by hand%s)", d.Number, orReview(p)),
+				PRs:     []int{d.Number},
+			})
+		case d.heldForSize:
+			kind := FindingHeldMajor
+			if d.Grade == config.UpdateMinor {
+				kind = FindingHeldMinor
+			}
+			out = append(out, Finding{
+				Kind:    kind,
+				Summary: fmt.Sprintf("#%d is a %s update held only by policy (allow with max_update_type: %s%s)", d.Number, d.Grade, d.Grade, orReview(p)),
 				PRs:     []int{d.Number},
 			})
 		}

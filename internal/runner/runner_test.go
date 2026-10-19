@@ -818,3 +818,76 @@ func TestRefusedReviewDoesNotUseUpTheLimit(t *testing.T) {
 		t.Fatalf("o/b decision %+v", d)
 	}
 }
+
+func TestLongRateLimitStopsLaterWrites(t *testing.T) {
+	limited := &api.HTTPError{StatusCode: 403, Message: "secondary rate limit", Headers: map[string][]string{"Retry-After": {"600"}}}
+	behind := testutil.PR(3)
+	behind.MergeState = "BEHIND"
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2), behind), mergeErrs: map[int][]error{1: {limited}}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 0 || len(fc.comments) != 0 {
+		t.Fatalf("merges %v, comments %v; nothing may be sent through a rate limit", fc.merges, fc.comments)
+	}
+	if len(res.Events) != 2 || !strings.Contains(res.Events[0].Detail, "not waiting up to 10m0s") || !strings.Contains(res.Events[1].Detail, "not sent") {
+		t.Fatalf("events %+v", res.Events)
+	}
+}
+
+// cancellingClient cancels the run while a merge is in flight.
+type cancellingClient struct {
+	*fakeClient
+	cancel context.CancelFunc
+}
+
+func (c *cancellingClient) Merge(context.Context, string, string, int, string, string) error {
+	c.cancel()
+	return fmt.Errorf("Put \"https://api.github.com/repos/o/r/pulls/1/merge\": %w", context.Canceled)
+}
+
+func TestMergeInterruptedInFlightMayHaveMerged(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &cancellingClient{&fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2))}, cancel}
+	res := newRunner(c, true).RunRepo(ctx, repoCfg)
+	if len(res.Events) == 0 || res.Events[0].Detail != "interrupted; may have merged" {
+		t.Fatalf("events %+v", res.Events)
+	}
+	for _, ev := range res.Events[1:] {
+		if strings.Contains(ev.Detail, "may have merged") {
+			t.Errorf("event %+v: a merge never sent cannot have merged", ev)
+		}
+	}
+}
+
+func TestRefusedMergeOfAPRThatTurnsUnmergeableIsReported(t *testing.T) {
+	notMergeable := &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {notMergeable}}, unknownAfterMerge: 20}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed || !res.Failed() {
+		t.Fatalf("events %+v; a refused merge must not go unreported", res.Events)
+	}
+	if !strings.Contains(res.Events[0].Detail, "not merged after HTTP 405") {
+		t.Fatalf("detail %q", res.Events[0].Detail)
+	}
+}
+
+func TestRejectionInThisRunLapsesWhenTheHeadMoves(t *testing.T) {
+	// With a version recorded, the update keeps its key across a rebase.
+	versioned := testutil.PR(1, "lib:major")
+	versioned.Commits[0].Message = strings.Replace(versioned.Commits[0].Message, "  dependency-type:", "  dependency-version: 2.0.0\n  dependency-type:", 1)
+	c := &fakeClient{repo: testutil.Repo(versioned)}
+	rv := &fakeReviewer{verdicts: map[int]policy.Verdict{1: {Summary: "breaks the build"}}}
+	rv.onReview = func(review.Request) {
+		if len(rv.calls) == 1 {
+			// Dependabot rebases onto a fix while the first review runs.
+			pr := &c.repo.PullRequests[0]
+			pr.HeadOID, pr.ChecksOID = "rebased", "rebased"
+			return
+		}
+		delete(rv.verdicts, 1)
+	}
+	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(rv.calls) != "[1 1]" || fmt.Sprint(c.merges) != "[1]" {
+		t.Fatalf("reviews %v, merges %v, decisions %+v", rv.calls, c.merges, res.Decisions)
+	}
+}

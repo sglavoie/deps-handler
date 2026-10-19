@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/cli/go-gh/v2/pkg/term"
@@ -23,7 +24,8 @@ const (
 
 // style decides which escape codes a writer gets: OSC 8 links on a
 // terminal, and colors on a terminal unless NO_COLOR or CLICOLOR=0 turns
-// them off (CLICOLOR_FORCE turns them on anywhere).
+// them off. CLICOLOR_FORCE turns them on anywhere, except that NO_COLOR
+// always wins, as no-color.org asks.
 type style struct {
 	links, color bool
 }
@@ -31,10 +33,13 @@ type style struct {
 func styleFor(w io.Writer) style {
 	f, ok := w.(*os.File)
 	tty := ok && term.IsTerminal(f)
-	return style{links: tty, color: term.IsColorForced() || (tty && !term.IsColorDisabled())}
+	noColor := os.Getenv("NO_COLOR") != ""
+	return style{links: tty, color: !noColor && (term.IsColorForced() || (tty && !term.IsColorDisabled()))}
 }
 
+// paint colors text, which is printed as Plain makes it.
 func (s style) paint(code, text string) string {
+	text = Plain(text)
 	if !s.color || code == "" || text == "" {
 		return text
 	}
@@ -45,7 +50,23 @@ func (s style) link(url, text string) string {
 	if !s.links || url == "" {
 		return text
 	}
-	return "\x1b]8;;" + url + "\x1b\\" + text + "\x1b]8;;\x1b\\"
+	return "\x1b]8;;" + Plain(url) + "\x1b\\" + text + "\x1b]8;;\x1b\\"
+}
+
+// Plain makes text safe to print on a terminal as one line: control
+// characters, such as the escape sequences an agent's answer or a reason
+// quoting it could carry, are dropped, and line breaks and tabs become
+// spaces.
+func Plain(text string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\t':
+			return ' '
+		case unicode.IsControl(r):
+			return -1
+		}
+		return r
+	}, text)
 }
 
 // labelColor colors an action or event by what it means for the PR: done
@@ -95,7 +116,7 @@ func table(w io.Writer, s style, indent string, rows [][]cell) {
 			if i == len(widths) {
 				widths = append(widths, 0)
 			}
-			widths[i] = max(widths[i], utf8.RuneCountInString(c.text))
+			widths[i] = max(widths[i], utf8.RuneCountInString(Plain(c.text)))
 		}
 	}
 	for _, r := range rows {
@@ -104,7 +125,7 @@ func table(w io.Writer, s style, indent string, rows [][]cell) {
 		for i, c := range r {
 			b.WriteString(s.link(c.url, s.paint(c.color, c.text)))
 			if i < len(r)-1 {
-				b.WriteString(strings.Repeat(" ", widths[i]-utf8.RuneCountInString(c.text)+2))
+				b.WriteString(strings.Repeat(" ", widths[i]-utf8.RuneCountInString(Plain(c.text))+2))
 			}
 		}
 		b.WriteString("\n")

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/testutil"
 )
@@ -112,6 +113,16 @@ func TestDiagnoseHeldOnlyForSize(t *testing.T) {
 	got := Diagnose(repo, p, Evaluate(repo, p, "me", nil))
 	if len(got) != 1 || got[0].Kind != FindingHeldMajor || strings.Contains(got[0].Summary, "--review") {
 		t.Errorf("findings = %+v; --review cannot help where agent_review is off", got)
+	}
+}
+
+func TestDiagnoseHeldMinorUnderPatchLimit(t *testing.T) {
+	p := defaultPolicy
+	p.MaxUpdateType = config.UpdatePatch
+	repo := testutil.Repo(testutil.PR(1, "lib:minor"))
+	got := Diagnose(repo, p, Evaluate(repo, p, "me", nil))
+	if len(got) != 1 || got[0].Kind != FindingHeldMinor || !strings.Contains(got[0].Summary, "max_update_type: minor") {
+		t.Errorf("findings = %+v; a minor held under a patch limit needs attention", got)
 	}
 }
 

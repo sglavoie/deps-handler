@@ -468,7 +468,8 @@ func coAuthors(msg string) []Author {
 	var out []Author
 	for _, line := range trailers(msg) {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
-		if !ok || !strings.EqualFold(key, "co-authored-by") {
+		// Git, and GitHub with it, allows space before the colon.
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "co-authored-by") {
 			continue
 		}
 		value = strings.TrimSpace(value)
@@ -552,7 +553,13 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 		d.DiffError = err.Error()
 		return d, nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		// Drain a little of what a truncated diff left unread, so the
+		// connection can be reused when that is all there is; a huge
+		// remainder costs more to read than a new connection.
+		_, _ = io.CopyN(io.Discard, resp.Body, 64<<10)
+		resp.Body.Close()
+	}()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxDiffBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("%s/%s#%d: read diff: %w", owner, name, number, err)
@@ -595,9 +602,10 @@ func (c *client) PullRequestState(ctx context.Context, owner, name string, numbe
 	return PRClosed, nil
 }
 
-// Transient reports whether a failed read may succeed if made again:
+// Transient reports whether a failed call may succeed if made again:
 // GitHub answers a heavy query it could not finish in time with a 502 or
-// 504, or with a GraphQL error saying something went wrong.
+// 504, or with a GraphQL error saying something went wrong. For a merge or
+// comment, it means the write may have gone through all the same.
 func Transient(err error) bool {
 	var he *api.HTTPError
 	if errors.As(err, &he) {
@@ -616,8 +624,9 @@ func Transient(err error) bool {
 	return errors.As(err, &ne) && ne.Timeout()
 }
 
-// MaxRateLimitWait is the longest Backoff waits for a rate limit to lift;
-// a longer one fails the call rather than stall the run.
+// MaxRateLimitWait is the longest a read (through Backoff) or a write waits
+// for a rate limit to lift; a longer one fails the call rather than stall
+// the run.
 const MaxRateLimitWait = 2 * time.Minute
 
 // RateLimited reports whether GitHub refused a call for exceeding a rate
@@ -719,10 +728,7 @@ func Again[T any](ctx context.Context, pause time.Duration, sleep func(context.C
 	}
 	d, ok := Backoff(err, pause)
 	if !ok {
-		if _, limited := RateLimited(err); limited {
-			return v, fmt.Errorf("%w; not waiting up to %s for the rate limit to lift", err, d.Round(time.Second))
-		}
-		return v, err
+		return v, NotWaiting(err)
 	}
 	if sleep == nil {
 		sleep = Sleep
@@ -732,6 +738,20 @@ func Again[T any](ctx context.Context, pause time.Duration, sleep func(context.C
 		return zero, err
 	}
 	return read()
+}
+
+// NotWaiting adds to a rate limit error that it was not waited out, and
+// for how long it holds, when GitHub says. Any other error is returned as
+// it is.
+func NotWaiting(err error) error {
+	d, ok := RateLimited(err)
+	switch {
+	case !ok:
+		return err
+	case graphQLRateLimited(err) && !errors.As(err, new(*RateLimitError)):
+		return fmt.Errorf("%w; not waiting, as GitHub does not say when the limit lifts", err)
+	}
+	return fmt.Errorf("%w; not waiting up to %s for the rate limit to lift", err, d.Round(time.Second))
 }
 
 // Sleep waits for d, or until ctx ends.

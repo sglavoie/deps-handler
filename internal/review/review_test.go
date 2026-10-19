@@ -69,6 +69,10 @@ func TestKey(t *testing.T) {
 	if !strings.HasSuffix(b.Key(), " rebased") {
 		t.Errorf("without versions the head commit identifies the update: %q", b.Key())
 	}
+	b.Dependencies = nil
+	if b.Key() != "o/r#7 rebased" {
+		t.Errorf("key without dependencies = %q", b.Key())
+	}
 }
 
 func TestVerdict(t *testing.T) {
@@ -97,6 +101,20 @@ func TestVerdictRedactsTokens(t *testing.T) {
 	}
 	if v.Summary != "token [redacted token] found" || v.Concerns[0] != "[redacted token]" || v.Concerns[1] != "hosts.yml has [redacted token]." || v.Concerns[2] != "ghp_short stays" {
 		t.Fatalf("verdict = %+v", v)
+	}
+}
+
+func TestVerdictDropsControlCharacters(t *testing.T) {
+	v, err := Verdict(Answer{Decision: "approve", Summary: "fine\x1b]52;c;ZWNobyBoaQ==\x07 here\u009b",
+		Concerns: []string{"line one\nline two\t\x1b[2Jcleared"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Summary != "fine]52;c;ZWNobyBoaQ== here" || v.Concerns[0] != "line one\nline two\t[2Jcleared" {
+		t.Fatalf("verdict = %+q", []string{v.Summary, v.Concerns[0]})
+	}
+	if got := (cleanError{errors.New("claude: exit status 1: \x1b]8;;https://evil\x1b\\ ghp_" + strings.Repeat("A1b2", 9))}).Error(); got != "claude: exit status 1: ]8;;https://evil\\ [redacted token]" {
+		t.Fatalf("error = %q", got)
 	}
 }
 
@@ -346,10 +364,25 @@ func TestAgentReviewerTimesOut(t *testing.T) {
 	origin, head := gitOrigin(t)
 	req := request()
 	req.HeadOID = head
-	r := &AgentReviewer{Agent: slowAgent{}, Details: fakeDetails{}, Timeout: 50 * time.Millisecond,
+	// Long enough for the checkout to finish, so that the agent times out.
+	r := &AgentReviewer{Agent: slowAgent{}, Details: fakeDetails{}, Timeout: 2 * time.Second,
 		Workspace: &Workspace{Root: t.TempDir(), URL: func(string, string) string { return origin }}}
-	if _, err := r.Review(context.Background(), req); err == nil || err.Error() != "claude timed out after 50ms" {
+	if _, err := r.Review(context.Background(), req); err == nil || err.Error() != "claude timed out after 2s" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+type slowDetails struct{}
+
+func (slowDetails) PullRequestDetails(ctx context.Context, _, _ string, _ int) (*github.PullRequestDetails, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestAgentReviewerTimeoutNamesTheStage(t *testing.T) {
+	r := &AgentReviewer{Agent: slowAgent{}, Details: slowDetails{}, Timeout: 50 * time.Millisecond, Workspace: &Workspace{Root: t.TempDir()}}
+	if _, err := r.Review(context.Background(), request()); err == nil || err.Error() != "review timed out after 50ms while fetching the PR details, before claude ran" {
+		t.Fatalf("err = %v; the agent did not run, so it did not time out", err)
 	}
 }
 
@@ -404,7 +437,8 @@ func TestWorkspaceCheckout(t *testing.T) {
 }
 
 func TestWorkspaceCheckoutRecovers(t *testing.T) {
-	defer func(d time.Duration) { fetchRetryPause = d }(fetchRetryPause)
+	// Restored once the parallel subtests are done, not as this returns.
+	t.Cleanup(func(d time.Duration) func() { return func() { fetchRetryPause = d } }(fetchRetryPause))
 	fetchRetryPause = 0
 	origin, head := gitOrigin(t)
 	// marker survives unless the checkout had to be made again.
@@ -436,6 +470,8 @@ func TestWorkspaceCheckoutRecovers(t *testing.T) {
 		}, true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			// Each has a workspace of its own, and git is slow to start.
+			t.Parallel()
 			w := &Workspace{Root: t.TempDir(), URL: func(string, string) string { return origin }}
 			dir, err := w.Checkout(context.Background(), "o", "r", 7, head)
 			if err != nil {

@@ -49,13 +49,15 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	if res.Permission != "" {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
+	// Everything printed goes through paint, which makes it Plain: reasons
+	// and findings can quote an agent's answer or GitHub's errors.
 	fmt.Fprintln(w, s.paint(bold, res.Repo)+"  "+s.paint(dim, header+")"))
 	// A repository that failed part way still shows the writes made and
 	// the warnings raised before then: they happened. Its decisions and
 	// findings come from a read the failure may have left stale.
 	var decisions []policy.Decision
 	if res.Error != "" {
-		fmt.Fprintf(w, "  %s %s\n", s.paint(red, "error:"), res.Error)
+		fmt.Fprintf(w, "  %s %s\n", s.paint(red, "error:"), s.paint("", res.Error))
 	} else {
 		decisions = pending(res)
 		if len(res.Decisions) == 0 && len(res.Events) == 0 {
@@ -74,13 +76,13 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	}
 	table(w, s, "  ", rows)
 	for _, warning := range res.Warnings {
-		fmt.Fprintf(w, "  %s %s\n", s.paint(yellow, "warning:"), warning)
+		fmt.Fprintf(w, "  %s %s\n", s.paint(yellow, "warning:"), s.paint("", warning))
 	}
 
 	if res.Error == "" && len(res.Findings) > 0 {
 		fmt.Fprintln(w, "  "+s.paint(bold+";"+yellow, "needs attention:"))
 		for _, f := range res.Findings {
-			fmt.Fprintf(w, "    %s %s\n", s.paint(yellow, "-"), f.Summary)
+			fmt.Fprintf(w, "    %s %s\n", s.paint(yellow, "-"), s.paint("", f.Summary))
 			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks || f.Kind == policy.FindingReviewRequired {
 				fmt.Fprintf(w, "      %s %s\n", s.paint(dim, "PRs:"), prList(f.PRs))
 			}
@@ -88,7 +90,7 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 				fmt.Fprintf(w, "      %s\n", s.paint(dim, "- "+d))
 			}
 			for _, sg := range f.Suggestions {
-				fmt.Fprintf(w, "      %s %s\n", s.paint(cyan, "suggest:"), sg)
+				fmt.Fprintf(w, "      %s %s\n", s.paint(cyan, "suggest:"), s.paint("", sg))
 			}
 		}
 	}
@@ -106,12 +108,19 @@ func HasPRs(res runner.RepoResult) bool {
 // Progress writes a one-line note that a repository is done, for runs whose
 // report only comes at the end.
 func Progress(w io.Writer, res runner.RepoResult) {
-	s := styleFor(w)
-	if res.Error != "" {
-		fmt.Fprintf(w, "%s: %s %s\n", res.Repo, s.paint(red, "error:"), res.Error)
-		return
+	progress(w, res, styleFor(w))
+}
+
+func progress(w io.Writer, res runner.RepoResult, s style) {
+	switch {
+	case res.Error != "":
+		fmt.Fprintf(w, "%s: %s %s\n", res.Repo, s.paint(red, "error:"), s.paint("", res.Error))
+	case res.Failed():
+		// A write or a review failed: the JSON says which.
+		fmt.Fprintf(w, "%s: %s (%s)\n", res.Repo, s.paint(red, "failed"), plural(len(res.Decisions), "PR"))
+	default:
+		fmt.Fprintf(w, "%s: %s (%s)\n", res.Repo, s.paint(green, "done"), plural(len(res.Decisions), "PR"))
 	}
-	fmt.Fprintf(w, "%s: %s (%s)\n", res.Repo, s.paint(green, "done"), plural(len(res.Decisions), "PR"))
 }
 
 // Summary writes the totals line across the repositories reported. hidden
@@ -124,7 +133,9 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 	counts := map[string]int{}
 	findings, failed := 0, 0
 	for _, r := range results {
-		if r.Error != "" {
+		// Failed as the exit status counts it: a failed write or review
+		// fails the run as much as a repository that could not be read.
+		if r.Failed() {
 			failed++
 		}
 		findings += len(r.Findings)
@@ -153,7 +164,7 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 		line += "; " + s.paint(yellow, fmt.Sprintf("%d need attention", findings))
 	}
 	if failed > 0 {
-		line += "; " + s.paint(red, fmt.Sprintf("%d failed", failed))
+		line += "; " + s.paint(red, plural(failed, "repo")+" failed")
 	}
 	fmt.Fprintln(w, line)
 	if !apply && (counts["would merge"] > 0 || counts["would rebase"] > 0) {

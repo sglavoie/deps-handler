@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/spf13/cobra"
@@ -35,7 +36,25 @@ by anyone else, are never changed.`,
 	}
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-merger/config.yaml)")
 	root.AddCommand(newRunCmd(), newReposCmd(), newVerdictsCmd())
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
+	usageArgs(root)
 	return root
+}
+
+// usageArgs makes the argument errors of c and its subcommands usage
+// errors.
+func usageArgs(c *cobra.Command) {
+	if args := c.Args; args != nil {
+		c.Args = func(cmd *cobra.Command, a []string) error {
+			if err := args(cmd, a); err != nil {
+				return usageError{err}
+			}
+			return nil
+		}
+	}
+	for _, sub := range c.Commands() {
+		usageArgs(sub)
+	}
 }
 
 // Execute runs the CLI and returns the process exit code.
@@ -63,10 +82,22 @@ func exitCode(err error, stderr io.Writer) int {
 	case errors.Is(err, errInterrupted):
 		fmt.Fprintln(stderr, "deps-merger: interrupted")
 		return 130
+	case errors.As(err, new(usageError)) || strings.HasPrefix(err.Error(), "unknown command "):
+		// Cobra reports an unknown subcommand before any hook can see it.
+		fmt.Fprintln(stderr, "deps-merger:", err)
+		return 2
 	}
 	fmt.Fprintln(stderr, "deps-merger:", err)
 	return 1
 }
+
+// usageError is a command used wrongly, such as an unknown flag or a
+// missing argument: it exits 2, so a script can tell it from a run that
+// failed.
+type usageError struct{ err error }
+
+func (e usageError) Error() string { return e.err.Error() }
+func (e usageError) Unwrap() error { return e.err }
 
 // exitError signals a non-zero exit whose details were already printed.
 type exitError struct{ code int }

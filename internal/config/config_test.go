@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestParseAppliesDefaultsAndOverrides(t *testing.T) {
@@ -65,6 +67,9 @@ func TestParseRejectsBadInput(t *testing.T) {
 		"empty repo item":              "repos:\n  - a/b\n  -\n",
 		"nan budget":                   "agent: {claude: {max_budget_usd: .nan}}\nrepos: [a/b]",
 		"inf budget":                   "agent: {claude: {max_budget_usd: .inf}}\nrepos: [a/b]",
+		"relative config_dir":          "agent: {claude: {config_dir: claude-cfg}}\nrepos: [a/b]",
+		"relative codex home":          "agent: {codex: {home: ./codex}}\nrepos: [a/b]",
+		"other user's home":            "agent: {claude: {config_dir: ~bob/.claude}}\nrepos: [a/b]",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected error", name)
@@ -84,6 +89,30 @@ func TestParseAcceptsEveryEntryField(t *testing.T) {
 	}
 	if len(entryKeys) != 7 {
 		t.Errorf("entryKeys = %v", entryKeys)
+	}
+}
+
+func TestParseFollowsMergeKeys(t *testing.T) {
+	in := `repos:
+  - &strict {repo: a/b, max_update_type: patch, agent_review: false}
+  - {<<: *strict, repo: c/d}
+`
+	cfg, err := Parse([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := cfg.Repos[1].Policy; cfg.Repos[1].Name != "d" || p.MaxUpdateType != UpdatePatch || p.AgentReview {
+		t.Fatalf("repos = %+v", cfg.Repos)
+	}
+
+	// The config's own key check would catch an unknown field before it
+	// could be merged anywhere, so check the merge is followed directly.
+	var n yaml.Node
+	if err := yaml.Unmarshal([]byte("x: &s {auto: true}\ny: {repo: a/b, <<: *s}"), &n); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkEntryKeys(n.Content[0].Content[3]); err == nil || !strings.Contains(err.Error(), `"auto"`) {
+		t.Errorf("err = %v; an unknown merged field must be rejected", err)
 	}
 }
 

@@ -21,18 +21,18 @@ defaults:
   max_update_type: minor
   require_checks: true
 
-# The AI agent `deps-merger run --review` uses to judge major updates and
-# updates of unknown size. --agent claude|codex overrides `use`.
+# The AI agent `deps-merger run --review` uses to judge updates over
+# max_update_type and of unknown size. --agent claude|codex overrides `use`.
 agent:
   use: claude
   timeout: 15m              # per review
   claude:
     model: opus             # empty: Claude Code's default
-    config_dir: ~/.claude   # passed as CLAUDE_CONFIG_DIR
+    config_dir: ~/.claude   # passed as CLAUDE_CONFIG_DIR; absolute or ~/
     max_budget_usd: 2       # per review; 0 or unset: no cap
   codex:
     model: ""               # empty: Codex's default
-    home: ""                # passed as CODEX_HOME when set
+    home: ""                # passed as CODEX_HOME when set; absolute or ~/
 
 repos:
   - acme/Billing

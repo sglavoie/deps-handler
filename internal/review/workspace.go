@@ -78,8 +78,16 @@ func (w *Workspace) reachable(ctx context.Context, dir string, number int) bool 
 }
 
 func (w *Workspace) checkout(ctx context.Context, dir, owner, name string, number int, headOID string) error {
+	// Checkouts hold private code: no one else may read them. Root is
+	// tightened even when it exists, as older runs made it readable.
+	if err := os.MkdirAll(w.Root, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(w.Root, 0o700); err != nil {
+		return err
+	}
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
 		if err := w.git(ctx, dir, "init", "-q"); err != nil {
@@ -128,7 +136,9 @@ const PruneAfter = 30 * 24 * time.Hour
 
 // Prune removes the checkouts of repositories not in keep (as
 // "owner/name") that no review used for PruneAfter, such as ones dropped
-// from the config, and the owner directories left empty.
+// from the config, and the owner directories left empty. One it cannot
+// remove does not stop it from removing the others: their errors are
+// returned together.
 func (w *Workspace) Prune(keep map[string]bool) error {
 	owners, err := os.ReadDir(w.Root)
 	if errors.Is(err, os.ErrNotExist) {
@@ -137,6 +147,7 @@ func (w *Workspace) Prune(keep map[string]bool) error {
 	if err != nil {
 		return err
 	}
+	var errs []error
 	for _, o := range owners {
 		if !o.IsDir() {
 			continue
@@ -144,7 +155,8 @@ func (w *Workspace) Prune(keep map[string]bool) error {
 		ownerDir := filepath.Join(w.Root, o.Name())
 		names, err := os.ReadDir(ownerDir)
 		if err != nil {
-			return err
+			errs = append(errs, err)
+			continue
 		}
 		left := len(names)
 		for _, n := range names {
@@ -153,23 +165,25 @@ func (w *Workspace) Prune(keep map[string]bool) error {
 			}
 			info, err := n.Info()
 			if err != nil {
-				return err
+				errs = append(errs, err)
+				continue
 			}
 			if time.Since(info.ModTime()) < PruneAfter {
 				continue
 			}
 			if err := os.RemoveAll(filepath.Join(ownerDir, n.Name())); err != nil {
-				return err
+				errs = append(errs, err)
+				continue
 			}
 			left--
 		}
 		if left == 0 {
 			if err := os.Remove(ownerDir); err != nil {
-				return err
+				errs = append(errs, err)
 			}
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (w *Workspace) url(owner, name string) string {

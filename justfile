@@ -47,8 +47,16 @@ tidy:
 lint:
     go tool staticcheck ./...
 
+# Known vulnerabilities in reachable code (govulncheck is pinned in go.mod)
+vuln:
+    go tool govulncheck ./...
+
+# Remove build and coverage output
+clean:
+    rm -f {{ binary_name }} coverage.out
+
 # Everything CI should check
-ci: vet lint test
+ci: vet lint vuln test
     @test -z "$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
     go mod tidy -diff
 

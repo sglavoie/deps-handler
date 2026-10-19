@@ -190,18 +190,19 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	}
 	d.Grade = dependabot.Grade(d.Dependencies)
 	checks := LatestChecks(pr.Checks)
-	seen := map[string]bool{}
+	// Matrix jobs and other workflows can repeat a name; one that failed
+	// anywhere is listed as failing, not stale, as rerunning won't fix it.
+	failed, staled := map[string]bool{}, map[string]bool{}
+	for _, c := range checks {
+		if c.State == github.CheckFailed && !failed[c.Name] {
+			failed[c.Name] = true
+			d.FailedChecks = append(d.FailedChecks, c.Name)
+		}
+	}
 	var stale []string
 	for _, c := range checks {
-		if seen[c.Name] {
-			continue // matrix jobs can repeat a name
-		}
-		switch c.State {
-		case github.CheckFailed:
-			seen[c.Name] = true
-			d.FailedChecks = append(d.FailedChecks, c.Name)
-		case github.CheckStale:
-			seen[c.Name] = true
+		if c.State == github.CheckStale && !failed[c.Name] && !staled[c.Name] {
+			staled[c.Name] = true
 			stale = append(stale, c.Name)
 		}
 	}
@@ -326,7 +327,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		}
 		switch {
 		case after > 0 && age < after:
-			return wait(upToDate, "%s; merging without them in %s", none, config.ShortDuration((after - age).Round(time.Minute)))
+			// Rounded up: a countdown never reads 0s while it still waits.
+			left := (after - age + time.Minute - 1).Truncate(time.Minute)
+			return wait(upToDate, "%s; merging without them in %s", none, config.ShortDuration(left))
 		case after > 0:
 			// No CI started in time: merge as if checks were optional.
 		case age < checksGrace:

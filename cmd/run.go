@@ -56,9 +56,22 @@ With --open, repositories without open Dependabot PRs are left out of the
 report; ones that could not be processed are still shown.
 
 Exits 1 if a repository could not be processed or a merge or rebase request
-failed or an agent review could not be done, and 130 when interrupted.`,
+failed or an agent review could not be done, 2 when the command line is
+wrong, and 130 when interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Flags first: a mistake in the command line is reported
+			// before anything in the config.
+			wantReviews := reviews || agentName != ""
+			if cmd.Flags().Changed("max-reviews") && !wantReviews {
+				return usageError{errors.New("--max-reviews needs --review or --agent")}
+			}
+			if maxReviews < 0 {
+				return usageError{errors.New("--max-reviews must not be negative")}
+			}
+			if agentName != "" && !config.ValidAgent(strings.ToLower(agentName)) {
+				return usageError{fmt.Errorf("unknown agent %q (want %s)", agentName, strings.Join(config.Agents, " or "))}
+			}
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
@@ -70,21 +83,11 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 			if len(selected) == 0 {
 				return errors.New("every configured repo has skip: true; name one with --repo to run it")
 			}
-			wantReviews := reviews || agentName != ""
-			if cmd.Flags().Changed("max-reviews") && !wantReviews {
-				return errors.New("--max-reviews needs --review or --agent")
-			}
-			if maxReviews < 0 {
-				return errors.New("--max-reviews must not be negative")
-			}
 			var agent review.Agent
 			switch {
 			case wantReviews && !slices.ContainsFunc(selected, func(r config.Repo) bool { return r.Policy.AgentReview }):
 				// No repo would use the agent, so neither require it
 				// installed nor take the review lock.
-				if agentName != "" && !config.ValidAgent(strings.ToLower(agentName)) {
-					return fmt.Errorf("unknown agent %q (want %s)", agentName, strings.Join(config.Agents, " or "))
-				}
 				fmt.Fprintln(cmd.ErrOrStderr(), "note: no agent reviews: every selected repo sets agent_review: false")
 			case wantReviews:
 				if agent, err = newAgent(cfg.Agent, agentName); err != nil {
@@ -163,7 +166,7 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 	c.Flags().BoolVar(&apply, "apply", false, "merge safe PRs and request rebases (default is a dry run)")
 	c.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
-	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge major updates and updates of unknown size")
+	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge updates over max_update_type and of unknown size")
 	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+strings.Join(config.Agents, " or ")+" (default from config; implies --review)")
 	c.Flags().BoolVar(&open, "open", false, "only report repos with open Dependabot PRs")
 	c.Flags().IntVar(&maxReviews, "max-reviews", 10, "most agent reviews in one run (0 for no limit)")

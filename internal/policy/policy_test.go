@@ -138,6 +138,12 @@ func TestEvaluate(t *testing.T) {
 				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-41 * time.Minute)
 			},
 			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 40 * time.Minute }},
+		{name: "merge_without_checks_after countdown never reads 0s", action: ActionWait, reason: "merging without them in 1m",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = nil
+				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-40*time.Minute + 20*time.Second)
+			},
+			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 40 * time.Minute }},
 		{name: "merge_without_checks_after waits at least for CI to start", action: ActionWait, reason: "merging without them in 19m",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = nil
@@ -267,6 +273,13 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.CheckCount = 101 }},
 		{name: "stale check", action: ActionSkip, reason: "stale checks: build",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckStale }},
+		{name: "failing check is not hidden by a stale one of the same name", action: ActionSkip, reason: "failing checks: test",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "test", State: github.CheckStale, App: actions, Workflow: 7, Suite: 1},
+					{Name: "test", State: github.CheckFailed, App: actions, Workflow: 8, Suite: 2},
+				}
+			}},
 		{name: "checks from another commit", action: ActionWait, reason: "checks not yet reported for head commit sha1",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.ChecksOID = "older" }},
 	}

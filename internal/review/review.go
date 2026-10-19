@@ -1,6 +1,6 @@
 // Package review asks an AI agent whether a Dependabot update the policy
-// alone would not merge (a major bump, or one of unknown size) is safe for
-// the repository. The agent only reads: it returns a verdict, and
+// alone would not merge (one over max_update_type, or of unknown size) is
+// safe for the repository. The agent only reads: it returns a verdict, and
 // deps-merger merges an approved PR through the same checks as any other.
 package review
 
@@ -17,6 +17,7 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/dependabot"
@@ -71,11 +72,14 @@ func (r Request) Key() string {
 		versioned = versioned && d.Version != ""
 	}
 	slices.Sort(deps)
-	key := fmt.Sprintf("%s/%s#%d %s", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number, strings.Join(deps, ","))
-	if !versioned {
-		key += " " + r.HeadOID
+	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number)}
+	if len(deps) > 0 {
+		parts = append(parts, strings.Join(deps, ","))
 	}
-	return key
+	if !versioned {
+		parts = append(parts, r.HeadOID)
+	}
+	return strings.Join(parts, " ")
 }
 
 // Reviewer judges one update.
@@ -102,34 +106,52 @@ func (r *AgentReviewer) Review(ctx context.Context, req Request) (policy.Verdict
 		ctx, cancel = context.WithTimeout(ctx, r.Timeout)
 		defer cancel()
 	}
-	v, err := r.review(ctx, req)
+	v, stage, err := r.review(ctx, req)
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return v, fmt.Errorf("%s timed out after %s", r.Agent.Name(), r.Timeout)
+		// The review's time runs out in whichever stage was running.
+		if stage == "" {
+			return v, fmt.Errorf("%s timed out after %s", r.Agent.Name(), r.Timeout)
+		}
+		return v, fmt.Errorf("review timed out after %s while %s, before %s ran", r.Timeout, stage, r.Agent.Name())
+	}
+	if err != nil {
+		// What an agent writes to stderr reaches the report and CI logs.
+		err = cleanError{err}
 	}
 	return v, err
 }
 
-func (r *AgentReviewer) review(ctx context.Context, req Request) (policy.Verdict, error) {
+// review does the review and, should it fail before the agent ran, says
+// in which stage.
+func (r *AgentReviewer) review(ctx context.Context, req Request) (v policy.Verdict, stage string, err error) {
 	details, err := github.Again(ctx, 3*time.Second, nil, func() (*github.PullRequestDetails, error) {
 		return r.Details.PullRequestDetails(ctx, req.Owner, req.Name, req.Number)
 	})
 	if err != nil {
-		return policy.Verdict{}, fmt.Errorf("fetch PR details: %w", err)
+		return v, "fetching the PR details", fmt.Errorf("fetch PR details: %w", err)
 	}
 	dir, err := r.Workspace.Checkout(ctx, req.Owner, req.Name, req.Number, req.HeadOID)
 	if err != nil {
-		return policy.Verdict{}, fmt.Errorf("checkout: %w", err)
+		return v, "checking the PR out", fmt.Errorf("checkout: %w", err)
 	}
 	prompt, err := Prompt(req, details)
 	if err != nil {
-		return policy.Verdict{}, err
+		return v, "", err
 	}
 	a, err := r.Agent.Run(ctx, dir, prompt)
 	if err != nil {
-		return policy.Verdict{}, err
+		return v, "", err
 	}
-	return Verdict(a)
+	v, err = Verdict(a)
+	return v, "", err
 }
+
+// cleanError is an error whose text passes through Clean, still wrapping
+// it for errors.Is.
+type cleanError struct{ err error }
+
+func (e cleanError) Error() string { return Clean(e.err.Error()) }
+func (e cleanError) Unwrap() error { return e.err }
 
 // Verdict turns an agent's answer into a verdict. An answer that is
 // neither "approve" nor "reject" is an error, not a verdict.
@@ -141,9 +163,9 @@ func Verdict(a Answer) (policy.Verdict, error) {
 	}
 	concerns := make([]string, 0, len(a.BreakingChanges)+len(a.Concerns))
 	for _, c := range append(append([]string{}, a.BreakingChanges...), a.Concerns...) {
-		concerns = append(concerns, redact(c))
+		concerns = append(concerns, Clean(c))
 	}
-	return policy.Verdict{Approved: a.Decision == "approve", Summary: redact(strings.TrimSpace(a.Summary)), Concerns: concerns}, nil
+	return policy.Verdict{Approved: a.Decision == "approve", Summary: Clean(strings.TrimSpace(a.Summary)), Concerns: concerns}, nil
 }
 
 // githubToken matches the GitHub token formats: classic and fine-grained
@@ -154,6 +176,21 @@ var githubToken = regexp.MustCompile(`\b(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[
 // printed and sent to CI logs: an agent can read files holding one, such
 // as gh's hosts.yml, and a prompt injection could have it quote them.
 func redact(s string) string { return githubToken.ReplaceAllString(s, "[redacted token]") }
+
+// Clean makes an agent's text safe to cache and print: tokens redacted,
+// and control characters other than newlines and tabs dropped. The agent
+// reads untrusted release notes, and a prompt injection could have it
+// answer with escape sequences that rewrite the terminal, such as links
+// or clipboard writes.
+func Clean(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' {
+			return -1
+		}
+		return r
+	}, s)
+	return redact(s)
+}
 
 //go:embed prompt.tmpl
 var promptText string

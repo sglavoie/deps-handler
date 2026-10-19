@@ -146,7 +146,7 @@ func TestRunReviewSkipsSetupWithoutAgentReview(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(state, "deps-merger")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("review setup ran anyway: %v", err)
 	}
-	if code, _, stderr := run("run", "-c", cfg, "--agent", "gemini"); code != 1 || !strings.Contains(stderr, `unknown agent "gemini"`) {
+	if code, _, stderr := run("run", "-c", cfg, "--agent", "gemini"); code != 2 || !strings.Contains(stderr, `unknown agent "gemini"`) {
 		t.Errorf("unknown agent: code %d, %q", code, stderr)
 	}
 }
@@ -155,7 +155,7 @@ func TestRunFailedRepoExitsOne(t *testing.T) {
 	_, _ = runFixture(t)
 	cfg := writeConfig(t, "repos:\n  - o/busy\n  - o/missing\n")
 	code, out, _ := run("run", "-c", cfg)
-	if code != 1 || !strings.Contains(out, "error: o/missing: repository not found") || !strings.Contains(out, "1 failed") {
+	if code != 1 || !strings.Contains(out, "error: o/missing: repository not found") || !strings.Contains(out, "1 repo failed") {
 		t.Fatalf("code %d:\n%s", code, out)
 	}
 }
@@ -178,13 +178,16 @@ func TestVerdictsFilterAndJSON(t *testing.T) {
 		t.Fatalf("filtered: code %d:\n%s", code, out)
 	}
 	code, out, _ = run("verdicts", "--json", "o/a#1")
-	var got []struct {
-		Update, Verdict, Summary string
-		Concerns                 []string
+	var doc struct {
+		Verdicts []struct {
+			Update, Verdict, Summary string
+			Concerns                 []string
+		}
 	}
-	if err := json.Unmarshal([]byte(out), &got); code != 0 || err != nil {
+	if err := json.Unmarshal([]byte(out), &doc); code != 0 || err != nil {
 		t.Fatalf("json: code %d, %v:\n%s", code, err, out)
 	}
+	got := doc.Verdicts
 	if len(got) != 1 || got[0].Update != "o/a#1 lib@2.0.0" || got[0].Verdict != "rejected" || got[0].Summary != long || got[0].Concerns[0] != "src/x.go" {
 		t.Fatalf("json = %+v", got)
 	}
