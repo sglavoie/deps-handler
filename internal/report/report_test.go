@@ -48,6 +48,31 @@ func TestRepoAfterApply(t *testing.T) {
 	}
 }
 
+func TestRepoLinksTitlesOnATerminal(t *testing.T) {
+	d := decision(1, policy.ActionWait, "1 check(s) still running")
+	d.URL = "https://github.com/o/r/pull/1"
+	res := runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Decisions: []policy.Decision{d}}
+	var b bytes.Buffer
+	repo(&b, false, res, true)
+	if want := "\x1b]8;;https://github.com/o/r/pull/1\x1b\\bump lib\x1b]8;;\x1b\\\n"; !strings.Contains(b.String(), want) {
+		t.Fatalf("got %q", b.String())
+	}
+	b.Reset()
+	Repo(&b, false, res)
+	if strings.Contains(b.String(), "\x1b") {
+		t.Fatalf("escape codes written to a non-terminal: %q", b.String())
+	}
+}
+
+func TestProgress(t *testing.T) {
+	var b bytes.Buffer
+	Progress(&b, applied)
+	Progress(&b, runner.RepoResult{Repo: "o/x", Error: "boom"})
+	if want := "o/r: done (2 PRs)\no/x: error: boom\n"; b.String() != want {
+		t.Fatalf("got %q", b.String())
+	}
+}
+
 func TestRepoError(t *testing.T) {
 	var b bytes.Buffer
 	Repo(&b, false, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Error: "boom"})

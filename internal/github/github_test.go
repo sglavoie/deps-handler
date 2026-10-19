@@ -157,6 +157,15 @@ func TestCoAuthors(t *testing.T) {
 	}
 }
 
+func TestCoAuthorsReadsOnlyTheLastParagraph(t *testing.T) {
+	msg := "Bumps lib.\n\nRelease notes:\nCo-authored-by: Upstream Dev <dev@example.com>\n" +
+		"\n---\nupdated-dependencies:\n- dependency-name: lib\n...\n" +
+		"  \r\nSigned-off-by: dependabot[bot] <support@github.com>\n"
+	if got := coAuthors(msg); len(got) != 0 {
+		t.Fatalf("got %+v; a trailer outside the last paragraph is not one", got)
+	}
+}
+
 // recorder answers like canned and keeps the last request body.
 type recorder struct {
 	canned

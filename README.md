@@ -26,19 +26,25 @@ A PR is merged only when all of these hold:
   riskiest bump);
 - every check on the head commit passed, and at least one ran unless the
   repo sets `require_checks: false` (a check GitHub marked stale after it
-  sat unfinished for 14 days blocks the merge until it is rerun);
+  sat unfinished for 14 days blocks the merge until it is rerun; a commit
+  less than 30 minutes old with no checks yet waits for CI to start);
 - GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`);
 - nothing was cut off: a PR with more than 100 commits or 100 checks is
   skipped rather than judged on partial data.
 
 A safe PR that is only `BEHIND` its base branch gets one `@dependabot rebase`
-comment per head commit, one PR at a time: while a PR can merge or a
-requested rebase is still pending, the others wait (`queued behind #N`). If
-the base branch must be up to date, each merge puts every other PR behind
-again, so rebasing them all at once would rerun CI on each for every merge.
-Merges happen one at a time per repository, with
-the head SHA pinned, re-reading state after each. A merge GitHub rejects
-with 405 or 409, as it can right after another merge, is retried once.
+comment per head commit, one PR at a time: while a PR can merge, is up to
+date and waiting on CI, or has a rebase pending, the others wait
+(`queued behind #N`). If the base branch must be up to date, each merge puts
+every other PR behind again, so rebasing them all at once would rerun CI on
+each for every merge. A rebase request Dependabot has not acted on within a
+day stops holding the queue: that PR is left for a human and the next one is
+rebased.
+
+Merges happen one at a time per repository, with the head SHA pinned,
+re-reading state after each. A merge GitHub rejects with 405 or 409, as it
+can right after another merge, is retried once. Up to four repositories are
+processed at once, but merges and comments are never sent concurrently.
 
 PRs not opened by Dependabot are never fetched: the query asks GitHub only
 for `author:app/dependabot`, and the author is checked again locally.
@@ -54,6 +60,10 @@ Under each repo the report lists, without acting on them:
   `@dependabot ignore …` command that would stop it coming back (only for
   PRs Dependabot alone wrote, whose checks ran on their head commit);
 - **held majors**: green major updates blocked only by policy;
+- **review required**: branch protection wants an approving review, which
+  deps-merger never gives;
+- **stalled rebases**: a rebase request Dependabot ignored for a day, with
+  `@dependabot recreate` as the fix;
 - **no checks** and **read-only** repositories;
 - **truncated**: more than 100 open Dependabot PRs, so only the oldest 100
   were evaluated.
@@ -73,9 +83,11 @@ repository: `repo`, `policy`, `permission`, `decisions` (one per PR, with
 `action` `merge`, `rebase`, `wait` or `skip` and a `reason`), `findings`
 (`kind`, `summary`, `prs`, `suggestions`), `events` (the writes made:
 `merged`, `merge-failed`, `rebase-requested`, `rebase-failed`, each with the
-PR's `grade`), `merge_method` (the one merges use) and `error` when the
-repository could not be read (`interrupted` if the run was stopped). Lists are always arrays, never
-`null`.
+PR's `url` and `grade`), `merge_method` (the one merges use) and `error`
+when the repository could not be read (`interrupted` if the run was
+stopped). Lists are always arrays, never `null`. When stderr is a terminal,
+a line per repository reports progress there while the JSON waits for the
+end.
 
 ## Config
 

@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/cli/go-gh/v2/pkg/term"
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/report"
 	"github.com/sglavoie/deps-merger/internal/runner"
@@ -27,7 +28,8 @@ func newRunCmd() *cobra.Command {
 Without --apply this is a dry run: it reports what would be merged or
 rebased and what needs fixing, and changes nothing. With --apply it merges
 safe PRs one at a time per repository and comments "@dependabot rebase" on
-safe PRs that are behind their base branch.
+safe PRs that are behind their base branch. Up to four repositories are
+processed at once; the report keeps the config order.
 
 Exits 1 if a repository could not be processed or a merge or rebase request
 failed, and 130 when interrupted.`,
@@ -59,10 +61,14 @@ failed, and 130 when interrupted.`,
 				return err
 			}
 
-			out := cmd.OutOrStdout()
+			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
 			var progress func(runner.RepoResult)
 			if !asJSON {
 				progress = func(r runner.RepoResult) { report.Repo(out, apply, r) }
+			} else if f, ok := errOut.(*os.File); ok && term.IsTerminal(f) {
+				// JSON comes at the end; say what is happening meanwhile,
+				// unless stderr is captured along with it.
+				progress = func(r runner.RepoResult) { report.Progress(errOut, r) }
 			}
 			results := runner.New(client, viewer, apply).Run(ctx, selected, progress)
 			if asJSON {

@@ -26,6 +26,11 @@ install: build
 test:
     go test -race ./...
 
+# Test coverage per function (writes coverage.out)
+cover:
+    go test -coverprofile=coverage.out ./...
+    go tool cover -func=coverage.out | tail -n 1
+
 # Format code
 fmt:
     gofmt -w .

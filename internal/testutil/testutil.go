@@ -56,7 +56,11 @@ func PR(number int, deps ...string) github.PullRequest {
 	}
 }
 
+// Fetched is when fixture repos are read: an hour after their commits, long
+// enough for CI to have started and short of any rebase timeout.
+var Fetched = T0.Add(time.Hour)
+
 // Repo returns a writable squash-only repo holding prs.
 func Repo(prs ...github.PullRequest) *github.Repo {
-	return &github.Repo{FullName: "o/r", Permission: "WRITE", SquashAllowed: true, PullRequests: prs}
+	return &github.Repo{FullName: "o/r", Permission: "WRITE", SquashAllowed: true, PullRequests: prs, FetchedAt: Fetched}
 }

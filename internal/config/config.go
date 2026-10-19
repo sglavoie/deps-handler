@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -88,7 +90,22 @@ type repoEntry struct {
 	overrides `yaml:",inline"`
 }
 
-var entryKeys = map[string]bool{"repo": true, "merge_method": true, "max_update_type": true, "require_checks": true, "skip": true}
+var entryKeys = yamlKeys(reflect.TypeFor[repoEntry]())
+
+// yamlKeys returns the mapping keys a struct accepts, following inlined
+// fields, so the check below cannot drift from the struct tags.
+func yamlKeys(t reflect.Type) map[string]bool {
+	keys := map[string]bool{}
+	for f := range t.Fields() {
+		name, opts, _ := strings.Cut(f.Tag.Get("yaml"), ",")
+		if opts == "inline" {
+			maps.Copy(keys, yamlKeys(f.Type))
+		} else {
+			keys[name] = true
+		}
+	}
+	return keys
+}
 
 // UnmarshalYAML lets an entry be either "owner/name" or a mapping with
 // "repo:" plus overrides.

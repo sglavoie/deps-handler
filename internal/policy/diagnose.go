@@ -27,6 +27,11 @@ const (
 	// FindingTruncated means GitHub has more open Dependabot PRs than one
 	// fetch returns, so some were not evaluated.
 	FindingTruncated FindingKind = "truncated"
+	// FindingReviewRequired means branch protection wants an approving
+	// review, which deps-merger never gives.
+	FindingReviewRequired FindingKind = "review-required"
+	// FindingStalledRebase is a rebase request Dependabot has not acted on.
+	FindingStalledRebase FindingKind = "stalled-rebase"
 )
 
 // Finding is a repository-level observation with suggested fixes. Fixes
@@ -73,7 +78,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		})
 	}
 
-	noChecks := []int{}
+	noChecks, needsReview := []int{}, []int{}
 	for _, d := range decisions {
 		own := ownFailures(d, repoWide)
 		switch {
@@ -95,9 +100,29 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 				PRs:     []int{d.Number},
 			})
 		}
-		if len(d.PR.Checks) == 0 {
+		// A PR still waiting may yet get checks.
+		if len(d.PR.Checks) == 0 && d.Action != ActionWait {
 			noChecks = append(noChecks, d.Number)
 		}
+		if d.needsReview {
+			needsReview = append(needsReview, d.Number)
+		}
+		if d.stalledRebase {
+			out = append(out, Finding{
+				Kind:        FindingStalledRebase,
+				Summary:     fmt.Sprintf("#%d: Dependabot has not acted on the rebase request; the next PR is rebased instead", d.Number),
+				PRs:         []int{d.Number},
+				Suggestions: []string{"@dependabot recreate"},
+			})
+		}
+	}
+	if len(needsReview) > 0 {
+		out = append(out, Finding{
+			Kind:        FindingReviewRequired,
+			Summary:     "branch protection requires an approving review, which deps-merger never gives",
+			PRs:         needsReview,
+			Suggestions: []string{"approve these PRs, or let Dependabot PRs merge without review"},
+		})
 	}
 	if len(noChecks) > 0 && p.RequireChecks {
 		out = append(out, Finding{

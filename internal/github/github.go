@@ -90,6 +90,9 @@ type Repo struct {
 	// OpenPRCount is how many open Dependabot PRs GitHub reports, which can
 	// exceed the number fetched into PullRequests.
 	OpenPRCount int `json:"open_pr_count"`
+	// FetchedAt is when this state was read, the "now" that the age of
+	// commits and comments is measured against.
+	FetchedAt time.Time `json:"-"`
 }
 
 // CanWrite reports whether the viewer can merge and comment as a collaborator.
@@ -270,6 +273,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		MergeAllowed:  resp.Repository.MergeCommitAllowed,
 		RebaseAllowed: resp.Repository.RebaseMergeAllowed,
 		OpenPRCount:   resp.Search.IssueCount,
+		FetchedAt:     time.Now(),
 	}
 	for _, n := range resp.Search.Nodes {
 		if n.Number == 0 || n.State != "OPEN" {
@@ -342,7 +346,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 // commit of every PR, made up nearly all of its rate-limit cost.
 func coAuthors(msg string) []Author {
 	var out []Author
-	for _, line := range strings.Split(msg, "\n") {
+	for _, line := range trailers(msg) {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
 		if !ok || !strings.EqualFold(key, "co-authored-by") {
 			continue
@@ -355,6 +359,19 @@ func coAuthors(msg string) []Author {
 		out = append(out, Author{Name: name, Email: email})
 	}
 	return out
+}
+
+// trailers returns the lines of msg's last paragraph, the only one GitHub
+// reads trailers from: a Co-authored-by line quoted in the release notes
+// Dependabot embeds higher up names no author of the commit.
+func trailers(msg string) []string {
+	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(msg, "\r\n", "\n")), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			return lines[i+1:]
+		}
+	}
+	return lines
 }
 
 func checkRunState(status, conclusion string) CheckState {

@@ -4,6 +4,7 @@ package runner
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/sglavoie/deps-merger/internal/config"
@@ -24,6 +25,7 @@ const (
 type Event struct {
 	Number int               `json:"number"`
 	Title  string            `json:"title"`
+	URL    string            `json:"url"`
 	Grade  config.UpdateType `json:"grade"`
 	Kind   EventKind         `json:"kind"`
 	Detail string            `json:"detail,omitempty"`
@@ -67,10 +69,16 @@ type Runner struct {
 	PollAttempts int
 	PollInterval time.Duration
 	Sleep        func(context.Context, time.Duration) error
+
+	// Parallel is how many repositories are processed at once.
+	Parallel int
+	// writes serialises merges and comments across repositories: GitHub
+	// asks clients not to make concurrent writes for one user.
+	writes sync.Mutex
 }
 
 func New(c github.Client, viewer string, apply bool) *Runner {
-	return &Runner{Client: c, Viewer: viewer, Apply: apply, PollAttempts: 5, PollInterval: 3 * time.Second, Sleep: sleep}
+	return &Runner{Client: c, Viewer: viewer, Apply: apply, PollAttempts: 5, PollInterval: 3 * time.Second, Sleep: sleep, Parallel: 4}
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
@@ -84,20 +92,61 @@ func sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Run processes repos in order; a failure in one repo does not stop others.
+// Run processes up to Parallel repos at a time and returns their results in
+// the order given, passing each to progress in that order as soon as it and
+// those before it are done. A failure in one repo does not stop others; an
+// interruption stops repos from starting, and those are left out.
 func (r *Runner) Run(ctx context.Context, repos []config.Repo, progress func(RepoResult)) []RepoResult {
-	out := make([]RepoResult, 0, len(repos))
-	for _, rc := range repos {
-		res := r.RunRepo(ctx, rc)
-		if progress != nil {
-			progress(res)
+	results := make([]RepoResult, len(repos))
+	// started[i] says whether repo i ran, once results[i] is final.
+	started := make([]chan bool, len(repos))
+	for i := range started {
+		started[i] = make(chan bool, 1)
+	}
+	go func() {
+		slots := make(chan struct{}, max(1, r.Parallel))
+		for i, rc := range repos {
+			select {
+			case slots <- struct{}{}:
+			case <-ctx.Done():
+			}
+			if ctx.Err() != nil {
+				for _, s := range started[i:] {
+					s <- false
+				}
+				return
+			}
+			go func() {
+				results[i] = r.RunRepo(ctx, rc)
+				<-slots
+				started[i] <- true
+			}()
 		}
-		out = append(out, res)
-		if ctx.Err() != nil {
+	}()
+
+	out := make([]RepoResult, 0, len(repos))
+	for i := range repos {
+		if !<-started[i] {
 			break
 		}
+		if progress != nil {
+			progress(results[i])
+		}
+		out = append(out, results[i])
 	}
 	return out
+}
+
+func (r *Runner) merge(ctx context.Context, rc config.Repo, number int, method, headOID string) error {
+	r.writes.Lock()
+	defer r.writes.Unlock()
+	return r.Client.Merge(ctx, rc.Owner, rc.Name, number, method, headOID)
+}
+
+func (r *Runner) comment(ctx context.Context, rc config.Repo, number int, body string) error {
+	r.writes.Lock()
+	defer r.writes.Unlock()
+	return r.Client.Comment(ctx, rc.Owner, rc.Name, number, body)
 }
 
 func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
@@ -150,8 +199,8 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 				continue
 			}
 			rebased[d.Number] = true
-			ev := Event{Number: d.Number, Title: d.Title, Grade: d.Grade, Kind: EventRebaseRequested}
-			if err := r.Client.Comment(ctx, rc.Owner, rc.Name, d.Number, policy.RebaseCommand); err != nil {
+			ev := Event{Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventRebaseRequested}
+			if err := r.comment(ctx, rc, d.Number, policy.RebaseCommand); err != nil {
 				ev.Kind, ev.Detail = EventRebaseFailed, errText(ctx, err)
 			}
 			res.Events = append(res.Events, ev)
@@ -176,10 +225,10 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		}
 
 		attempted[next.Number] = true
-		ev := Event{Number: next.Number, Title: next.Title, Grade: next.Grade, Kind: EventMerged}
+		ev := Event{Number: next.Number, Title: next.Title, URL: next.URL, Grade: next.Grade, Kind: EventMerged}
 		err = methodErr
 		if err == nil {
-			err = r.Client.Merge(ctx, rc.Owner, rc.Name, next.Number, method, next.PR.HeadOID)
+			err = r.merge(ctx, rc, next.Number, method, next.PR.HeadOID)
 		}
 		if err != nil && github.Retryable(err) && !retried[next.Number] {
 			// GitHub may not have caught up with the previous merge yet:

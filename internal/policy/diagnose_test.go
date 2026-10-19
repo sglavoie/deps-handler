@@ -3,6 +3,7 @@ package policy
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/testutil"
@@ -73,6 +74,39 @@ func TestDiagnoseHeldMajorAndNoChecks(t *testing.T) {
 	}
 	if len(f[FindingNoChecks]) != 1 || f[FindingNoChecks][0].PRs[0] != 2 {
 		t.Errorf("no-checks = %+v", f[FindingNoChecks])
+	}
+}
+
+func TestDiagnoseNoChecksIgnoresWaitingPRs(t *testing.T) {
+	fresh := testutil.PR(1)
+	fresh.Checks = nil
+	fresh.Commits[0].CommittedDate = testutil.Fetched
+	if f := findings(testutil.Repo(fresh)); len(f[FindingNoChecks]) != 0 {
+		t.Fatalf("no-checks = %+v; CI may not have started yet", f[FindingNoChecks])
+	}
+}
+
+func TestDiagnoseReviewRequired(t *testing.T) {
+	blocked := func(n int) github.PullRequest {
+		pr := testutil.PR(n)
+		pr.MergeState, pr.ReviewDecision = "BLOCKED", "REVIEW_REQUIRED"
+		return pr
+	}
+	f := findings(testutil.Repo(blocked(1), blocked(2), testutil.PR(3)))
+	if r := f[FindingReviewRequired]; len(r) != 1 || len(r[0].PRs) != 2 || r[0].PRs[1] != 2 {
+		t.Fatalf("review-required = %+v", r)
+	}
+}
+
+func TestDiagnoseStalledRebase(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.MergeState = "BEHIND"
+	pr.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
+	repo := testutil.Repo(pr)
+	repo.FetchedAt = testutil.T0.Add(30 * time.Hour)
+	f := findings(repo)
+	if s := f[FindingStalledRebase]; len(s) != 1 || s[0].Suggestions[0] != "@dependabot recreate" {
+		t.Fatalf("stalled-rebase = %+v", s)
 	}
 }
 

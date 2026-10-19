@@ -45,6 +45,21 @@ func TestParseRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestParseAcceptsEveryEntryField(t *testing.T) {
+	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: false, skip: true}\n"
+	if _, err := Parse([]byte(in)); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"repo", "skip", "merge_method", "max_update_type", "require_checks"} {
+		if !entryKeys[k] {
+			t.Errorf("entryKeys lacks %q", k)
+		}
+	}
+	if len(entryKeys) != 5 {
+		t.Errorf("entryKeys = %v", entryKeys)
+	}
+}
+
 func TestFilter(t *testing.T) {
 	cfg, err := Parse([]byte("repos: [acme/Billing, acme/Storefront]"))
 	if err != nil {

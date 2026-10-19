@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/cli/go-gh/v2/pkg/term"
 	"github.com/sglavoie/deps-merger/internal/policy"
 	"github.com/sglavoie/deps-merger/internal/runner"
 )
@@ -24,8 +26,23 @@ func JSON(w io.Writer, apply bool, results []runner.RepoResult) error {
 	}{apply, results})
 }
 
-// Repo writes one repository's section.
+// Repo writes one repository's section. On a terminal, PR titles link to
+// their pull requests.
 func Repo(w io.Writer, apply bool, res runner.RepoResult) {
+	f, ok := w.(*os.File)
+	repo(w, apply, res, ok && term.IsTerminal(f))
+}
+
+func repo(w io.Writer, apply bool, res runner.RepoResult, links bool) {
+	title := func(url, s string) string {
+		s = truncate(s)
+		if !links || url == "" {
+			return s
+		}
+		// OSC 8 hyperlink; the title is the last cell, so the escape
+		// codes do not upset column widths.
+		return "\x1b]8;;" + url + "\x1b\\" + s + "\x1b]8;;\x1b\\"
+	}
 	p := res.Policy
 	checks := "checks required"
 	if !p.RequireChecks {
@@ -53,10 +70,10 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, ev := range res.Events {
-		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", ev.Number, ev.Grade, ev.Kind, ev.Detail, truncate(ev.Title))
+		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", ev.Number, ev.Grade, ev.Kind, ev.Detail, title(ev.URL, ev.Title))
 	}
 	for _, d := range decisions {
-		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", d.Number, d.Grade, label(d.Action, apply), d.Reason, truncate(d.Title))
+		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", d.Number, d.Grade, label(d.Action, apply), d.Reason, title(d.URL, d.Title))
 	}
 	tw.Flush()
 
@@ -64,7 +81,7 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 		fmt.Fprintln(w, "  needs attention:")
 		for _, f := range res.Findings {
 			fmt.Fprintf(w, "    - %s\n", f.Summary)
-			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks {
+			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks || f.Kind == policy.FindingReviewRequired {
 				fmt.Fprintf(w, "      PRs: %s\n", prList(f.PRs))
 			}
 			for _, s := range f.Suggestions {
@@ -75,13 +92,23 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 	fmt.Fprintln(w)
 }
 
+// Progress writes a one-line note that a repository is done, for runs whose
+// report only comes at the end.
+func Progress(w io.Writer, res runner.RepoResult) {
+	if res.Error != "" {
+		fmt.Fprintf(w, "%s: error: %s\n", res.Repo, res.Error)
+		return
+	}
+	fmt.Fprintf(w, "%s: done (%d PRs)\n", res.Repo, len(res.Decisions))
+}
+
 // Summary writes the totals line across all repositories.
 func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
 	counts := map[string]int{}
-	findings, errors := 0, 0
+	findings, failed := 0, 0
 	for _, r := range results {
 		if r.Error != "" {
-			errors++
+			failed++
 		}
 		findings += len(r.Findings)
 		for _, ev := range r.Events {
@@ -104,8 +131,8 @@ func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
 	if findings > 0 {
 		line += fmt.Sprintf("; %d need attention", findings)
 	}
-	if errors > 0 {
-		line += fmt.Sprintf("; %d failed", errors)
+	if failed > 0 {
+		line += fmt.Sprintf("; %d failed", failed)
 	}
 	fmt.Fprintln(w, line)
 	if !apply && (counts["would merge"] > 0 || counts["would rebase"] > 0) {

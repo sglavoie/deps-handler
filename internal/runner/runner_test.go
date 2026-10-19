@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -196,5 +197,89 @@ func TestInterruptedRunSaysSo(t *testing.T) {
 	res := newRunner(fc, true).RunRepo(ctx, repoCfg)
 	if res.Error != "interrupted" {
 		t.Fatalf("error = %q", res.Error)
+	}
+}
+
+// reposClient serves one fakeClient per repo name and records whether two
+// writes ever overlapped.
+type reposClient struct {
+	repos             map[string]*fakeClient
+	writing, overlaps atomic.Int32
+	delay             time.Duration
+}
+
+func (c *reposClient) Viewer(context.Context) (string, error) { return "me", nil }
+
+func (c *reposClient) FetchRepo(ctx context.Context, _, name string) (*github.Repo, error) {
+	time.Sleep(c.delay)
+	return c.repos[name].FetchRepo(ctx, "", name)
+}
+
+func (c *reposClient) write(f func() error) error {
+	if c.writing.Add(1) > 1 {
+		c.overlaps.Add(1)
+	}
+	defer c.writing.Add(-1)
+	time.Sleep(time.Millisecond)
+	return f()
+}
+
+func (c *reposClient) Merge(ctx context.Context, _, name string, n int, method, sha string) error {
+	return c.write(func() error { return c.repos[name].Merge(ctx, "", name, n, method, sha) })
+}
+
+func (c *reposClient) Comment(ctx context.Context, _, name string, n int, body string) error {
+	return c.write(func() error { return c.repos[name].Comment(ctx, "", name, n, body) })
+}
+
+func TestRunKeepsOrderAndSerialisesWrites(t *testing.T) {
+	c := &reposClient{repos: map[string]*fakeClient{}}
+	var cfgs []config.Repo
+	for i := range 6 {
+		name := fmt.Sprintf("r%d", i)
+		c.repos[name] = &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2))}
+		cfgs = append(cfgs, config.Repo{Owner: "o", Name: name, Policy: config.Builtin})
+	}
+	var seen []string
+	results := newRunner(c, true).Run(context.Background(), cfgs, func(r RepoResult) { seen = append(seen, r.Repo) })
+	if len(results) != 6 || len(seen) != 6 {
+		t.Fatalf("results = %d, progress = %v", len(results), seen)
+	}
+	for i, r := range results {
+		if want := fmt.Sprintf("o/r%d", i); r.Repo != want || seen[i] != want {
+			t.Fatalf("[%d] result %s, progress %s; want %s", i, r.Repo, seen[i], want)
+		}
+		if len(r.Events) != 2 {
+			t.Fatalf("%s events = %+v", r.Repo, r.Events)
+		}
+	}
+	if n := c.overlaps.Load(); n != 0 {
+		t.Fatalf("%d writes overlapped another", n)
+	}
+}
+
+func TestRunStopsStartingReposWhenInterrupted(t *testing.T) {
+	c := &reposClient{repos: map[string]*fakeClient{}, delay: 5 * time.Millisecond}
+	var cfgs []config.Repo
+	for i := range 6 {
+		name := fmt.Sprintf("r%d", i)
+		c.repos[name] = &fakeClient{repo: testutil.Repo(testutil.PR(1))}
+		cfgs = append(cfgs, config.Repo{Owner: "o", Name: name, Policy: config.Builtin})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r := newRunner(c, false)
+	r.Parallel = 1
+	results := r.Run(ctx, cfgs, func(RepoResult) { cancel() })
+	if len(results) == 0 || len(results) >= 6 {
+		t.Fatalf("got %d results; want the run to stop early", len(results))
+	}
+}
+
+func TestEventsCarryPRURL(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.URL = "https://github.com/o/r/pull/1"
+	res := newRunner(&fakeClient{repo: testutil.Repo(pr)}, true).RunRepo(context.Background(), repoCfg)
+	if len(res.Events) != 1 || res.Events[0].URL != pr.URL {
+		t.Fatalf("events = %+v", res.Events)
 	}
 }

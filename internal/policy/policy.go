@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/dependabot"
@@ -39,9 +40,24 @@ type Decision struct {
 	// assessed is true when the PR is Dependabot's own work and its checks
 	// ran on its head commit, so they speak for the update itself.
 	assessed bool
+	// inFlight is true for a PR waiting on CI or GitHub that should merge
+	// once they finish, so other PRs must not be rebased ahead of it.
+	inFlight bool
+	// stalledRebase is true when our rebase request went unanswered.
+	stalledRebase bool
+	// needsReview is true when branch protection wants an approval.
+	needsReview bool
 }
 
-const reasonRebaseRequested = "rebase already requested"
+const (
+	// checksGrace is how long a new commit may go without any check before
+	// it counts as having no CI: GitHub registers checks only once a
+	// workflow starts.
+	checksGrace = 30 * time.Minute
+	// rebaseTimeout is how long a rebase request may go unanswered before
+	// the PR stops holding the rebase queue.
+	rebaseTimeout = 24 * time.Hour
+)
 
 // Evaluate decides what to do with every Dependabot PR of repo. viewer is
 // the authenticated login, used to avoid repeating our own rebase requests.
@@ -67,7 +83,7 @@ func Evaluate(repo *github.Repo, p config.Policy, viewer string) []Decision {
 func queueRebases(ds []Decision) {
 	ahead := 0
 	for _, d := range ds {
-		if d.Action == ActionMerge || (d.Action == ActionWait && d.Reason == reasonRebaseRequested) {
+		if d.Action == ActionMerge || d.inFlight {
 			ahead = d.Number
 			break
 		}
@@ -110,6 +126,13 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		d.Action, d.Reason = ActionSkip, fmt.Sprintf(format, args...)
 		return d
 	}
+	// wait leaves the PR for a later run; inFlight says whether it holds
+	// the rebase queue meanwhile.
+	wait := func(inFlight bool, format string, args ...any) Decision {
+		d.Action, d.Reason, d.inFlight = ActionWait, fmt.Sprintf(format, args...), inFlight
+		return d
+	}
+	upToDate := pr.MergeState != "BEHIND"
 
 	if repo.Archived {
 		return skip("repository is archived")
@@ -138,8 +161,8 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	d.assessed = true
 	if pr.ChecksOID != pr.HeadOID {
 		d.assessed = false
-		d.Action, d.Reason = ActionWait, fmt.Sprintf("checks not yet reported for head commit %.7s", pr.HeadOID)
-		return d
+		withinPolicy := d.Grade != config.UpdateUnknown && d.Grade <= p.MaxUpdateType
+		return wait(withinPolicy && upToDate, "checks not yet reported for head commit %.7s", pr.HeadOID)
 	}
 	if d.Grade == config.UpdateUnknown {
 		return skip("cannot determine update type from Dependabot metadata")
@@ -161,11 +184,13 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	case len(d.FailedChecks) > 0:
 		return skip("failing checks: %s", strings.Join(d.FailedChecks, ", "))
 	case pending > 0:
-		d.Action, d.Reason = ActionWait, fmt.Sprintf("%d check(s) still running", pending)
-		return d
+		return wait(upToDate, "%d check(s) still running", pending)
 	case len(stale) > 0:
 		return skip("stale checks: %s (rerun them or comment @dependabot recreate)", strings.Join(stale, ", "))
 	case len(pr.Checks) == 0 && p.RequireChecks:
+		if repo.FetchedAt.Sub(pushedAt(pr)) < checksGrace {
+			return wait(upToDate, "no checks reported yet for a new commit")
+		}
 		return skip("no checks ran (set require_checks: false to opt in)")
 	}
 
@@ -173,8 +198,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	case "CONFLICTING":
 		return skip("merge conflicts (Dependabot normally rebases; try @dependabot recreate)")
 	case "UNKNOWN", "":
-		d.Action, d.Reason = ActionWait, "GitHub is still computing mergeability"
-		return d
+		return wait(upToDate, "GitHub is still computing mergeability")
 	}
 
 	var safe Decision
@@ -183,22 +207,25 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		safe = d
 		safe.Action, safe.Reason = ActionMerge, "checks green, within policy"
 	case "BEHIND":
-		if rebaseRequested(pr, viewer) {
-			d.Action, d.Reason = ActionWait, reasonRebaseRequested
-			return d
+		if at, ok := rebaseRequested(pr, viewer); ok {
+			if age := repo.FetchedAt.Sub(at); age >= rebaseTimeout {
+				d.stalledRebase = true
+				return skip("rebase requested %s ago and not done; left for a human", days(age))
+			}
+			return wait(true, "rebase already requested")
 		}
 		safe = d
 		safe.Action, safe.Reason = ActionRebase, "behind base branch"
 	case "BLOCKED":
 		if pr.ReviewDecision == "REVIEW_REQUIRED" || pr.ReviewDecision == "CHANGES_REQUESTED" {
+			d.needsReview = true
 			return skip("branch protection requires an approving review")
 		}
 		return skip("blocked by branch protection")
 	case "DIRTY":
 		return skip("merge conflicts")
 	case "UNKNOWN", "":
-		d.Action, d.Reason = ActionWait, "GitHub is still computing merge state"
-		return d
+		return wait(true, "GitHub is still computing merge state")
 	default:
 		return skip("merge state %s", pr.MergeState)
 	}
@@ -209,19 +236,36 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	return safe
 }
 
-// rebaseRequested reports whether viewer already asked for a rebase since
-// the PR's latest commit.
-func rebaseRequested(pr *github.PullRequest, viewer string) bool {
+// pushedAt is when the PR's latest commit was made, or the zero time when
+// it has none.
+func pushedAt(pr *github.PullRequest) time.Time {
 	if len(pr.Commits) == 0 {
-		return false
+		return time.Time{}
 	}
-	last := pr.Commits[len(pr.Commits)-1].CommittedDate
+	return pr.Commits[len(pr.Commits)-1].CommittedDate
+}
+
+// rebaseRequested returns when viewer first asked for a rebase since the
+// PR's latest commit, if it did.
+func rebaseRequested(pr *github.PullRequest, viewer string) (time.Time, bool) {
+	if len(pr.Commits) == 0 {
+		return time.Time{}, false
+	}
+	last := pushedAt(pr)
 	for _, c := range pr.Comments {
 		if c.Author == viewer && c.CreatedAt.After(last) && strings.Contains(c.Body, RebaseCommand) {
-			return true
+			return c.CreatedAt, true
 		}
 	}
-	return false
+	return time.Time{}, false
+}
+
+// days describes an age of a day or more in whole days.
+func days(age time.Duration) string {
+	if n := int(age / (24 * time.Hour)); n > 1 {
+		return fmt.Sprintf("%d days", n)
+	}
+	return "a day"
 }
 
 // MergeMethod picks the configured method if the repo allows it, otherwise

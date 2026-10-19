@@ -3,6 +3,7 @@ package policy
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/github"
@@ -41,6 +42,11 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckPending }},
 		{name: "no checks skipped by default", action: ActionSkip, reason: "no checks ran",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks = nil }},
+		{name: "no checks on a new commit waits for CI to start", action: ActionWait, reason: "no checks reported yet",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = nil
+				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-time.Minute)
+			}},
 		{name: "no checks with opt-in merges", action: ActionMerge,
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks = nil },
 			policy: func(p *config.Policy) { p.RequireChecks = false }},
@@ -63,6 +69,12 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.MergeState = "BEHIND"
 				pr.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
+			}},
+		{name: "behind with an unanswered request is left for a human", action: ActionSkip, reason: "rebase requested 2 days ago and not done",
+			mutate: func(r *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "BEHIND"
+				pr.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
+				r.FetchedAt = testutil.T0.Add(50 * time.Hour)
 			}},
 		{name: "behind with stale request asks again", action: ActionRebase,
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
@@ -164,5 +176,38 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 	ds = Evaluate(testutil.Repo(requested, behind(2)), defaultPolicy, "me")
 	if got, want := actions(ds), "wait rebase already requested; wait queued behind #1"; got != want {
 		t.Errorf("rebase in flight:\n got %s\nwant %s", got, want)
+	}
+
+	stalled := testutil.Repo(requested, behind(2))
+	stalled.FetchedAt = testutil.T0.Add(25 * time.Hour)
+	ds = Evaluate(stalled, defaultPolicy, "me")
+	if got, want := actions(ds), "skip rebase requested a day ago and not done; left for a human; rebase behind base branch"; got != want {
+		t.Errorf("rebase stalled:\n got %s\nwant %s", got, want)
+	}
+
+	// Just rebased: up to date, CI running; it merges next.
+	rebased := testutil.PR(1)
+	rebased.Checks[0].State = github.CheckPending
+	rebased.MergeState = "BLOCKED"
+	ds = Evaluate(testutil.Repo(rebased, behind(2)), defaultPolicy, "me")
+	if got, want := actions(ds), "wait 1 check(s) still running; wait queued behind #1"; got != want {
+		t.Errorf("CI running:\n got %s\nwant %s", got, want)
+	}
+
+	pushed := testutil.PR(1)
+	pushed.ChecksOID = "older"
+	ds = Evaluate(testutil.Repo(pushed, behind(2)), defaultPolicy, "me")
+	if got, want := actions(ds), "wait checks not yet reported for head commit sha1; wait queued behind #1"; got != want {
+		t.Errorf("checks not reported:\n got %s\nwant %s", got, want)
+	}
+
+	// Neither a held major nor a PR that is itself behind will merge next.
+	major := testutil.PR(1, "lib:major")
+	major.ChecksOID = "older"
+	stillBehind := behind(2)
+	stillBehind.Checks[0].State = github.CheckPending
+	ds = Evaluate(testutil.Repo(major, stillBehind, behind(3)), defaultPolicy, "me")
+	if got, want := actions(ds), "wait checks not yet reported for head commit sha1; wait 1 check(s) still running; rebase behind base branch"; got != want {
+		t.Errorf("not in flight:\n got %s\nwant %s", got, want)
 	}
 }
