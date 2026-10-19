@@ -73,6 +73,22 @@ func TestProgress(t *testing.T) {
 	}
 }
 
+func TestHasPRs(t *testing.T) {
+	for name, c := range map[string]struct {
+		res  runner.RepoResult
+		want bool
+	}{
+		"no PRs":      {runner.RepoResult{Repo: "o/r"}, false},
+		"error":       {runner.RepoResult{Repo: "o/r", Error: "boom"}, true},
+		"decisions":   {runner.RepoResult{Repo: "o/r", Decisions: applied.Decisions}, true},
+		"events only": {runner.RepoResult{Repo: "o/r", Events: applied.Events}, true},
+	} {
+		if got := HasPRs(c.res); got != c.want {
+			t.Errorf("%s: HasPRs = %t", name, got)
+		}
+	}
+}
+
 func TestRepoError(t *testing.T) {
 	var b bytes.Buffer
 	Repo(&b, false, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Error: "boom"})

@@ -9,6 +9,7 @@ cp config.example.yaml ~/.config/deps-merger/config.yaml
 deps-merger repos                 # effective policy per repo
 deps-merger run                   # dry run: report only
 deps-merger run --apply           # merge safe PRs
+deps-merger run --open            # only repos with open Dependabot PRs
 deps-merger run -r Storefront --json  # one repo, machine-readable
 deps-merger run --review --apply  # let an AI agent judge majors too
 ```

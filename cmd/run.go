@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -29,6 +30,7 @@ func newRunCmd() *cobra.Command {
 		reviews    bool
 		agentName  string
 		maxReviews int
+		open       bool
 	)
 	c := &cobra.Command{
 		Use:   "run",
@@ -48,6 +50,9 @@ agent only reads a checkout of the PR; an update it approves is merged
 like any other, after every check has been made again. Verdicts are
 cached, so a scheduled run does not pay twice for the same update. A dry
 run reviews too, and shows what would be merged.
+
+With --open, repositories without open Dependabot PRs are left out of the
+report; ones that could not be processed are still shown.
 
 Exits 1 if a repository could not be processed or a merge or rebase request
 failed or an agent review could not be done, and 130 when interrupted.`,
@@ -91,7 +96,11 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
 			var progress func(runner.RepoResult)
 			if !asJSON {
-				progress = func(r runner.RepoResult) { report.Repo(out, apply, r) }
+				progress = func(r runner.RepoResult) {
+					if !open || report.HasPRs(r) {
+						report.Repo(out, apply, r)
+					}
+				}
 			} else if f, ok := errOut.(*os.File); ok && term.IsTerminal(f) {
 				// JSON comes at the end; say what is happening meanwhile,
 				// unless stderr is captured along with it.
@@ -105,7 +114,11 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 			}
 			results := r.Run(ctx, selected, progress)
 			if asJSON {
-				if err := report.JSON(out, apply, results); err != nil {
+				shown := results
+				if open {
+					shown = slices.DeleteFunc(slices.Clone(results), func(r runner.RepoResult) bool { return !report.HasPRs(r) })
+				}
+				if err := report.JSON(out, apply, shown); err != nil {
 					return err
 				}
 			} else {
@@ -127,6 +140,7 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
 	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge major updates and updates of unknown size")
 	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+strings.Join(config.Agents, " or ")+" (default from config; implies --review)")
+	c.Flags().BoolVar(&open, "open", false, "only report repos with open Dependabot PRs")
 	c.Flags().IntVar(&maxReviews, "max-reviews", 10, "most agent reviews in one run (0 for no limit)")
 	return c
 }

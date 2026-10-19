@@ -65,7 +65,7 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, links bool) {
 		return
 	}
 	decisions := pending(res)
-	if len(decisions) == 0 && len(res.Events) == 0 {
+	if !HasPRs(res) {
 		fmt.Fprintln(w, "  no open Dependabot PRs")
 		fmt.Fprintln(w)
 		return
@@ -96,6 +96,12 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, links bool) {
 		}
 	}
 	fmt.Fprintln(w)
+}
+
+// HasPRs reports whether a repository had open Dependabot PRs to report,
+// or failed before it could tell.
+func HasPRs(res runner.RepoResult) bool {
+	return res.Error != "" || len(res.Decisions) > 0 || len(res.Events) > 0
 }
 
 // Progress writes a one-line note that a repository is done, for runs whose
