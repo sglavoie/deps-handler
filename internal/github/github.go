@@ -31,6 +31,11 @@ const (
 type Check struct {
 	Name  string     `json:"name"`
 	State CheckState `json:"state"`
+	// Suite identifies the check suite (one workflow run) a check run
+	// belongs to; a newer suite with the same check name supersedes it, as
+	// when concurrency cancels a run in favour of a later one. Zero for
+	// status contexts, of which GitHub reports only the latest.
+	Suite int64 `json:"-"`
 }
 
 type Author struct {
@@ -194,7 +199,7 @@ query($owner: String!, $name: String!, $search: String!) {
         last: commits(last: 1) {
           nodes { commit { oid statusCheckRollup { contexts(first: 100) { totalCount nodes {
             __typename
-            ... on CheckRun { name status conclusion }
+            ... on CheckRun { name status conclusion checkSuite { databaseId } }
             ... on StatusContext { context state }
           } } } } }
         }
@@ -259,6 +264,7 @@ type gqlRepo struct {
 									Name       string
 									Status     string
 									Conclusion string
+									CheckSuite *struct{ DatabaseID int64 }
 									Context    string
 									State      string
 								}
@@ -350,7 +356,11 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 				if cx.Typename == "StatusContext" {
 					pr.Checks = append(pr.Checks, Check{Name: cx.Context, State: statusState(cx.State)})
 				} else {
-					pr.Checks = append(pr.Checks, Check{Name: cx.Name, State: checkRunState(cx.Status, cx.Conclusion)})
+					c := Check{Name: cx.Name, State: checkRunState(cx.Status, cx.Conclusion)}
+					if cx.CheckSuite != nil {
+						c.Suite = cx.CheckSuite.DatabaseID
+					}
+					pr.Checks = append(pr.Checks, c)
 				}
 			}
 		}

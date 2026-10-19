@@ -112,7 +112,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 			})
 		case d.Grade == config.UpdateMajor && p.MaxUpdateType < config.UpdateMajor &&
 			d.Action != ActionReview && d.Verdict == nil &&
-			len(d.PR.Checks) > 0 && allPassed(d.PR.Checks):
+			len(d.PR.Checks) > 0 && allPassed(latestChecks(d.PR.Checks)):
 			out = append(out, Finding{
 				Kind:    FindingHeldMajor,
 				Summary: fmt.Sprintf("#%d is a green major update held by policy (allow with max_update_type: major)", d.Number),
@@ -162,15 +162,15 @@ func repoWideChecks(decisions []Decision) map[string][]int {
 	failed := map[string][]int{}
 	for _, d := range decisions {
 		seen := map[string]bool{}
-		for _, c := range d.PR.Checks {
+		for _, c := range latestChecks(d.PR.Checks) {
 			if c.Name == "" || seen[c.Name] {
 				continue
 			}
 			seen[c.Name] = true
 			ran[c.Name]++
-			if c.State == github.CheckFailed {
-				failed[c.Name] = append(failed[c.Name], d.Number)
-			}
+		}
+		for _, name := range d.FailedChecks {
+			failed[name] = append(failed[name], d.Number)
 		}
 	}
 	out := map[string][]int{}

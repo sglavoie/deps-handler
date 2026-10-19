@@ -42,6 +42,22 @@ func TestDiagnoseRepoWideFailure(t *testing.T) {
 	}
 }
 
+func TestDiagnoseCancelledRunIsNotRepoWide(t *testing.T) {
+	// Like ExcelAddIn: concurrency cancels CI on every PR in favour of a
+	// later run that passes.
+	rerun := func(pr github.PullRequest) github.PullRequest {
+		pr.Checks = []github.Check{
+			{Name: "Quality", State: github.CheckFailed, Suite: 1},
+			{Name: "Quality", State: github.CheckPassed, Suite: 2},
+		}
+		return pr
+	}
+	f := findings(testutil.Repo(rerun(testutil.PR(1)), rerun(testutil.PR(2))))
+	if len(f) != 0 {
+		t.Fatalf("findings = %+v", f)
+	}
+}
+
 func TestDiagnoseIncompatibleMajor(t *testing.T) {
 	f := findings(testutil.Repo(
 		failing(testutil.PR(1, "pydantic:major"), "build"),

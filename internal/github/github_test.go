@@ -83,7 +83,7 @@ const fetchResponse = `{"data": {
        "author": {"name": "dependabot[bot]", "email": "e", "user": {"login": "dependabot[bot]"}},
        "signature": {"isValid": true, "wasSignedByGitHub": true}}}]},
      "last": {"nodes": [{"commit": {"oid": "abc", "statusCheckRollup": {"contexts": {"totalCount": 120, "nodes": [
-       {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
+       {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS", "checkSuite": {"databaseId": 42}},
        {"__typename": "StatusContext", "context": "ci/legacy", "state": "PENDING"}]}}}}]},
      "comments": {"nodes": [{"body": "@dependabot rebase", "createdAt": "2026-10-01T13:00:00Z", "author": {"login": "me"}}]}}
   ]}
@@ -112,7 +112,7 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 	if !c.SignedByGitHub || len(c.Authors) != 2 || c.Authors[0].Login != "dependabot[bot]" || c.Authors[1] != (Author{Name: "Jane", Email: "jane@example.com"}) {
 		t.Fatalf("commit = %+v", c)
 	}
-	want := []Check{{Name: "build", State: CheckPassed}, {Name: "ci/legacy", State: CheckPending}}
+	want := []Check{{Name: "build", State: CheckPassed, Suite: 42}, {Name: "ci/legacy", State: CheckPending}}
 	if len(pr.Checks) != 2 || pr.Checks[0] != want[0] || pr.Checks[1] != want[1] {
 		t.Fatalf("checks = %+v", pr.Checks)
 	}

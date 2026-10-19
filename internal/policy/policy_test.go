@@ -38,6 +38,27 @@ func TestEvaluate(t *testing.T) {
 		{name: "group with one major is major", deps: []string{"a:patch", "b:major"}, action: ActionSkip, reason: "major update exceeds limit"},
 		{name: "failing check", action: ActionSkip, reason: "failing checks: build",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckFailed }},
+		{name: "check cancelled in favour of a newer run merges", action: ActionMerge,
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "build", State: github.CheckFailed, Suite: 1},
+					{Name: "build", State: github.CheckPassed, Suite: 2},
+				}
+			}},
+		{name: "check failing in the newer run", action: ActionSkip, reason: "failing checks: build",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "build", State: github.CheckPassed, Suite: 1},
+					{Name: "build", State: github.CheckFailed, Suite: 2},
+				}
+			}},
+		{name: "matrix job failing in the same run", action: ActionSkip, reason: "failing checks: build",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "build", State: github.CheckPassed, Suite: 2},
+					{Name: "build", State: github.CheckFailed, Suite: 2},
+				}
+			}},
 		{name: "pending check", action: ActionWait, reason: "still running",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckPending }},
 		{name: "no checks skipped by default", action: ActionSkip, reason: "no checks ran",

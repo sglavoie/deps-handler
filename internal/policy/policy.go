@@ -123,15 +123,34 @@ func queueRebases(ds []Decision) {
 	}
 }
 
+// latestChecks drops the check runs a newer suite reran under the same name,
+// as GitHub does when it shows a pull request's checks: a run cancelled in
+// favour of a later one says nothing about the update. Runs sharing a suite,
+// like matrix jobs, all count.
+func latestChecks(checks []github.Check) []github.Check {
+	newest := map[string]int64{}
+	for _, c := range checks {
+		newest[c.Name] = max(newest[c.Name], c.Suite)
+	}
+	out := make([]github.Check, 0, len(checks))
+	for _, c := range checks {
+		if c.Suite == newest[c.Name] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string, judge Judge) Decision {
 	d := Decision{PR: pr, Number: pr.Number, Title: pr.Title, URL: pr.URL, Dependencies: []dependabot.Dependency{}}
 	for _, c := range pr.Commits {
 		d.Dependencies = append(d.Dependencies, dependabot.ParseCommitMessage(c.Message)...)
 	}
 	d.Grade = dependabot.Grade(d.Dependencies)
+	checks := latestChecks(pr.Checks)
 	seen := map[string]bool{}
 	var stale []string
-	for _, c := range pr.Checks {
+	for _, c := range checks {
 		if seen[c.Name] {
 			continue // matrix jobs can repeat a name
 		}
@@ -214,7 +233,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return skip("too many checks to verify (%d)", pr.CheckCount)
 	}
 	pending := 0
-	for _, c := range pr.Checks {
+	for _, c := range checks {
 		if c.State == github.CheckPending {
 			pending++
 		}
@@ -226,7 +245,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return wait(upToDate, "%d check(s) still running", pending)
 	case len(stale) > 0:
 		return skip("stale checks: %s (rerun them or comment @dependabot recreate)", strings.Join(stale, ", "))
-	case len(pr.Checks) == 0 && p.RequireChecks:
+	case len(checks) == 0 && p.RequireChecks:
 		if repo.FetchedAt.Sub(pushedAt(pr)) < checksGrace {
 			return wait(upToDate, "no checks reported yet for a new commit")
 		}
