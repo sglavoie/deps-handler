@@ -32,6 +32,10 @@ const (
 	FindingReviewRequired FindingKind = "review-required"
 	// FindingStalledRebase is a rebase request Dependabot has not acted on.
 	FindingStalledRebase FindingKind = "stalled-rebase"
+	// FindingAgentRejected is an update the AI agent judged unsafe.
+	FindingAgentRejected FindingKind = "agent-rejected"
+	// FindingAgentFailed is an update the AI agent could not review.
+	FindingAgentFailed FindingKind = "agent-failed"
 )
 
 // Finding is a repository-level observation with suggested fixes. Fixes
@@ -40,6 +44,7 @@ type Finding struct {
 	Kind        FindingKind `json:"kind"`
 	Summary     string      `json:"summary"`
 	PRs         []int       `json:"prs,omitempty"`
+	Details     []string    `json:"details,omitempty"`
 	Suggestions []string    `json:"suggestions,omitempty"`
 }
 
@@ -92,7 +97,21 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 				PRs:         []int{d.Number},
 				Suggestions: ignoreSuggestions(d),
 			})
+		case d.Verdict != nil && d.Verdict.Error != "":
+			out = append(out, Finding{
+				Kind:    FindingAgentFailed,
+				Summary: fmt.Sprintf("#%d (%s): the agent could not review it: %s", d.Number, d.Grade, d.Verdict.Error),
+				PRs:     []int{d.Number},
+			})
+		case d.Verdict != nil && !d.Verdict.Approved:
+			out = append(out, Finding{
+				Kind:    FindingAgentRejected,
+				Summary: fmt.Sprintf("#%d (%s) rejected by the agent: %s", d.Number, d.Grade, d.Verdict.Summary),
+				PRs:     []int{d.Number},
+				Details: d.Verdict.Concerns,
+			})
 		case d.Grade == config.UpdateMajor && p.MaxUpdateType < config.UpdateMajor &&
+			d.Action != ActionReview && d.Verdict == nil &&
 			len(d.PR.Checks) > 0 && allPassed(d.PR.Checks):
 			out = append(out, Finding{
 				Kind:    FindingHeldMajor,

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -110,11 +111,32 @@ type Client interface {
 	FetchRepo(ctx context.Context, owner, name string) (*Repo, error)
 	Merge(ctx context.Context, owner, name string, number int, method, headOID string) error
 	Comment(ctx context.Context, owner, name string, number int, body string) error
+	PullRequestDetails(ctx context.Context, owner, name string, number int) (*PullRequestDetails, error)
 }
+
+// PullRequestDetails is what an agent review reads about a PR beyond what
+// FetchRepo returns, fetched only for the PRs it reviews.
+type PullRequestDetails struct {
+	// Body is the PR description, where Dependabot puts release notes,
+	// changelog entries and commits.
+	Body string
+	// Diff is the PR's unified diff, cut at MaxDiffBytes.
+	Diff      string
+	Truncated bool
+	// DiffError says why Diff is empty, such as GitHub refusing a diff too
+	// large to render.
+	DiffError string
+}
+
+// MaxDiffBytes caps the diff read for a review: lockfile churn can run to
+// megabytes and says little.
+const MaxDiffBytes = 200_000
 
 type client struct {
 	gql  *api.GraphQLClient
 	rest *api.RESTClient
+	// diff is a REST client asking for diffs rather than JSON.
+	diff *api.RESTClient
 }
 
 // New builds a client from the gh CLI's stored credentials or GH_TOKEN.
@@ -127,7 +149,11 @@ func New() (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
 	}
-	return &client{gql: gql, rest: rest}, nil
+	diff, err := api.NewRESTClient(api.ClientOptions{Headers: map[string]string{"Accept": "application/vnd.github.diff"}})
+	if err != nil {
+		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
+	}
+	return &client{gql: gql, rest: rest, diff: diff}, nil
 }
 
 func (c *client) Viewer(ctx context.Context) (string, error) {
@@ -407,6 +433,31 @@ func (c *client) Comment(ctx context.Context, owner, name string, number int, te
 	body, _ := json.Marshal(map[string]string{"body": text})
 	path := fmt.Sprintf("repos/%s/%s/issues/%d/comments", owner, name, number)
 	return c.rest.DoWithContext(ctx, "POST", path, bytes.NewReader(body), nil)
+}
+
+func (c *client) PullRequestDetails(ctx context.Context, owner, name string, number int) (*PullRequestDetails, error) {
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d", owner, name, number)
+	var pr struct{ Body string }
+	if err := c.rest.DoWithContext(ctx, "GET", path, nil, &pr); err != nil {
+		return nil, err
+	}
+	d := &PullRequestDetails{Body: pr.Body}
+	resp, err := c.diff.RequestWithContext(ctx, "GET", path, nil)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		d.DiffError = err.Error()
+		return d, nil
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxDiffBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	d.Truncated = len(data) > MaxDiffBytes
+	d.Diff = string(data[:min(len(data), MaxDiffBytes)])
+	return d, nil
 }
 
 // Retryable reports whether a failed merge may succeed once GitHub catches

@@ -152,3 +152,28 @@ func TestRepoHeaderShowsFallbackMergeMethod(t *testing.T) {
 		t.Fatalf("header = %q", first)
 	}
 }
+
+func TestRepoShowsAgentVerdict(t *testing.T) {
+	d := decision(1, policy.ActionSkip, "major update exceeds limit (minor); rejected by agent")
+	d.Grade = config.UpdateMajor
+	res := runner.RepoResult{
+		Repo: "o/r", Policy: config.Builtin, Permission: "WRITE",
+		Decisions: []policy.Decision{d, decision(2, policy.ActionReview, "major update exceeds limit (minor); awaiting agent review (review limit of 1 reached)")},
+		Findings: []policy.Finding{{
+			Kind: policy.FindingAgentRejected, Summary: "#1 (major) rejected by the agent: drops Node 18",
+			PRs: []int{1}, Details: []string{"package.json engines allows Node 18"},
+		}},
+	}
+	var b bytes.Buffer
+	Repo(&b, true, res)
+	for _, want := range []string{"  needs attention:\n    - #1 (major) rejected by the agent: drops Node 18\n      - package.json engines allows Node 18\n", "  review  major update"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("report lacks %q:\n%s", want, b.String())
+		}
+	}
+	b.Reset()
+	Summary(&b, true, []runner.RepoResult{res})
+	if got := b.String(); got != "1 repos: 1 review, 1 skip; 1 need attention\n" {
+		t.Errorf("summary = %q", got)
+	}
+}

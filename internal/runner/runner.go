@@ -4,12 +4,15 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/policy"
+	"github.com/sglavoie/deps-merger/internal/review"
 )
 
 // EventKind is a write deps-merger performed (or tried to).
@@ -45,11 +48,16 @@ type RepoResult struct {
 	Error       string            `json:"error,omitempty"`
 }
 
-// Failed reports whether the repository could not be processed or a write
-// to it failed.
+// Failed reports whether the repository could not be processed, a write
+// to it failed, or an agent review could not be done.
 func (r RepoResult) Failed() bool {
 	if r.Error != "" {
 		return true
+	}
+	for _, d := range r.Decisions {
+		if d.Verdict != nil && d.Verdict.Error != "" {
+			return true
+		}
 	}
 	for _, ev := range r.Events {
 		if ev.Kind == EventMergeFailed || ev.Kind == EventRebaseFailed {
@@ -75,10 +83,25 @@ type Runner struct {
 	// writes serialises merges and comments across repositories: GitHub
 	// asks clients not to make concurrent writes for one user.
 	writes sync.Mutex
+
+	// Reviewer, when set, has an agent judge PRs the policy alone would
+	// not merge because of their size.
+	Reviewer review.Reviewer
+	// AgentName is recorded with each cached verdict.
+	AgentName string
+	// Verdicts keeps verdicts between runs; nil keeps them for this run.
+	Verdicts *review.Cache
+	// MaxReviews caps agent reviews across the whole run; 0 is no cap.
+	MaxReviews int
+	// ReviewParallel is how many agent reviews run at once.
+	ReviewParallel int
+	reviewsOnce    sync.Once
+	reviewSlots    chan struct{}
+	reviewsStarted atomic.Int64
 }
 
 func New(c github.Client, viewer string, apply bool) *Runner {
-	return &Runner{Client: c, Viewer: viewer, Apply: apply, PollAttempts: 5, PollInterval: 3 * time.Second, Sleep: sleep, Parallel: 4}
+	return &Runner{Client: c, Viewer: viewer, Apply: apply, PollAttempts: 5, PollInterval: 3 * time.Second, Sleep: sleep, Parallel: 4, ReviewParallel: 2}
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
@@ -161,6 +184,22 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	retried := map[int]bool{}
 	rebased := map[int]bool{}
 	polls := 0
+	// verdicts holds this run's reviews, failed ones included, so a PR
+	// is reviewed at most once per run.
+	verdicts := map[string]*policy.Verdict{}
+	var judge policy.Judge
+	if r.Reviewer != nil {
+		judge = func(d policy.Decision) *policy.Verdict {
+			key := review.NewRequest(rc, d).Key()
+			if v, ok := verdicts[key]; ok {
+				return v
+			}
+			if r.Verdicts != nil {
+				return r.Verdicts.Get(key)
+			}
+			return nil
+		}
+	}
 
 	for {
 		repo, err := r.Client.FetchRepo(ctx, rc.Owner, rc.Name)
@@ -171,7 +210,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		res.Permission = repo.Permission
 		method, methodErr := policy.MergeMethod(repo, rc.Policy.MergeMethod)
 		res.MergeMethod = method
-		decisions := policy.Evaluate(repo, rc.Policy, r.Viewer)
+		decisions := policy.Evaluate(repo, rc.Policy, r.Viewer, judge)
 		res.Decisions = decisions
 		res.Findings = policy.Diagnose(repo, rc.Policy, decisions)
 		// GitHub computes mergeability lazily: the first query after a push
@@ -184,6 +223,9 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			return true, r.Sleep(ctx, r.PollInterval)
 		}
 		if !r.Apply {
+			if r.reviewNext(ctx, rc, decisions, verdicts) {
+				continue
+			}
 			again, err := poll()
 			if err != nil {
 				res.Error = errText(ctx, err)
@@ -214,6 +256,11 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			}
 		}
 		if next == nil {
+			// Reviews come after merges: they take minutes, and the PRs
+			// that need none should not wait on them.
+			if r.reviewNext(ctx, rc, decisions, verdicts) {
+				continue
+			}
 			again, err := poll()
 			if err != nil {
 				res.Error = errText(ctx, err)
@@ -249,6 +296,53 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		}
 		res.Events = append(res.Events, ev)
 	}
+}
+
+// reviewNext has the agent review the first PR awaiting review and reports
+// whether it did, after which the repository must be evaluated again. When
+// the run's review cap is reached, it says so on the PRs left waiting.
+func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []policy.Decision, verdicts map[string]*policy.Verdict) bool {
+	for i := range decisions {
+		d := &decisions[i]
+		if d.Action != policy.ActionReview {
+			continue
+		}
+		req := review.NewRequest(rc, *d)
+		key := req.Key()
+		if _, done := verdicts[key]; done {
+			continue // an approval the PR has not caught up with yet
+		}
+		if r.MaxReviews > 0 && r.reviewsStarted.Add(1) > int64(r.MaxReviews) {
+			for j := i; j < len(decisions); j++ {
+				if decisions[j].Action == policy.ActionReview {
+					decisions[j].Reason += fmt.Sprintf(" (review limit of %d reached)", r.MaxReviews)
+				}
+			}
+			return false
+		}
+		v, err := r.review(ctx, req)
+		if err != nil {
+			v = policy.Verdict{Error: errText(ctx, err)}
+		} else if r.Verdicts != nil {
+			if err := r.Verdicts.Put(key, r.AgentName, v); err != nil {
+				v.Concerns = append(v.Concerns, "verdict not cached: "+err.Error())
+			}
+		}
+		verdicts[key] = &v
+		return true
+	}
+	return false
+}
+
+func (r *Runner) review(ctx context.Context, req review.Request) (policy.Verdict, error) {
+	r.reviewsOnce.Do(func() { r.reviewSlots = make(chan struct{}, max(1, r.ReviewParallel)) })
+	select {
+	case r.reviewSlots <- struct{}{}:
+	case <-ctx.Done():
+		return policy.Verdict{}, ctx.Err()
+	}
+	defer func() { <-r.reviewSlots }()
+	return r.Reviewer.Review(ctx, req)
 }
 
 // errText describes err, or just "interrupted" when it comes from the run

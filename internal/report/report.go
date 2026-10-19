@@ -84,6 +84,9 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, links bool) {
 			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks || f.Kind == policy.FindingReviewRequired {
 				fmt.Fprintf(w, "      PRs: %s\n", prList(f.PRs))
 			}
+			for _, d := range f.Details {
+				fmt.Fprintf(w, "      - %s\n", d)
+			}
 			for _, s := range f.Suggestions {
 				fmt.Fprintf(w, "      suggest: %s\n", s)
 			}
@@ -119,7 +122,7 @@ func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
 		}
 	}
 	var parts []string
-	for _, k := range []string{"merged", "merge-failed", "merge", "would merge", "rebase-requested", "rebase-failed", "rebase", "would rebase", "wait", "skip"} {
+	for _, k := range []string{"merged", "merge-failed", "merge", "would merge", "rebase-requested", "rebase-failed", "rebase", "would rebase", "review", "wait", "skip"} {
 		if counts[k] > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
 		}

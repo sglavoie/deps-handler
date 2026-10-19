@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/github"
+	"github.com/sglavoie/deps-merger/internal/policy"
+	"github.com/sglavoie/deps-merger/internal/review"
 	"github.com/sglavoie/deps-merger/internal/testutil"
 )
 
@@ -69,6 +72,10 @@ func (f *fakeClient) Comment(_ context.Context, _, _ string, n int, body string)
 	}
 	f.comments[n] = append(f.comments[n], body)
 	return nil
+}
+
+func (f *fakeClient) PullRequestDetails(context.Context, string, string, int) (*github.PullRequestDetails, error) {
+	return &github.PullRequestDetails{Body: "release notes"}, nil
 }
 
 func newRunner(c github.Client, apply bool) *Runner {
@@ -232,6 +239,10 @@ func (c *reposClient) Comment(ctx context.Context, _, name string, n int, body s
 	return c.write(func() error { return c.repos[name].Comment(ctx, "", name, n, body) })
 }
 
+func (c *reposClient) PullRequestDetails(ctx context.Context, _, name string, n int) (*github.PullRequestDetails, error) {
+	return c.repos[name].PullRequestDetails(ctx, "", name, n)
+}
+
 func TestRunKeepsOrderAndSerialisesWrites(t *testing.T) {
 	c := &reposClient{repos: map[string]*fakeClient{}}
 	var cfgs []config.Repo
@@ -281,5 +292,112 @@ func TestEventsCarryPRURL(t *testing.T) {
 	res := newRunner(&fakeClient{repo: testutil.Repo(pr)}, true).RunRepo(context.Background(), repoCfg)
 	if len(res.Events) != 1 || res.Events[0].URL != pr.URL {
 		t.Fatalf("events = %+v", res.Events)
+	}
+}
+
+// fakeReviewer answers with a verdict per PR number, approving by default.
+type fakeReviewer struct {
+	verdicts map[int]policy.Verdict
+	fail     map[int]bool
+	calls    []int
+	// onReview runs before each review, for checking what happened first.
+	onReview func(review.Request)
+}
+
+func (f *fakeReviewer) Review(_ context.Context, req review.Request) (policy.Verdict, error) {
+	f.calls = append(f.calls, req.Number)
+	if f.onReview != nil {
+		f.onReview(req)
+	}
+	if f.fail[req.Number] {
+		return policy.Verdict{}, errors.New("claude: exit status 1")
+	}
+	if v, ok := f.verdicts[req.Number]; ok {
+		return v, nil
+	}
+	return policy.Verdict{Approved: true, Summary: "no breaking change used here"}, nil
+}
+
+func reviewRunner(c github.Client, rv review.Reviewer, apply bool) *Runner {
+	r := newRunner(c, apply)
+	r.Reviewer, r.AgentName = rv, "claude"
+	return r
+}
+
+func TestAgentApprovedMajorMergesAfterSafePRs(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"), testutil.PR(2))}
+	rv := &fakeReviewer{onReview: func(review.Request) {
+		if len(c.merges) != 1 {
+			t.Errorf("review ran before the safe PR merged: merges %v", c.merges)
+		}
+	}}
+	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(c.merges) != "[2 1]" || fmt.Sprint(rv.calls) != "[1]" || res.Failed() {
+		t.Fatalf("merges %v, reviews %v, result %+v", c.merges, rv.calls, res)
+	}
+}
+
+func TestAgentRejectedMajorIsLeft(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{verdicts: map[int]policy.Verdict{1: {Summary: "removes v1 API", Concerns: []string{"src/a.ts uses it"}}}}
+	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
+	if len(c.merges) != 0 || res.Decisions[0].Action != policy.ActionSkip || res.Failed() {
+		t.Fatalf("merges %v, decisions %+v", c.merges, res.Decisions)
+	}
+	if len(res.Findings) != 1 || res.Findings[0].Kind != policy.FindingAgentRejected {
+		t.Fatalf("findings %+v", res.Findings)
+	}
+}
+
+func TestAgentReviewsInDryRun(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{}
+	res := reviewRunner(c, rv, false).RunRepo(context.Background(), repoCfg)
+	d := res.Decisions[0]
+	if len(c.merges) != 0 || d.Action != policy.ActionMerge || d.Verdict == nil || !d.Verdict.Approved {
+		t.Fatalf("merges %v, decision %+v", c.merges, d)
+	}
+}
+
+func TestAgentFailureFailsTheRun(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{fail: map[int]bool{1: true}}
+	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
+	if len(c.merges) != 0 || len(rv.calls) != 1 || !res.Failed() || res.Decisions[0].Action != policy.ActionSkip {
+		t.Fatalf("merges %v, reviews %v, decisions %+v", c.merges, rv.calls, res.Decisions)
+	}
+}
+
+func TestAgentReviewLimit(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"), testutil.PR(2, "lib:major"))}
+	rv := &fakeReviewer{}
+	r := reviewRunner(c, rv, true)
+	r.MaxReviews = 1
+	res := r.RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(c.merges) != "[1]" || fmt.Sprint(rv.calls) != "[1]" {
+		t.Fatalf("merges %v, reviews %v", c.merges, rv.calls)
+	}
+	d := res.Decisions[0]
+	if d.Number != 2 || d.Action != policy.ActionReview || !strings.Contains(d.Reason, "review limit of 1 reached") {
+		t.Fatalf("decision %+v", d)
+	}
+}
+
+func TestAgentVerdictsAreCached(t *testing.T) {
+	cache, err := review.OpenCache(t.TempDir() + "/verdicts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr := testutil.PR(1, "lib:major")
+	rv := &fakeReviewer{verdicts: map[int]policy.Verdict{1: {Summary: "no"}}}
+	for range 2 {
+		r := reviewRunner(&fakeClient{repo: testutil.Repo(pr)}, rv, false)
+		r.Verdicts = cache
+		if res := r.RunRepo(context.Background(), repoCfg); res.Decisions[0].Action != policy.ActionSkip {
+			t.Fatalf("decision %+v", res.Decisions[0])
+		}
+	}
+	if len(rv.calls) != 1 {
+		t.Fatalf("reviews %v; want the second run to reuse the verdict", rv.calls)
 	}
 }

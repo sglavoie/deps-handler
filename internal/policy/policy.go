@@ -21,10 +21,15 @@ const (
 	ActionRebase Action = "rebase" // safe but behind: ask Dependabot to rebase
 	ActionWait   Action = "wait"   // transient state: try again next run
 	ActionSkip   Action = "skip"   // not safe: leave untouched
+	// ActionReview: safe but for its size, which the agent must judge.
+	ActionReview Action = "review"
 )
 
 // RebaseCommand is the comment that asks Dependabot to rebase a PR.
 const RebaseCommand = "@dependabot rebase"
+
+// AwaitingReview ends the reason of a PR waiting for the agent's review.
+const AwaitingReview = "; awaiting agent review"
 
 // Decision is the verdict for one pull request.
 type Decision struct {
@@ -37,6 +42,9 @@ type Decision struct {
 	Action       Action                  `json:"action"`
 	Reason       string                  `json:"reason"`
 	FailedChecks []string                `json:"failed_checks,omitempty"`
+	// Verdict is the agent's review, for a PR the policy alone would not
+	// merge because of its size.
+	Verdict *Verdict `json:"verdict,omitempty"`
 	// assessed is true when the PR is Dependabot's own work and its checks
 	// ran on its head commit, so they speak for the update itself.
 	assessed bool
@@ -59,16 +67,31 @@ const (
 	rebaseTimeout = 24 * time.Hour
 )
 
+// Verdict is what the AI agent concluded about one update.
+type Verdict struct {
+	Approved bool     `json:"approved"`
+	Summary  string   `json:"summary"`
+	Concerns []string `json:"concerns"`
+	// Error says why the review could not be done; Approved is then false.
+	Error string `json:"error,omitempty"`
+}
+
+// Judge returns the agent's verdict on a PR whose size the policy does not
+// allow, or nil when the agent has not reviewed it. A nil Judge means agent
+// reviews are off, and such PRs are skipped.
+type Judge func(Decision) *Verdict
+
 // Evaluate decides what to do with every Dependabot PR of repo. viewer is
 // the authenticated login, used to avoid repeating our own rebase requests.
-func Evaluate(repo *github.Repo, p config.Policy, viewer string) []Decision {
+// judge supplies agent verdicts and may be nil.
+func Evaluate(repo *github.Repo, p config.Policy, viewer string, judge Judge) []Decision {
 	out := make([]Decision, 0, len(repo.PullRequests))
 	for i := range repo.PullRequests {
 		pr := &repo.PullRequests[i]
 		if !dependabot.IsLogin(pr.Author) {
 			continue // never touch PRs Dependabot did not open
 		}
-		d := evaluate(repo, pr, p, viewer)
+		d := evaluate(repo, pr, p, viewer, judge)
 		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
@@ -100,7 +123,7 @@ func queueRebases(ds []Decision) {
 	}
 }
 
-func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string) Decision {
+func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string, judge Judge) Decision {
 	d := Decision{PR: pr, Number: pr.Number, Title: pr.Title, URL: pr.URL, Dependencies: []dependabot.Dependency{}}
 	for _, c := range pr.Commits {
 		d.Dependencies = append(d.Dependencies, dependabot.ParseCommitMessage(c.Message)...)
@@ -126,10 +149,20 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		d.Action, d.Reason = ActionSkip, fmt.Sprintf(format, args...)
 		return d
 	}
+	// oversized says why the update is beyond what the policy merges on
+	// its own; the agent may still approve it.
+	oversized := ""
+	switch {
+	case d.Grade == config.UpdateUnknown:
+		oversized = "cannot determine update type from Dependabot metadata"
+	case d.Grade > p.MaxUpdateType:
+		oversized = fmt.Sprintf("%s update exceeds limit (%s)", d.Grade, p.MaxUpdateType)
+	}
 	// wait leaves the PR for a later run; inFlight says whether it holds
-	// the rebase queue meanwhile.
+	// the rebase queue meanwhile, which a PR not yet approved never does.
 	wait := func(inFlight bool, format string, args ...any) Decision {
-		d.Action, d.Reason, d.inFlight = ActionWait, fmt.Sprintf(format, args...), inFlight
+		d.Action, d.Reason = ActionWait, fmt.Sprintf(format, args...)
+		d.inFlight = inFlight && (oversized == "" || d.Verdict != nil && d.Verdict.Approved)
 		return d
 	}
 	upToDate := pr.MergeState != "BEHIND"
@@ -159,16 +192,22 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		}
 	}
 	d.assessed = true
+	if oversized != "" && judge != nil && p.AgentReview {
+		d.Verdict = judge(d)
+	}
 	if pr.ChecksOID != pr.HeadOID {
 		d.assessed = false
-		withinPolicy := d.Grade != config.UpdateUnknown && d.Grade <= p.MaxUpdateType
-		return wait(withinPolicy && upToDate, "checks not yet reported for head commit %.7s", pr.HeadOID)
+		return wait(upToDate, "checks not yet reported for head commit %.7s", pr.HeadOID)
 	}
-	if d.Grade == config.UpdateUnknown {
-		return skip("cannot determine update type from Dependabot metadata")
-	}
-	if d.Grade > p.MaxUpdateType {
-		return skip("%s update exceeds limit (%s)", d.Grade, p.MaxUpdateType)
+	if oversized != "" {
+		switch v := d.Verdict; {
+		case judge == nil || !p.AgentReview:
+			return skip("%s", oversized)
+		case v != nil && v.Error != "":
+			return skip("%s; agent review failed: %s", oversized, v.Error)
+		case v != nil && !v.Approved:
+			return skip("%s; rejected by agent", oversized)
+		}
 	}
 
 	if pr.CheckCount > len(pr.Checks) {
@@ -230,6 +269,15 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return skip("merge state %s", pr.MergeState)
 	}
 
+	if oversized != "" {
+		if safe.Verdict == nil {
+			safe.Action, safe.Reason = ActionReview, oversized+AwaitingReview
+		} else if safe.Action == ActionMerge {
+			safe.Reason = fmt.Sprintf("checks green, %s update approved by agent", safe.Grade)
+		} else {
+			safe.Reason += fmt.Sprintf(" (%s update approved by agent)", safe.Grade)
+		}
+	}
 	if !repo.CanWrite() {
 		safe.Action, safe.Reason = ActionSkip, fmt.Sprintf("would %s, but you only have %s access", safe.Action, strings.ToLower(repo.Permission))
 	}

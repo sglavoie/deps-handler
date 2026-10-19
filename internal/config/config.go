@@ -11,7 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -59,6 +61,10 @@ type Policy struct {
 	MergeMethod   string     `json:"merge_method"`
 	MaxUpdateType UpdateType `json:"max_update_type"`
 	RequireChecks bool       `json:"require_checks"`
+	// AgentReview lets the AI agent judge updates the policy alone would
+	// not merge (over max_update_type, or of unknown size) when a run asks
+	// for agent reviews.
+	AgentReview bool `json:"agent_review"`
 }
 
 // Repo is one configured repository with its resolved policy.
@@ -75,13 +81,52 @@ func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
 // Config is the resolved configuration.
 type Config struct {
 	Repos []Repo
+	Agent Agent
 }
+
+// Agent configures the AI agent that reviews updates the policy alone
+// would not merge.
+type Agent struct {
+	// Use is the agent run by default: "claude" or "codex".
+	Use     string
+	Timeout time.Duration
+	Claude  Claude
+	Codex   Codex
+}
+
+// Claude configures `claude -p`.
+type Claude struct {
+	Model string `yaml:"model"`
+	// ConfigDir is passed as CLAUDE_CONFIG_DIR, picking the account and
+	// settings Claude Code uses.
+	ConfigDir    string  `yaml:"config_dir"`
+	MaxBudgetUSD float64 `yaml:"max_budget_usd"`
+}
+
+// Codex configures `codex exec`.
+type Codex struct {
+	Model string `yaml:"model"`
+	// Home is passed as CODEX_HOME.
+	Home string `yaml:"home"`
+}
+
+// Agents lists the supported agents, the first being the default.
+var Agents = []string{"claude", "codex"}
+
+// ValidAgent reports whether name is a supported agent.
+func ValidAgent(name string) bool {
+	return slices.Contains(Agents, name)
+}
+
+// DefaultAgentTimeout bounds one review when the config sets no timeout.
+const DefaultAgentTimeout = 15 * time.Minute
 
 // overrides holds optional policy fields; nil means "inherit".
 type overrides struct {
 	MergeMethod   *string `yaml:"merge_method"`
 	MaxUpdateType *string `yaml:"max_update_type"`
 	RequireChecks *bool   `yaml:"require_checks"`
+	AgentReview   *bool   `yaml:"agent_review"`
 }
 
 type repoEntry struct {
@@ -129,12 +174,20 @@ func (e *repoEntry) UnmarshalYAML(n *yaml.Node) error {
 type file struct {
 	Defaults overrides   `yaml:"defaults"`
 	Repos    []repoEntry `yaml:"repos"`
+	Agent    agentEntry  `yaml:"agent"`
+}
+
+type agentEntry struct {
+	Use     string `yaml:"use"`
+	Timeout string `yaml:"timeout"`
+	Claude  Claude `yaml:"claude"`
+	Codex   Codex  `yaml:"codex"`
 }
 
 var validMergeMethods = map[string]bool{"squash": true, "merge": true, "rebase": true}
 
 // Builtin is the policy used when neither defaults nor a repo override it.
-var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true}
+var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true}
 
 // DefaultPath returns $XDG_CONFIG_HOME/deps-merger/config.yaml, falling back
 // to ~/.config/deps-merger/config.yaml.
@@ -147,6 +200,32 @@ func DefaultPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".config", "deps-merger", "config.yaml"), nil
+}
+
+// StateDir returns $XDG_STATE_HOME/deps-merger, falling back to
+// ~/.local/state/deps-merger.
+func StateDir() (string, error) {
+	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
+		return filepath.Join(dir, "deps-merger"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "state", "deps-merger"), nil
+}
+
+// CacheDir returns $XDG_CACHE_HOME/deps-merger, falling back to
+// ~/.cache/deps-merger.
+func CacheDir() (string, error) {
+	if dir := os.Getenv("XDG_CACHE_HOME"); dir != "" {
+		return filepath.Join(dir, "deps-merger"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".cache", "deps-merger"), nil
 }
 
 // Load reads and resolves the config file at path.
@@ -175,7 +254,11 @@ func Parse(data []byte) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("defaults: %w", err)
 	}
-	cfg := &Config{}
+	agent, err := parseAgent(f.Agent)
+	if err != nil {
+		return nil, fmt.Errorf("agent: %w", err)
+	}
+	cfg := &Config{Agent: agent}
 	seen := map[string]bool{}
 	for i, e := range f.Repos {
 		owner, name, ok := strings.Cut(strings.TrimSpace(e.Repo), "/")
@@ -218,7 +301,51 @@ func apply(base Policy, o overrides) (Policy, error) {
 	if o.RequireChecks != nil {
 		p.RequireChecks = *o.RequireChecks
 	}
+	if o.AgentReview != nil {
+		p.AgentReview = *o.AgentReview
+	}
 	return p, nil
+}
+
+func parseAgent(e agentEntry) (Agent, error) {
+	a := Agent{Use: strings.ToLower(e.Use), Timeout: DefaultAgentTimeout, Claude: e.Claude, Codex: e.Codex}
+	if a.Use == "" {
+		a.Use = Agents[0]
+	}
+	if !ValidAgent(a.Use) {
+		return a, fmt.Errorf("invalid use %q (want %s)", e.Use, strings.Join(Agents, " or "))
+	}
+	if e.Timeout != "" {
+		d, err := time.ParseDuration(e.Timeout)
+		if err != nil || d <= 0 {
+			return a, fmt.Errorf("invalid timeout %q (want a duration such as 15m)", e.Timeout)
+		}
+		a.Timeout = d
+	}
+	if a.Claude.MaxBudgetUSD < 0 {
+		return a, errors.New("claude.max_budget_usd must not be negative")
+	}
+	var err error
+	if a.Claude.ConfigDir, err = expandHome(a.Claude.ConfigDir); err != nil {
+		return a, err
+	}
+	if a.Codex.Home, err = expandHome(a.Codex.Home); err != nil {
+		return a, err
+	}
+	return a, nil
+}
+
+// expandHome replaces a leading ~ with the home directory, as a shell
+// would for a path written in the config.
+func expandHome(path string) (string, error) {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, path[1:]), nil
 }
 
 // Filter keeps only the repos named in only (case-insensitive owner/name or

@@ -14,7 +14,7 @@ var defaultPolicy = config.Builtin
 
 func one(t *testing.T, repo *github.Repo, p config.Policy) Decision {
 	t.Helper()
-	ds := Evaluate(repo, p, "me")
+	ds := Evaluate(repo, p, "me", nil)
 	if len(ds) != 1 {
 		t.Fatalf("got %d decisions", len(ds))
 	}
@@ -131,7 +131,7 @@ func TestEvaluate(t *testing.T) {
 func TestEvaluateIgnoresNonDependabotPRs(t *testing.T) {
 	human := testutil.PR(2)
 	human.Author = "sglavoie"
-	ds := Evaluate(testutil.Repo(testutil.PR(1), human), defaultPolicy, "me")
+	ds := Evaluate(testutil.Repo(testutil.PR(1), human), defaultPolicy, "me", nil)
 	if len(ds) != 1 || ds[0].Number != 1 {
 		t.Fatalf("decisions = %+v", ds)
 	}
@@ -161,26 +161,26 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 		return strings.Join(parts, "; ")
 	}
 
-	ds := Evaluate(testutil.Repo(behind(1), behind(2), behind(3)), defaultPolicy, "me")
+	ds := Evaluate(testutil.Repo(behind(1), behind(2), behind(3)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "rebase behind base branch; wait queued behind #1; wait queued behind #1"; got != want {
 		t.Errorf("all behind:\n got %s\nwant %s", got, want)
 	}
 
-	ds = Evaluate(testutil.Repo(behind(1), testutil.PR(2)), defaultPolicy, "me")
+	ds = Evaluate(testutil.Repo(behind(1), testutil.PR(2)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "wait queued behind #2; merge checks green, within policy"; got != want {
 		t.Errorf("merge pending:\n got %s\nwant %s", got, want)
 	}
 
 	requested := behind(1)
 	requested.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
-	ds = Evaluate(testutil.Repo(requested, behind(2)), defaultPolicy, "me")
+	ds = Evaluate(testutil.Repo(requested, behind(2)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "wait rebase already requested; wait queued behind #1"; got != want {
 		t.Errorf("rebase in flight:\n got %s\nwant %s", got, want)
 	}
 
 	stalled := testutil.Repo(requested, behind(2))
 	stalled.FetchedAt = testutil.T0.Add(25 * time.Hour)
-	ds = Evaluate(stalled, defaultPolicy, "me")
+	ds = Evaluate(stalled, defaultPolicy, "me", nil)
 	if got, want := actions(ds), "skip rebase requested a day ago and not done; left for a human; rebase behind base branch"; got != want {
 		t.Errorf("rebase stalled:\n got %s\nwant %s", got, want)
 	}
@@ -189,14 +189,14 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 	rebased := testutil.PR(1)
 	rebased.Checks[0].State = github.CheckPending
 	rebased.MergeState = "BLOCKED"
-	ds = Evaluate(testutil.Repo(rebased, behind(2)), defaultPolicy, "me")
+	ds = Evaluate(testutil.Repo(rebased, behind(2)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "wait 1 check(s) still running; wait queued behind #1"; got != want {
 		t.Errorf("CI running:\n got %s\nwant %s", got, want)
 	}
 
 	pushed := testutil.PR(1)
 	pushed.ChecksOID = "older"
-	ds = Evaluate(testutil.Repo(pushed, behind(2)), defaultPolicy, "me")
+	ds = Evaluate(testutil.Repo(pushed, behind(2)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "wait checks not yet reported for head commit sha1; wait queued behind #1"; got != want {
 		t.Errorf("checks not reported:\n got %s\nwant %s", got, want)
 	}
@@ -206,8 +206,86 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 	major.ChecksOID = "older"
 	stillBehind := behind(2)
 	stillBehind.Checks[0].State = github.CheckPending
-	ds = Evaluate(testutil.Repo(major, stillBehind, behind(3)), defaultPolicy, "me")
+	ds = Evaluate(testutil.Repo(major, stillBehind, behind(3)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "wait checks not yet reported for head commit sha1; wait 1 check(s) still running; rebase behind base branch"; got != want {
 		t.Errorf("not in flight:\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestEvaluateAgentReview(t *testing.T) {
+	approved := func(Decision) *Verdict { return &Verdict{Approved: true, Summary: "fine"} }
+	rejected := func(Decision) *Verdict { return &Verdict{Summary: "breaks API"} }
+	failed := func(Decision) *Verdict { return &Verdict{Error: "timed out"} }
+	unreviewed := func(Decision) *Verdict { return nil }
+	cases := []struct {
+		name   string
+		deps   []string
+		mutate func(*github.Repo, *github.PullRequest)
+		policy func(*config.Policy)
+		judge  Judge
+		action Action
+		reason string
+	}{
+		{name: "major awaits review", deps: []string{"lib:major"}, judge: unreviewed,
+			action: ActionReview, reason: "major update exceeds limit (minor); awaiting agent review"},
+		{name: "unknown grade awaits review", judge: unreviewed, action: ActionReview, reason: "cannot determine update type",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].Message = "bump" }},
+		{name: "approved major merges", deps: []string{"lib:major"}, judge: approved,
+			action: ActionMerge, reason: "checks green, major update approved by agent"},
+		{name: "approved unknown merges", judge: approved, action: ActionMerge, reason: "unknown update approved by agent",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].Message = "bump" }},
+		{name: "approved behind rebases", deps: []string{"lib:major"}, judge: approved,
+			action: ActionRebase, reason: "behind base branch (major update approved by agent)",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.MergeState = "BEHIND" }},
+		{name: "rejected is skipped", deps: []string{"lib:major"}, judge: rejected,
+			action: ActionSkip, reason: "major update exceeds limit (minor); rejected by agent"},
+		{name: "failed review is skipped", deps: []string{"lib:major"}, judge: failed,
+			action: ActionSkip, reason: "agent review failed: timed out"},
+		{name: "repo opted out", deps: []string{"lib:major"}, judge: approved,
+			policy: func(p *config.Policy) { p.AgentReview = false },
+			action: ActionSkip, reason: "major update exceeds limit (minor)"},
+		{name: "within policy ignores judge", judge: rejected, action: ActionMerge, reason: "checks green, within policy"},
+		{name: "approval does not excuse failing checks", deps: []string{"lib:major"}, judge: approved,
+			action: ActionSkip, reason: "failing checks: build",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckFailed }},
+		{name: "approval does not excuse a human commit", deps: []string{"lib:major"}, judge: approved,
+			action: ActionSkip, reason: "not signed by GitHub",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].SignedByGitHub = false }},
+		{name: "read-only repo is not reviewed", deps: []string{"lib:major"}, judge: unreviewed,
+			action: ActionSkip, reason: "would review, but you only have read access",
+			mutate: func(r *github.Repo, _ *github.PullRequest) { r.Permission = "READ" }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			repo := testutil.Repo(testutil.PR(1, c.deps...))
+			if c.mutate != nil {
+				c.mutate(repo, &repo.PullRequests[0])
+			}
+			p := defaultPolicy
+			if c.policy != nil {
+				c.policy(&p)
+			}
+			ds := Evaluate(repo, p, "me", c.judge)
+			if d := ds[0]; d.Action != c.action || !strings.Contains(d.Reason, c.reason) {
+				t.Fatalf("got %s %q, want %s containing %q", d.Action, d.Reason, c.action, c.reason)
+			}
+		})
+	}
+}
+
+func TestEvaluateUnapprovedDoesNotHoldRebaseQueue(t *testing.T) {
+	major := testutil.PR(1, "lib:major")
+	major.Checks[0].State = github.CheckPending
+	behind := testutil.PR(2)
+	behind.MergeState = "BEHIND"
+	unreviewed := func(Decision) *Verdict { return nil }
+	ds := Evaluate(testutil.Repo(major, behind), defaultPolicy, "me", unreviewed)
+	if ds[1].Action != ActionRebase {
+		t.Fatalf("unreviewed major held the queue: %s %q", ds[1].Action, ds[1].Reason)
+	}
+	approved := func(Decision) *Verdict { return &Verdict{Approved: true} }
+	ds = Evaluate(testutil.Repo(major, behind), defaultPolicy, "me", approved)
+	if ds[1].Action != ActionWait || ds[1].Reason != "queued behind #1" {
+		t.Fatalf("approved major should hold the queue: %s %q", ds[1].Action, ds[1].Reason)
 	}
 }

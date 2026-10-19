@@ -52,6 +52,7 @@ func TestReposListsPolicy(t *testing.T) {
 
 func TestRunErrorsExitOne(t *testing.T) {
 	cfg := writeConfig(t, "repos:\n  - repo: o/a\n    skip: true\n")
+	active := writeConfig(t, "repos:\n  - o/a\n")
 	for name, c := range map[string]struct {
 		args   []string
 		stderr string
@@ -61,6 +62,8 @@ func TestRunErrorsExitOne(t *testing.T) {
 		"unknown repo":   {[]string{"run", "-c", cfg, "-r", "zzz"}, `repo "zzz" is not in the config`},
 		"unexpected arg": {[]string{"run", "extra"}, "unknown command"},
 		"unknown flag":   {[]string{"run", "--nope"}, "unknown flag"},
+		"unknown agent":  {[]string{"run", "-c", active, "--agent", "gemini"}, `unknown agent "gemini" (want claude or codex)`},
+		"bad limit":      {[]string{"run", "-c", active, "--review", "--max-reviews", "-1"}, "--max-reviews must not be negative"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, _, stderr := run(c.args...)

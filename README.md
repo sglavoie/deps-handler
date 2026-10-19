@@ -10,6 +10,7 @@ deps-merger repos                 # effective policy per repo
 deps-merger run                   # dry run: report only
 deps-merger run --apply           # merge safe PRs
 deps-merger run -r Storefront --json  # one repo, machine-readable
+deps-merger run --review --apply  # let an AI agent judge majors too
 ```
 
 ## What counts as safe
@@ -49,6 +50,50 @@ processed at once, but merges and comments are never sent concurrently.
 PRs not opened by Dependabot are never fetched: the query asks GitHub only
 for `author:app/dependabot`, and the author is checked again locally.
 
+## Agent review
+
+Some updates are safe in every way the policy can check but their size:
+a major bump over `max_update_type`, or an update whose size Dependabot
+does not record as semver (a GitHub Action pinned by commit, a Docker
+digest). With `--review`, deps-merger asks an AI agent about those, once
+everything else about them would let them merge or rebase:
+
+```bash
+deps-merger run --review                # dry run: review, merge nothing
+deps-merger run --review --apply
+deps-merger run --agent codex --apply   # another agent; implies --review
+```
+
+The agent gets a shallow checkout of the PR's head commit (kept under
+`~/.cache/deps-merger/checkouts` and reused), the PR description with
+Dependabot's release notes and changelog, and the diff. It looks for
+breaking changes upstream and how the repository uses what changed, then
+answers `approve` or `reject` with its reasons. It runs read-only:
+
+- Claude Code: `claude -p --restricted --strict-mcp-config` with only the
+  Read, Grep and Glob tools, no MCP servers and no settings files;
+- Codex: `codex exec --sandbox read-only --ephemeral`.
+
+The agent never merges anything. An approved PR is evaluated again and
+merged (or rebased) like any other: Dependabot's signed commits, green
+checks, mergeability and the pinned head SHA are all checked again first.
+A rejection is reported with the agent's concerns under "needs
+attention"; a review that fails or times out leaves the PR alone and makes
+the run exit 1. The PR description is treated as untrusted: the prompt
+tells the agent it cannot change its instructions.
+
+Reviews run after the run's other merges, two at a time, at most
+`--max-reviews` (default 10) per run. Verdicts are kept for 14 days in
+`~/.local/state/deps-merger/verdicts.json`, keyed by the PR and the
+versions it moves to, so a rebase does not trigger a new review but a new
+version does. Delete an entry, or the file, to have an update reviewed
+again.
+
+Configure the agent under `agent:` in the config. `claude.config_dir` is
+passed as `CLAUDE_CONFIG_DIR`, picking the Claude Code account and
+settings to use; `codex.home` is passed as `CODEX_HOME`. Set
+`agent_review: false` on a repo to keep the agent out of it.
+
 ## What needs attention
 
 Under each repo the report lists, without acting on them:
@@ -66,7 +111,9 @@ Under each repo the report lists, without acting on them:
   `@dependabot recreate` as the fix;
 - **no checks** and **read-only** repositories;
 - **truncated**: more than 100 open Dependabot PRs, so only the oldest 100
-  were evaluated.
+  were evaluated;
+- **agent rejected** / **agent failed**: an update the agent judged unsafe,
+  with its concerns, or could not review.
 
 ## Scripting
 
@@ -74,14 +121,16 @@ A dry run never writes, so `deps-merger run` is safe to schedule. For
 `deps-merger run --apply` from cron or CI, the exit status is:
 
 - `0`: every repository was processed and every write succeeded;
-- `1`: a repository could not be processed, or a merge or rebase request
-  failed (the report says which);
+- `1`: a repository could not be processed, a merge or rebase request
+  failed, or an agent review could not be done (the report says which);
 - `130`: interrupted (Ctrl-C or `SIGTERM`).
 
 `--json` prints `{"apply": bool, "results": [...]}` with one result per
 repository: `repo`, `policy`, `permission`, `decisions` (one per PR, with
-`action` `merge`, `rebase`, `wait` or `skip` and a `reason`), `findings`
-(`kind`, `summary`, `prs`, `suggestions`), `events` (the writes made:
+`action` `merge`, `rebase`, `review`, `wait` or `skip`, a `reason`, and a
+`verdict` with `approved`, `summary`, `concerns` and `error` when the agent
+reviewed it), `findings` (`kind`, `summary`, `prs`, `details`,
+`suggestions`), `events` (the writes made:
 `merged`, `merge-failed`, `rebase-requested`, `rebase-failed`, each with the
 PR's `url` and `grade`), `merge_method` (the one merges use) and `error`
 when the repository could not be read (`interrupted` if the run was
@@ -92,7 +141,8 @@ end.
 ## Config
 
 See [`config.example.yaml`](config.example.yaml). Defaults: squash,
-patch and minor only, checks required. Every field can be overridden per repo.
+patch and minor only, checks required, agent review allowed (it only runs
+with `--review`), Claude as the agent. Every field can be overridden per repo.
 When a repo does not allow the configured merge method, the first one it
 allows (squash, merge, rebase) is used and the report header says so.
 

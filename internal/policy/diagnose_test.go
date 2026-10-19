@@ -10,7 +10,7 @@ import (
 )
 
 func findings(repo *github.Repo) map[FindingKind][]Finding {
-	ds := Evaluate(repo, defaultPolicy, "me")
+	ds := Evaluate(repo, defaultPolicy, "me", nil)
 	out := map[FindingKind][]Finding{}
 	for _, f := range Diagnose(repo, defaultPolicy, ds) {
 		out[f.Kind] = append(out[f.Kind], f)
@@ -148,5 +148,30 @@ func TestDiagnoseIgnoresUnassessedFailures(t *testing.T) {
 	f := findings(testutil.Repo(edited, moved, testutil.PR(3), testutil.PR(4)))
 	if len(f[FindingIncompatible]) != 0 {
 		t.Fatalf("incompatible = %+v; a failure on a human's change or another commit is not the update's", f[FindingIncompatible])
+	}
+}
+
+func TestDiagnoseAgentVerdicts(t *testing.T) {
+	repo := testutil.Repo(testutil.PR(1, "lib:major"), testutil.PR(2, "lib:major"), testutil.PR(3, "lib:major"), testutil.PR(4, "lib:major"))
+	verdicts := map[int]*Verdict{
+		1: {Summary: "drops Python 3.9", Concerns: []string{"setup.cfg pins 3.9"}},
+		2: {Error: "timed out"},
+		3: {Approved: true},
+	}
+	ds := Evaluate(repo, defaultPolicy, "me", func(d Decision) *Verdict { return verdicts[d.Number] })
+	got := map[FindingKind][]Finding{}
+	for _, f := range Diagnose(repo, defaultPolicy, ds) {
+		got[f.Kind] = append(got[f.Kind], f)
+	}
+	rej := got[FindingAgentRejected]
+	if len(rej) != 1 || rej[0].PRs[0] != 1 || !strings.Contains(rej[0].Summary, "drops Python 3.9") || len(rej[0].Details) != 1 {
+		t.Errorf("rejected = %+v", rej)
+	}
+	if f := got[FindingAgentFailed]; len(f) != 1 || f[0].PRs[0] != 2 || !strings.Contains(f[0].Summary, "timed out") {
+		t.Errorf("failed = %+v", f)
+	}
+	// Neither the approved PR nor the one awaiting review is "held".
+	if f := got[FindingHeldMajor]; len(f) != 0 {
+		t.Errorf("held majors = %+v", f)
 	}
 }

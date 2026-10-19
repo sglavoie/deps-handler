@@ -3,22 +3,32 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 
+	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/cli/go-gh/v2/pkg/term"
+	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/report"
+	"github.com/sglavoie/deps-merger/internal/review"
 	"github.com/sglavoie/deps-merger/internal/runner"
 	"github.com/spf13/cobra"
 )
 
 func newRunCmd() *cobra.Command {
 	var (
-		apply  bool
-		asJSON bool
-		repos  []string
+		apply      bool
+		asJSON     bool
+		repos      []string
+		reviews    bool
+		agentName  string
+		maxReviews int
 	)
 	c := &cobra.Command{
 		Use:   "run",
@@ -31,8 +41,16 @@ safe PRs one at a time per repository and comments "@dependabot rebase" on
 safe PRs that are behind their base branch. Up to four repositories are
 processed at once; the report keeps the config order.
 
+With --review (or --agent), an AI agent judges the PRs the policy alone
+would not merge because of their size: updates over max_update_type and
+updates of unknown size, once everything else about them is safe. The
+agent only reads a checkout of the PR; an update it approves is merged
+like any other, after every check has been made again. Verdicts are
+cached, so a scheduled run does not pay twice for the same update. A dry
+run reviews too, and shows what would be merged.
+
 Exits 1 if a repository could not be processed or a merge or rebase request
-failed, and 130 when interrupted.`,
+failed or an agent review could not be done, and 130 when interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loadConfig()
@@ -45,6 +63,15 @@ failed, and 130 when interrupted.`,
 			}
 			if len(selected) == 0 {
 				return errors.New("every configured repo has skip: true; name one with --repo to run it")
+			}
+			if maxReviews < 0 {
+				return errors.New("--max-reviews must not be negative")
+			}
+			var agent review.Agent
+			if reviews || agentName != "" {
+				if agent, err = newAgent(cfg.Agent, agentName); err != nil {
+					return err
+				}
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -70,7 +97,13 @@ failed, and 130 when interrupted.`,
 				// unless stderr is captured along with it.
 				progress = func(r runner.RepoResult) { report.Progress(errOut, r) }
 			}
-			results := runner.New(client, viewer, apply).Run(ctx, selected, progress)
+			r := runner.New(client, viewer, apply)
+			if agent != nil {
+				if err := setupReviews(r, cfg.Agent, agent, client, maxReviews); err != nil {
+					return err
+				}
+			}
+			results := r.Run(ctx, selected, progress)
 			if asJSON {
 				if err := report.JSON(out, apply, results); err != nil {
 					return err
@@ -92,7 +125,56 @@ failed, and 130 when interrupted.`,
 	c.Flags().BoolVar(&apply, "apply", false, "merge safe PRs and request rebases (default is a dry run)")
 	c.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
+	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge major updates and updates of unknown size")
+	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+strings.Join(config.Agents, " or ")+" (default from config; implies --review)")
+	c.Flags().IntVar(&maxReviews, "max-reviews", 10, "most agent reviews in one run (0 for no limit)")
 	return c
+}
+
+// newAgent builds the agent named by --agent, or the configured one.
+func newAgent(cfg config.Agent, name string) (review.Agent, error) {
+	if name == "" {
+		name = cfg.Use
+	}
+	var agent review.Agent
+	switch strings.ToLower(name) {
+	case "claude":
+		agent = review.Claude{Model: cfg.Claude.Model, ConfigDir: cfg.Claude.ConfigDir, MaxBudgetUSD: cfg.Claude.MaxBudgetUSD}
+	case "codex":
+		agent = review.Codex{Model: cfg.Codex.Model, Home: cfg.Codex.Home}
+	default:
+		return nil, fmt.Errorf("unknown agent %q (want %s)", name, strings.Join(config.Agents, " or "))
+	}
+	if _, err := exec.LookPath(agent.Name()); err != nil {
+		return nil, fmt.Errorf("%s is not installed or not on PATH", agent.Name())
+	}
+	return agent, nil
+}
+
+// setupReviews gives r an agent reviewer with its checkouts and verdict
+// cache in the XDG cache and state directories.
+func setupReviews(r *runner.Runner, cfg config.Agent, agent review.Agent, client github.Client, maxReviews int) error {
+	cacheDir, err := config.CacheDir()
+	if err != nil {
+		return err
+	}
+	stateDir, err := config.StateDir()
+	if err != nil {
+		return err
+	}
+	verdicts, err := review.OpenCache(filepath.Join(stateDir, "verdicts.json"))
+	if err != nil {
+		return err
+	}
+	token, _ := auth.TokenForHost("github.com")
+	r.Reviewer = &review.AgentReviewer{
+		Agent:     agent,
+		Details:   client,
+		Workspace: &review.Workspace{Root: filepath.Join(cacheDir, "checkouts"), Token: token},
+		Timeout:   cfg.Timeout,
+	}
+	r.AgentName, r.Verdicts, r.MaxReviews = agent.Name(), verdicts, maxReviews
+	return nil
 }
 
 var errInterrupted = errors.New("interrupted")

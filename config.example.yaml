@@ -4,12 +4,27 @@
 #   merge_method:    squash | merge | rebase (falls back to what the repo allows)
 #   max_update_type: patch | minor | major   (largest semver bump merged)
 #   require_checks:  true = a PR with no CI checks is never merged
+#   agent_review:    true = with --review, the agent may approve updates over
+#                    max_update_type or of unknown size (default true)
 # A repo entry can also set skip: true to leave it out of runs; naming it
 # with --repo still runs it.
 defaults:
   merge_method: squash
   max_update_type: minor
   require_checks: true
+
+# The AI agent `deps-merger run --review` uses to judge major updates and
+# updates of unknown size. --agent claude|codex overrides `use`.
+agent:
+  use: claude
+  timeout: 15m              # per review
+  claude:
+    model: opus             # empty: Claude Code's default
+    config_dir: ~/.claude   # passed as CLAUDE_CONFIG_DIR
+    max_budget_usd: 2       # per review; 0 or unset: no cap
+  codex:
+    model: ""               # empty: Codex's default
+    home: ""                # passed as CODEX_HOME when set
 
 repos:
   - acme/Billing
