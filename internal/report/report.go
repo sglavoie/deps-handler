@@ -40,7 +40,8 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 		fmt.Fprintf(w, "  error: %s\n\n", res.Error)
 		return
 	}
-	if len(res.Decisions) == 0 && len(res.Events) == 0 {
+	decisions := pending(res)
+	if len(decisions) == 0 && len(res.Events) == 0 {
 		fmt.Fprintln(w, "  no open Dependabot PRs")
 		fmt.Fprintln(w)
 		return
@@ -50,7 +51,7 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 	for _, ev := range res.Events {
 		fmt.Fprintf(tw, "  #%d\t\t%s\t%s\t%s\n", ev.Number, ev.Kind, ev.Detail, truncate(ev.Title))
 	}
-	for _, d := range res.Decisions {
+	for _, d := range decisions {
 		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", d.Number, d.Grade, label(d.Action, apply), d.Reason, truncate(d.Title))
 	}
 	tw.Flush()
@@ -82,12 +83,12 @@ func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
 		for _, ev := range r.Events {
 			counts[string(ev.Kind)]++
 		}
-		for _, d := range r.Decisions {
+		for _, d := range pending(r) {
 			counts[label(d.Action, apply)]++
 		}
 	}
 	var parts []string
-	for _, k := range []string{"merged", "merge-failed", "would merge", "rebase-requested", "would rebase", "wait", "skip"} {
+	for _, k := range []string{"merged", "merge-failed", "merge", "would merge", "rebase-requested", "rebase-failed", "rebase", "would rebase", "wait", "skip"} {
 		if counts[k] > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
 		}
@@ -106,6 +107,23 @@ func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
 	if !apply && (counts["would merge"] > 0 || counts["would rebase"] > 0) {
 		fmt.Fprintln(w, "dry run: nothing was changed; rerun with --apply to merge")
 	}
+}
+
+// pending returns the decisions for PRs this run did not act on. A PR with
+// an event is shown by its event alone: after a failed merge its decision
+// still says "merge", which reads as if it had merged.
+func pending(res runner.RepoResult) []policy.Decision {
+	acted := map[int]bool{}
+	for _, ev := range res.Events {
+		acted[ev.Number] = true
+	}
+	var out []policy.Decision
+	for _, d := range res.Decisions {
+		if !acted[d.Number] {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func label(a policy.Action, apply bool) string {

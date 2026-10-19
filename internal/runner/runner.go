@@ -40,6 +40,20 @@ type RepoResult struct {
 	Error      string            `json:"error,omitempty"`
 }
 
+// Failed reports whether the repository could not be processed or a write
+// to it failed.
+func (r RepoResult) Failed() bool {
+	if r.Error != "" {
+		return true
+	}
+	for _, ev := range r.Events {
+		if ev.Kind == EventMergeFailed || ev.Kind == EventRebaseFailed {
+			return true
+		}
+	}
+	return false
+}
+
 type Runner struct {
 	Client github.Client
 	Viewer string
@@ -84,8 +98,15 @@ func (r *Runner) Run(ctx context.Context, repos []config.Repo, progress func(Rep
 }
 
 func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
-	res := RepoResult{Repo: rc.FullName(), Policy: rc.Policy}
+	res := RepoResult{
+		Repo:      rc.FullName(),
+		Policy:    rc.Policy,
+		Decisions: []policy.Decision{},
+		Findings:  []policy.Finding{},
+		Events:    []Event{},
+	}
 	attempted := map[int]bool{}
+	retried := map[int]bool{}
 	rebased := map[int]bool{}
 	polls := 0
 
@@ -154,6 +175,17 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		method, err := policy.MergeMethod(repo, rc.Policy.MergeMethod)
 		if err == nil {
 			err = r.Client.Merge(ctx, rc.Owner, rc.Name, next.Number, method, next.PR.HeadOID)
+		}
+		if err != nil && github.Retryable(err) && !retried[next.Number] {
+			// GitHub may not have caught up with the previous merge yet:
+			// wait, refetch, and try this PR once more.
+			retried[next.Number] = true
+			delete(attempted, next.Number)
+			if err := r.Sleep(ctx, r.PollInterval); err != nil {
+				res.Error = err.Error()
+				return res
+			}
+			continue
 		}
 		if err != nil {
 			ev.Kind, ev.Detail = EventMergeFailed, err.Error()

@@ -38,8 +38,12 @@ vet:
 tidy:
     go mod tidy
 
+# Static analysis (go install honnef.co/go/tools/cmd/staticcheck@latest)
+lint:
+    staticcheck ./...
+
 # Everything CI should check
-ci: vet test
+ci: vet lint test
     @test -z "$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
 
 # Dry run against the configured repos

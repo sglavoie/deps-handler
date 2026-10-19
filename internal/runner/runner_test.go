@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/testutil"
@@ -14,10 +15,12 @@ import (
 // fakeClient serves a mutable repo; merging removes the PR and, like
 // GitHub, briefly leaves the others' mergeability UNKNOWN.
 type fakeClient struct {
-	repo       *github.Repo
-	merges     []int
-	comments   map[int][]string
-	failMerge  map[int]bool
+	repo      *github.Repo
+	merges    []int
+	comments  map[int][]string
+	failMerge map[int]bool
+	// transient fails a PR's merge with this error that many times first.
+	transient  map[int]int
 	unknownFor int
 }
 
@@ -38,6 +41,10 @@ func (f *fakeClient) FetchRepo(context.Context, string, string) (*github.Repo, e
 func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) error {
 	if f.failMerge[n] {
 		return errors.New("405 not mergeable")
+	}
+	if f.transient[n] > 0 {
+		f.transient[n]--
+		return &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}
 	}
 	f.merges = append(f.merges, n)
 	var keep []github.PullRequest
@@ -107,6 +114,36 @@ func TestApplyContinuesAfterMergeFailure(t *testing.T) {
 	}
 	if res.Events[0].Kind != EventMergeFailed || res.Events[0].Number != 1 {
 		t.Fatalf("events = %+v", res.Events)
+	}
+	if !res.Failed() {
+		t.Fatal("a failed merge must mark the result failed")
+	}
+}
+
+func TestApplyRetriesTransientMergeFailureOnce(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), transient: map[int]int{1: 1}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 1 || len(res.Events) != 1 || res.Events[0].Kind != EventMerged {
+		t.Fatalf("merges = %v events = %+v", fc.merges, res.Events)
+	}
+	if res.Failed() {
+		t.Fatal("a merge that succeeded on retry is not a failure")
+	}
+}
+
+func TestApplyGivesUpAfterSecondTransientFailure(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), transient: map[int]int{1: 2}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 0 || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed {
+		t.Fatalf("merges = %v events = %+v", fc.merges, res.Events)
+	}
+}
+
+func TestResultSlicesAreNeverNil(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo()}
+	res := newRunner(fc, false).RunRepo(context.Background(), repoCfg)
+	if res.Decisions == nil || res.Findings == nil || res.Events == nil {
+		t.Fatalf("nil slice in %+v; JSON would print null", res)
 	}
 }
 

@@ -55,7 +55,7 @@ func Evaluate(repo *github.Repo, p config.Policy, viewer string) []Decision {
 }
 
 func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string) Decision {
-	d := Decision{PR: pr, Number: pr.Number, Title: pr.Title, URL: pr.URL}
+	d := Decision{PR: pr, Number: pr.Number, Title: pr.Title, URL: pr.URL, Dependencies: []dependabot.Dependency{}}
 	for _, c := range pr.Commits {
 		d.Dependencies = append(d.Dependencies, dependabot.ParseCommitMessage(c.Message)...)
 	}
@@ -83,6 +83,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return skip("too many commits to verify (%d)", pr.CommitCount)
 	}
 	for _, c := range pr.Commits {
+		if c.AuthorCount > len(c.Authors) {
+			return skip("too many authors to verify on commit %.7s (%d)", c.OID, c.AuthorCount)
+		}
 		for _, a := range c.Authors {
 			if !dependabot.IsCommitAuthor(a.Login, a.Name, a.Email) {
 				who := a.Login
@@ -92,6 +95,10 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 				return skip("modified by %s (commit %.7s); left for a human", who, c.OID)
 			}
 		}
+		// Author identities can be forged; GitHub's signature cannot.
+		if !c.SignedByGitHub {
+			return skip("commit %.7s is not signed by GitHub; left for a human", c.OID)
+		}
 	}
 	if d.Grade == config.UpdateUnknown {
 		return skip("cannot determine update type from Dependabot metadata")
@@ -100,6 +107,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return skip("%s update exceeds limit (%s)", d.Grade, p.MaxUpdateType)
 	}
 
+	if pr.CheckCount > len(pr.Checks) {
+		return skip("too many checks to verify (%d)", pr.CheckCount)
+	}
 	pending := 0
 	for _, c := range pr.Checks {
 		if c.State == github.CheckPending {

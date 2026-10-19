@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -38,6 +39,12 @@ type Commit struct {
 	Message       string    `json:"-"`
 	CommittedDate time.Time `json:"committed_date"`
 	Authors       []Author  `json:"authors"`
+	// AuthorCount is the total number of authors, which can exceed the
+	// number fetched into Authors.
+	AuthorCount int `json:"author_count"`
+	// SignedByGitHub is true when the commit carries a valid signature made
+	// with GitHub's own key, as Dependabot's commits do.
+	SignedByGitHub bool `json:"signed_by_github"`
 }
 
 type Comment struct {
@@ -61,7 +68,10 @@ type PullRequest struct {
 	CommitCount    int       `json:"commit_count"`
 	Commits        []Commit  `json:"commits"`
 	Checks         []Check   `json:"checks"`
-	Comments       []Comment `json:"-"`
+	// CheckCount is the total number of checks, which can exceed the number
+	// fetched into Checks.
+	CheckCount int       `json:"check_count"`
+	Comments   []Comment `json:"-"`
 }
 
 type Repo struct {
@@ -72,6 +82,9 @@ type Repo struct {
 	MergeAllowed  bool          `json:"merge_allowed"`
 	RebaseAllowed bool          `json:"rebase_allowed"`
 	PullRequests  []PullRequest `json:"pull_requests"`
+	// OpenPRCount is how many open Dependabot PRs GitHub reports, which can
+	// exceed the number fetched into PullRequests.
+	OpenPRCount int `json:"open_pr_count"`
 }
 
 // CanWrite reports whether the viewer can merge and comment as a collaborator.
@@ -130,6 +143,7 @@ query($owner: String!, $name: String!, $search: String!) {
     rebaseMergeAllowed
   }
   search(query: $search, type: ISSUE, first: 100) {
+    issueCount
     nodes {
       ... on PullRequest {
         number state title url isDraft createdAt headRefOid baseRefName
@@ -139,11 +153,12 @@ query($owner: String!, $name: String!, $search: String!) {
           totalCount
           nodes { commit {
             oid message committedDate
-            authors(first: 5) { nodes { name email user { login } } }
+            authors(first: 5) { totalCount nodes { name email user { login } } }
+            signature { isValid wasSignedByGitHub }
           } }
         }
         last: commits(last: 1) {
-          nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+          nodes { commit { statusCheckRollup { contexts(first: 100) { totalCount nodes {
             __typename
             ... on CheckRun { name status conclusion }
             ... on StatusContext { context state }
@@ -165,7 +180,8 @@ type gqlRepo struct {
 		RebaseMergeAllowed bool
 	}
 	Search struct {
-		Nodes []struct {
+		IssueCount int
+		Nodes      []struct {
 			Number           int
 			State            string
 			Title            string
@@ -186,11 +202,16 @@ type gqlRepo struct {
 						Message       string
 						CommittedDate time.Time
 						Authors       struct {
-							Nodes []struct {
+							TotalCount int
+							Nodes      []struct {
 								Name  string
 								Email string
 								User  *struct{ Login string }
 							}
+						}
+						Signature *struct {
+							IsValid           bool
+							WasSignedByGitHub bool
 						}
 					}
 				}
@@ -200,7 +221,8 @@ type gqlRepo struct {
 					Commit struct {
 						StatusCheckRollup *struct {
 							Contexts struct {
-								Nodes []struct {
+								TotalCount int
+								Nodes      []struct {
 									Typename   string `json:"__typename"`
 									Name       string
 									Status     string
@@ -244,6 +266,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		SquashAllowed: resp.Repository.SquashMergeAllowed,
 		MergeAllowed:  resp.Repository.MergeCommitAllowed,
 		RebaseAllowed: resp.Repository.RebaseMergeAllowed,
+		OpenPRCount:   resp.Search.IssueCount,
 	}
 	for _, n := range resp.Search.Nodes {
 		if n.Number == 0 || n.State != "OPEN" {
@@ -266,7 +289,15 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			pr.Author = n.Author.Login
 		}
 		for _, cn := range n.Commits.Nodes {
-			cm := Commit{OID: cn.Commit.Oid, Message: cn.Commit.Message, CommittedDate: cn.Commit.CommittedDate}
+			cm := Commit{
+				OID:           cn.Commit.Oid,
+				Message:       cn.Commit.Message,
+				CommittedDate: cn.Commit.CommittedDate,
+				AuthorCount:   cn.Commit.Authors.TotalCount,
+			}
+			if sig := cn.Commit.Signature; sig != nil {
+				cm.SignedByGitHub = sig.IsValid && sig.WasSignedByGitHub
+			}
 			for _, a := range cn.Commit.Authors.Nodes {
 				au := Author{Name: a.Name, Email: a.Email}
 				if a.User != nil {
@@ -280,6 +311,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			if ln.Commit.StatusCheckRollup == nil {
 				continue
 			}
+			pr.CheckCount = ln.Commit.StatusCheckRollup.Contexts.TotalCount
 			for _, cx := range ln.Commit.StatusCheckRollup.Contexts.Nodes {
 				if cx.Typename == "StatusContext" {
 					pr.Checks = append(pr.Checks, Check{Name: cx.Context, State: statusState(cx.State)})
@@ -331,4 +363,12 @@ func (c *client) Comment(ctx context.Context, owner, name string, number int, te
 	body, _ := json.Marshal(map[string]string{"body": text})
 	path := fmt.Sprintf("repos/%s/%s/issues/%d/comments", owner, name, number)
 	return c.rest.DoWithContext(ctx, "POST", path, bytes.NewReader(body), nil)
+}
+
+// Retryable reports whether a failed merge may succeed once GitHub catches
+// up: 405 (not mergeable yet) and 409 (head moved) are often transient
+// right after another merge into the base branch.
+func Retryable(err error) bool {
+	var he *api.HTTPError
+	return errors.As(err, &he) && (he.StatusCode == 405 || he.StatusCode == 409)
 }

@@ -80,6 +80,17 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(r *github.Repo, _ *github.PullRequest) { r.Permission = "READ" }},
 		{name: "archived repo", action: ActionSkip, reason: "archived",
 			mutate: func(r *github.Repo, _ *github.PullRequest) { r.Archived = true }},
+		{name: "unsigned commit", action: ActionSkip, reason: "not signed by GitHub",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].SignedByGitHub = false }},
+		{name: "forged dependabot author without signature", action: ActionSkip, reason: "not signed by GitHub",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Commits[0].SignedByGitHub = false
+				pr.Commits[0].Authors = []github.Author{{Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"}}
+			}},
+		{name: "authors truncated", action: ActionSkip, reason: "too many authors",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].AuthorCount = 6 }},
+		{name: "checks truncated", action: ActionSkip, reason: "too many checks to verify (101)",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.CheckCount = 101 }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

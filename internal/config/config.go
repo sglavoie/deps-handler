@@ -3,8 +3,10 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,9 +147,11 @@ func Load(path string) (*Config, error) {
 // Parse resolves raw YAML into a Config.
 func Parse(data []byte) (*Config, error) {
 	var f file
-	dec := yaml.NewDecoder(strings.NewReader(string(data)))
+	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	if err := dec.Decode(&f); err != nil {
+	if err := dec.Decode(&f); errors.Is(err, io.EOF) {
+		return nil, errors.New("config is empty (see config.example.yaml)")
+	} else if err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	defaults, err := apply(Builtin, f.Defaults)
@@ -201,8 +205,8 @@ func apply(base Policy, o overrides) (Policy, error) {
 }
 
 // Filter keeps only the repos named in only (case-insensitive owner/name or
-// bare name), including skipped ones. An empty filter keeps every repo not
-// marked skip.
+// bare name), including skipped ones, each once and in config order. An
+// empty filter keeps every repo not marked skip.
 func (c *Config) Filter(only []string) ([]Repo, error) {
 	if len(only) == 0 {
 		var out []Repo
@@ -213,18 +217,24 @@ func (c *Config) Filter(only []string) ([]Repo, error) {
 		}
 		return out, nil
 	}
-	var out []Repo
+	picked := make([]bool, len(c.Repos))
 	for _, want := range only {
 		w := strings.ToLower(want)
 		found := false
-		for _, r := range c.Repos {
+		for i, r := range c.Repos {
 			if strings.ToLower(r.FullName()) == w || strings.ToLower(r.Name) == w {
-				out = append(out, r)
+				picked[i] = true
 				found = true
 			}
 		}
 		if !found {
 			return nil, fmt.Errorf("repo %q is not in the config", want)
+		}
+	}
+	var out []Repo
+	for i, r := range c.Repos {
+		if picked[i] {
+			out = append(out, r)
 		}
 	}
 	return out, nil

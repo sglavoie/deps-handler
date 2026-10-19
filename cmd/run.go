@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/report"
@@ -25,7 +27,10 @@ func newRunCmd() *cobra.Command {
 Without --apply this is a dry run: it reports what would be merged or
 rebased and what needs fixing, and changes nothing. With --apply it merges
 safe PRs one at a time per repository and comments "@dependabot rebase" on
-safe PRs that are behind their base branch.`,
+safe PRs that are behind their base branch.
+
+Exits 1 if a repository could not be processed or a merge or rebase request
+failed, and 130 when interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loadConfig()
@@ -36,7 +41,7 @@ safe PRs that are behind their base branch.`,
 			if err != nil {
 				return err
 			}
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
 			client, err := github.New()
@@ -45,6 +50,9 @@ safe PRs that are behind their base branch.`,
 			}
 			viewer, err := client.Viewer(ctx)
 			if err != nil {
+				if ctx.Err() != nil {
+					return errInterrupted
+				}
 				return err
 			}
 
@@ -61,12 +69,15 @@ safe PRs that are behind their base branch.`,
 			} else {
 				report.Summary(out, apply, results)
 			}
+			if ctx.Err() != nil {
+				return errInterrupted
+			}
 			for _, r := range results {
-				if r.Error != "" {
-					return exitError{"some repositories failed"}
+				if r.Failed() {
+					return exitError{code: 1}
 				}
 			}
-			return ctx.Err()
+			return nil
 		},
 	}
 	c.Flags().BoolVar(&apply, "apply", false, "merge safe PRs and request rebases (default is a dry run)")
@@ -74,3 +85,5 @@ safe PRs that are behind their base branch.`,
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
 	return c
 }
+
+var errInterrupted = errors.New("interrupted")

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/sglavoie/deps-merger/internal/github"
@@ -87,5 +88,20 @@ func TestDiagnoseStaleCheckIsNotRepoWide(t *testing.T) {
 	}
 	if len(f[FindingIncompatible]) != 2 {
 		t.Fatalf("incompatible = %+v", f[FindingIncompatible])
+	}
+}
+
+func TestDiagnoseTruncatedSearch(t *testing.T) {
+	repo := testutil.Repo(testutil.PR(1))
+	repo.OpenPRCount = 140
+	f := findings(repo)
+	if len(f[FindingTruncated]) != 1 || !strings.Contains(f[FindingTruncated][0].Summary, "1 of 140") {
+		t.Fatalf("truncated = %+v", f[FindingTruncated])
+	}
+}
+
+func TestDiagnoseEmptyIsNotNil(t *testing.T) {
+	if f := Diagnose(testutil.Repo(), defaultPolicy, nil); f == nil {
+		t.Fatal("Diagnose returned nil; JSON would print null")
 	}
 }

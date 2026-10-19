@@ -24,6 +24,9 @@ const (
 	FindingNoChecks FindingKind = "no-checks"
 	// FindingReadOnly means the viewer cannot merge in this repository.
 	FindingReadOnly FindingKind = "read-only"
+	// FindingTruncated means GitHub has more open Dependabot PRs than one
+	// fetch returns, so some were not evaluated.
+	FindingTruncated FindingKind = "truncated"
 )
 
 // Finding is a repository-level observation with suggested fixes. Fixes
@@ -38,9 +41,15 @@ type Finding struct {
 // Diagnose looks across all decisions of one repository for problems that
 // need a change in the repository rather than a merge.
 func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Finding {
-	var out []Finding
+	out := []Finding{}
+	if repo.OpenPRCount > len(repo.PullRequests) {
+		out = append(out, Finding{
+			Kind:    FindingTruncated,
+			Summary: fmt.Sprintf("only %d of %d open Dependabot PRs were evaluated; the rest wait for a later run", len(repo.PullRequests), repo.OpenPRCount),
+		})
+	}
 	if len(decisions) == 0 {
-		return nil
+		return out
 	}
 
 	if !repo.CanWrite() {
@@ -76,7 +85,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 				Suggestions: ignoreSuggestions(d),
 			})
 		case d.Grade == config.UpdateMajor && p.MaxUpdateType < config.UpdateMajor &&
-			len(d.FailedChecks) == 0 && len(d.PR.Checks) > 0 && allPassed(d.PR.Checks):
+			len(d.PR.Checks) > 0 && allPassed(d.PR.Checks):
 			out = append(out, Finding{
 				Kind:    FindingHeldMajor,
 				Summary: fmt.Sprintf("#%d is a green major update held by policy (allow with max_update_type: major)", d.Number),

@@ -36,6 +36,8 @@ func TestParseRejectsBadInput(t *testing.T) {
 		"bad update":    "repos: [{repo: a/b, max_update_type: huge}]",
 		"unknown field": "repos: [{repo: a/b, auto: true}]",
 		"unknown top":   "repo: [a/b]",
+		"empty":         "",
+		"only comments": "# nothing here\n",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected error", name)
@@ -69,5 +71,22 @@ func TestFilterSkip(t *testing.T) {
 	got, _ = cfg.Filter([]string{"two"})
 	if len(got) != 1 || !got[0].Skip {
 		t.Fatalf("naming a skipped repo should still select it: %v", got)
+	}
+}
+
+func TestParseEmptySaysSo(t *testing.T) {
+	if _, err := Parse(nil); err == nil || !strings.Contains(err.Error(), "config is empty") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestFilterDeduplicates(t *testing.T) {
+	cfg, err := Parse([]byte("repos: [acme/Billing, acme/Storefront]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := cfg.Filter([]string{"Storefront", "acme/storefront", "billing"})
+	if err != nil || len(got) != 2 || got[0].Name != "Billing" || got[1].Name != "Storefront" {
+		t.Fatalf("Filter = %v, %v", got, err)
 	}
 }
