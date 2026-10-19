@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,18 @@ import (
 )
 
 var defaultPolicy = config.Builtin
+
+// actions is the GitHub Actions app's id, behind every workflow's checks.
+const actions = 15368
+
+// chatter is a page of other people's comments, the first made at from.
+func chatter(from time.Time) []github.Comment {
+	var out []github.Comment
+	for i := range 50 {
+		out = append(out, github.Comment{Author: "coverage-bot", Body: "coverage: 81%", CreatedAt: from.Add(time.Duration(i) * time.Minute)})
+	}
+	return out
+}
 
 func one(t *testing.T, repo *github.Repo, p config.Policy) Decision {
 	t.Helper()
@@ -41,8 +54,43 @@ func TestEvaluate(t *testing.T) {
 		{name: "check cancelled in favour of a newer run merges", action: ActionMerge,
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
-					{Name: "build", State: github.CheckFailed, Suite: 1},
-					{Name: "build", State: github.CheckPassed, Suite: 2},
+					{Name: "build", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7},
+					{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+				}
+			}},
+		{name: "same job name in another workflow is not a rerun", action: ActionSkip, reason: "failing checks: test",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7},
+					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 8},
+				}
+			}},
+		{name: "same job name pending in another workflow waits", action: ActionWait, reason: "1 check(s) still running",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "test", State: github.CheckPending, Suite: 1, App: actions, Workflow: 7},
+					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 8},
+				}
+			}},
+		{name: "same check name from another app is not a rerun", action: ActionSkip, reason: "failing checks: lint",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "lint", State: github.CheckFailed, Suite: 1, App: 99},
+					{Name: "lint", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+				}
+			}},
+		{name: "a check run does not supersede a status of the same name", action: ActionSkip, reason: "failing checks: ci",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "ci", State: github.CheckFailed, Status: true},
+					{Name: "ci", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+				}
+			}},
+		{name: "a pending status is not superseded either", action: ActionWait, reason: "1 check(s) still running",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "ci", State: github.CheckPending, Status: true},
+					{Name: "ci", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
 				}
 			}},
 		{name: "check failing in the newer run", action: ActionSkip, reason: "failing checks: build",
@@ -112,6 +160,29 @@ func TestEvaluate(t *testing.T) {
 				pr.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
 				r.FetchedAt = testutil.T0.Add(50 * time.Hour)
 			}},
+		{name: "behind with a request maybe among comments not read waits", action: ActionWait, reason: "rebase may have been requested (older comments not read)",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "BEHIND"
+				pr.Comments, pr.CommentCount = chatter(testutil.T0.Add(time.Minute)), 80
+			}},
+		{name: "behind with a request maybe not read for a day is left for a human", action: ActionSkip,
+			reason: "rebase may have been requested (older comments not read) 2 days ago and not done",
+			mutate: func(r *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "BEHIND"
+				pr.Comments, pr.CommentCount = chatter(testutil.T0.Add(time.Minute)), 80
+				r.FetchedAt = testutil.T0.Add(50 * time.Hour)
+			}},
+		{name: "behind with comments cut off before the commit asks", action: ActionRebase,
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "BEHIND"
+				pr.Comments, pr.CommentCount = chatter(testutil.T0.Add(-time.Minute)), 80
+			}},
+		{name: "behind with all comments read and none ours asks", action: ActionRebase,
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "BEHIND"
+				pr.Comments = chatter(testutil.T0.Add(time.Minute))
+				pr.CommentCount = len(pr.Comments)
+			}},
 		{name: "behind with stale request asks again", action: ActionRebase,
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.MergeState = "BEHIND"
@@ -130,10 +201,26 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(r *github.Repo, _ *github.PullRequest) { r.Archived = true }},
 		{name: "unsigned commit", action: ActionSkip, reason: "not signed by GitHub",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].SignedByGitHub = false }},
-		{name: "forged dependabot author without signature", action: ActionSkip, reason: "not signed by GitHub",
+		{name: "signed commit with another committer", action: ActionSkip, reason: "not committed by GitHub",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].CommittedByGitHub = false }},
+		{name: "forged dependabot author without signature", action: ActionSkip, reason: "not linked to Dependabot's account",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Commits[0].SignedByGitHub = false
 				pr.Commits[0].Authors = []github.Author{{Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"}}
+			}},
+		{name: "signed commit whose author is only named dependabot", action: ActionSkip, reason: `author "dependabot[bot]" is not linked`,
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Commits[0].Authors = []github.Author{{Name: "dependabot[bot]", Email: "someone@example.com"}}
+			}},
+		{name: "commit without an author", action: ActionSkip, reason: "commit c1 has no author",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].Authors = nil }},
+		{name: "unrecorded author before a dependabot trailer", action: ActionSkip, reason: "not linked to Dependabot's account",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Commits[0].Authors = []github.Author{{}, {Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"}}
+			}},
+		{name: "dependabot co-author trailer merges", action: ActionMerge,
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Commits[0].Authors = append(pr.Commits[0].Authors, github.Author{Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"})
 			}},
 		{name: "human co-author", action: ActionSkip, reason: "modified by Jane",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
@@ -323,5 +410,40 @@ func TestEvaluateUnapprovedDoesNotHoldRebaseQueue(t *testing.T) {
 	ds = Evaluate(testutil.Repo(major, behind), defaultPolicy, "me", approved)
 	if ds[1].Action != ActionWait || ds[1].Reason != "queued behind #1" {
 		t.Fatalf("approved major should hold the queue: %s %q", ds[1].Action, ds[1].Reason)
+	}
+}
+
+func TestLatestChecks(t *testing.T) {
+	checks := []github.Check{
+		{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7},
+		{Name: "test", State: github.CheckPassed, Suite: 3, App: actions, Workflow: 7},
+		{Name: "test", State: github.CheckPending, Suite: 2, App: actions, Workflow: 8},
+		{Name: "test", State: github.CheckFailed, Status: true},
+		{Name: "matrix", State: github.CheckPassed, Suite: 3, App: actions, Workflow: 7},
+		{Name: "matrix", State: github.CheckFailed, Suite: 3, App: actions, Workflow: 7},
+	}
+	got := LatestChecks(checks)
+	want := []github.Check{checks[1], checks[2], checks[3], checks[4], checks[5]}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestVerdictConcernsAreNeverNull(t *testing.T) {
+	b, err := json.Marshal(Decision{Verdict: &Verdict{Error: "timed out"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"concerns":[]`) {
+		t.Fatalf("json = %s", b)
+	}
+	b, _ = json.Marshal(Verdict{Concerns: []string{"x"}})
+	if string(b) != `{"approved":false,"summary":"","concerns":["x"]}` {
+		t.Fatalf("json = %s", b)
 	}
 }

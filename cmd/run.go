@@ -70,11 +70,23 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 			if len(selected) == 0 {
 				return errors.New("every configured repo has skip: true; name one with --repo to run it")
 			}
+			wantReviews := reviews || agentName != ""
+			if cmd.Flags().Changed("max-reviews") && !wantReviews {
+				return errors.New("--max-reviews needs --review or --agent")
+			}
 			if maxReviews < 0 {
 				return errors.New("--max-reviews must not be negative")
 			}
 			var agent review.Agent
-			if reviews || agentName != "" {
+			switch {
+			case wantReviews && !slices.ContainsFunc(selected, func(r config.Repo) bool { return r.Policy.AgentReview }):
+				// No repo would use the agent, so neither require it
+				// installed nor take the review lock.
+				if agentName != "" && !config.ValidAgent(strings.ToLower(agentName)) {
+					return fmt.Errorf("unknown agent %q (want %s)", agentName, strings.Join(config.Agents, " or "))
+				}
+				fmt.Fprintln(cmd.ErrOrStderr(), "note: no agent reviews: every selected repo sets agent_review: false")
+			case wantReviews:
 				if agent, err = newAgent(cfg.Agent, agentName); err != nil {
 					return err
 				}
@@ -114,18 +126,21 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 					return err
 				}
 				defer release()
+				if msg := r.Verdicts.TakeRecovered(); msg != "" {
+					fmt.Fprintln(errOut, "deps-merger: warning:", msg)
+				}
 			}
 			results := r.Run(ctx, selected, progress)
+			shown := results
+			if open {
+				shown = slices.DeleteFunc(slices.Clone(results), func(r runner.RepoResult) bool { return !report.HasPRs(r) })
+			}
 			if asJSON {
-				shown := results
-				if open {
-					shown = slices.DeleteFunc(slices.Clone(results), func(r runner.RepoResult) bool { return !report.HasPRs(r) })
-				}
 				if err := report.JSON(out, apply, shown); err != nil {
 					return err
 				}
 			} else {
-				report.Summary(out, apply, results)
+				report.Summary(out, apply, shown, len(results)-len(shown))
 			}
 			if ctx.Err() != nil {
 				return errInterrupted
@@ -174,7 +189,8 @@ var newClient = github.New
 // setupReviews gives r an agent reviewer with its checkouts and verdict
 // cache in the XDG cache and state directories. It holds a lock until
 // release is called, so a second review run cannot share the checkouts,
-// and removes the checkouts of repositories no longer in the config.
+// and removes the checkouts of repositories not in the config that no
+// review used for 30 days.
 func setupReviews(r *runner.Runner, cfg *config.Config, agent review.Agent, client github.Client, maxReviews int) (release func(), err error) {
 	cacheDir, err := config.CacheDir()
 	if err != nil {

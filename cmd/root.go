@@ -76,8 +76,15 @@ func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code)
 // versionString prefers the -ldflags values and falls back to what the Go
 // toolchain recorded, so `go install` builds still identify themselves.
 func versionString() string {
-	version, commit, built := Version, GitCommit, BuildTime
-	if info, ok := debug.ReadBuildInfo(); ok {
+	info, _ := debug.ReadBuildInfo()
+	return formatVersion(info, Version, GitCommit, BuildTime)
+}
+
+// formatVersion fills what -ldflags left unset from info, which may be nil,
+// and marks the commit "-dirty" when the build had uncommitted changes.
+func formatVersion(info *debug.BuildInfo, version, commit, built string) string {
+	dirty := false
+	if info != nil {
 		if version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
 			version = info.Main.Version
 		}
@@ -87,8 +94,13 @@ func versionString() string {
 				commit = s.Value[:min(7, len(s.Value))]
 			case s.Key == "vcs.time" && built == "unknown":
 				built = s.Value
+			case s.Key == "vcs.modified":
+				dirty = s.Value == "true"
 			}
 		}
+	}
+	if dirty {
+		commit += "-dirty"
 	}
 	return fmt.Sprintf("%s (%s, built %s)", version, commit, built)
 }

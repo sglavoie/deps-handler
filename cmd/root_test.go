@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -104,6 +105,8 @@ func TestRunErrorsExitOne(t *testing.T) {
 		"unknown flag":   {[]string{"run", "--nope"}, "unknown flag"},
 		"unknown agent":  {[]string{"run", "-c", active, "--agent", "gemini"}, `unknown agent "gemini" (want claude or codex)`},
 		"bad limit":      {[]string{"run", "-c", active, "--review", "--max-reviews", "-1"}, "--max-reviews must not be negative"},
+		"limit alone":    {[]string{"run", "-c", active, "--max-reviews", "3"}, "--max-reviews needs --review or --agent"},
+		"bad repo name":  {[]string{"run", "-c", writeConfig(t, "repos: [acme/x.git]\n")}, "drop the .git suffix"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, _, stderr := run(c.args...)
@@ -130,5 +133,23 @@ func TestNewAgent(t *testing.T) {
 	}
 	if c, ok := a.(review.Codex); !ok || c.Model != "gpt-5" {
 		t.Fatalf("agent = %#v", a)
+	}
+}
+
+func TestFormatVersion(t *testing.T) {
+	info := &debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}, Settings: []debug.BuildSetting{
+		{Key: "vcs.revision", Value: "0123456789abcdef"},
+		{Key: "vcs.time", Value: "2026-01-02T03:04:05Z"},
+		{Key: "vcs.modified", Value: "true"},
+	}}
+	if got, want := formatVersion(info, "dev", "unknown", "unknown"), "v1.2.3 (0123456-dirty, built 2026-01-02T03:04:05Z)"; got != want {
+		t.Errorf("dirty: got %q, want %q", got, want)
+	}
+	info.Settings[2].Value = "false"
+	if got, want := formatVersion(info, "v9", "abc1234", "today"), "v9 (abc1234, built today)"; got != want {
+		t.Errorf("ldflags: got %q, want %q", got, want)
+	}
+	if got, want := formatVersion(nil, "dev", "unknown", "unknown"), "dev (unknown, built unknown)"; got != want {
+		t.Errorf("no build info: got %q, want %q", got, want)
 	}
 }

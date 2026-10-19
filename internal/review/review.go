@@ -59,7 +59,9 @@ func NewRequest(rc config.Repo, d policy.Decision) Request {
 // Key identifies the update under review: the PR and the versions it moves
 // to. A rebase changes the head commit but not the update, so an approval
 // still holds (the cache drops a rejection then); when Dependabot does not
-// record versions, the head commit stands in for them.
+// record versions, the head commit stands in for them. The repository is
+// lower-cased, as GitHub ignores its case, and the agent is left out: a
+// verdict from one agent is reused by another.
 func (r Request) Key() string {
 	deps := make([]string, 0, len(r.Dependencies))
 	versioned := len(r.Dependencies) > 0
@@ -68,7 +70,7 @@ func (r Request) Key() string {
 		versioned = versioned && d.Version != ""
 	}
 	slices.Sort(deps)
-	key := fmt.Sprintf("%s/%s#%d %s", r.Owner, r.Name, r.Number, strings.Join(deps, ","))
+	key := fmt.Sprintf("%s/%s#%d %s", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number, strings.Join(deps, ","))
 	if !versioned {
 		key += " " + r.HeadOID
 	}
@@ -128,8 +130,8 @@ func (r *AgentReviewer) review(ctx context.Context, req Request) (policy.Verdict
 	return Verdict(a)
 }
 
-// Verdict turns an agent's answer into a verdict. Anything but an explicit
-// approval rejects the update.
+// Verdict turns an agent's answer into a verdict. An answer that is
+// neither "approve" nor "reject" is an error, not a verdict.
 func Verdict(a Answer) (policy.Verdict, error) {
 	switch a.Decision {
 	case "approve", "reject":

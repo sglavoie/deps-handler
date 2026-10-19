@@ -110,12 +110,13 @@ func Progress(w io.Writer, res runner.RepoResult) {
 	fmt.Fprintf(w, "%s: %s (%s)\n", res.Repo, s.paint(green, "done"), plural(len(res.Decisions), "PR"))
 }
 
-// Summary writes the totals line across all repositories.
-func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
-	summary(w, apply, results, styleFor(w))
+// Summary writes the totals line across the repositories reported. hidden
+// counts those left out of the report for having no open Dependabot PRs.
+func Summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int) {
+	summary(w, apply, results, hidden, styleFor(w))
 }
 
-func summary(w io.Writer, apply bool, results []runner.RepoResult, s style) {
+func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s style) {
 	counts := map[string]int{}
 	findings, failed := 0, 0
 	for _, r := range results {
@@ -139,7 +140,11 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, s style) {
 	if len(parts) == 0 {
 		parts = append(parts, s.paint(dim, "nothing to do"))
 	}
-	line := s.paint(bold, fmt.Sprintf("%d repos:", len(results))) + " " + strings.Join(parts, ", ")
+	head := fmt.Sprintf("%d repos", len(results))
+	if hidden > 0 {
+		head += fmt.Sprintf(" (%d without open PRs hidden)", hidden)
+	}
+	line := s.paint(bold, head+":") + " " + strings.Join(parts, ", ")
 	if findings > 0 {
 		line += "; " + s.paint(yellow, fmt.Sprintf("%d need attention", findings))
 	}

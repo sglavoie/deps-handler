@@ -95,7 +95,11 @@ func IsLogin(login string) bool {
 	return login == "dependabot" || login == "dependabot[bot]"
 }
 
-// IsCommitAuthor reports whether a commit author identity is Dependabot.
+// IsCommitAuthor reports whether a commit author identity is Dependabot. A
+// linked login decides; without one, the name or email Dependabot uses is
+// accepted, which only suits a Co-authored-by trailer: such trailers link
+// no account. A commit's own author must be linked to Dependabot's account
+// (see IsLogin), since a name or email alone is anyone's to type.
 func IsCommitAuthor(login, name, email string) bool {
 	if login != "" {
 		return IsLogin(login)

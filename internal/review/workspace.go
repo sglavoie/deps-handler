@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ErrHeadMoved means a pull request's head is no longer the commit the
@@ -30,42 +31,80 @@ type Workspace struct {
 // Checkout puts the head of pull request number into the repository's
 // checkout and returns its directory. It fails if the head is no longer
 // headOID, so the agent never reads other code than the policy judged.
+// A checkout git cannot work with, as one a killed review left half
+// written, is made again from scratch.
 func (w *Workspace) Checkout(ctx context.Context, owner, name string, number int, headOID string) (string, error) {
 	dir := filepath.Join(w.Root, owner, name)
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	err := w.checkout(ctx, dir, owner, name, number, headOID)
+	if err != nil && !errors.Is(err, ErrHeadMoved) && ctx.Err() == nil {
+		if err := os.RemoveAll(dir); err != nil {
 			return "", err
 		}
-		if err := w.git(ctx, dir, "init", "-q"); err != nil {
-			return "", err
-		}
-		if err := w.git(ctx, dir, "remote", "add", "origin", w.url(owner, name)); err != nil {
-			return "", err
-		}
+		err = w.checkout(ctx, dir, owner, name, number, headOID)
 	}
-	ref := fmt.Sprintf("+refs/pull/%d/head", number)
-	if err := w.git(ctx, dir, "fetch", "-q", "--depth=1", "--no-tags", "origin", ref); err != nil {
-		return "", err
-	}
-	got, err := w.output(ctx, dir, "rev-parse", "FETCH_HEAD")
 	if err != nil {
 		return "", err
 	}
-	if got != headOID {
-		return "", fmt.Errorf("%w: #%d went from %.7s to %.7s", ErrHeadMoved, number, headOID, got)
-	}
-	if err := w.git(ctx, dir, "checkout", "-q", "--detach", "--force", "FETCH_HEAD"); err != nil {
-		return "", err
-	}
-	if err := w.git(ctx, dir, "clean", "-q", "-ffdx"); err != nil {
+	// Mark the checkout as used, for Prune.
+	now := time.Now()
+	if err := os.Chtimes(dir, now, now); err != nil {
 		return "", err
 	}
 	return dir, nil
 }
 
+func (w *Workspace) checkout(ctx context.Context, dir, owner, name string, number int, headOID string) error {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		if err := w.git(ctx, dir, "init", "-q"); err != nil {
+			return err
+		}
+	}
+	// A review holds review.lock, so no other git works in the checkout: a
+	// lock file left there is from a git killed when its review timed out.
+	locks, err := filepath.Glob(filepath.Join(dir, ".git", "*.lock"))
+	if err != nil {
+		return err
+	}
+	for _, l := range locks {
+		if err := os.Remove(l); err != nil {
+			return err
+		}
+	}
+	// A run killed between init and here left no remote.
+	url := w.url(owner, name)
+	if err := w.git(ctx, dir, "remote", "set-url", "origin", url); err != nil {
+		if err := w.git(ctx, dir, "remote", "add", "origin", url); err != nil {
+			return err
+		}
+	}
+	ref := fmt.Sprintf("+refs/pull/%d/head", number)
+	if err := w.git(ctx, dir, "fetch", "-q", "--depth=1", "--no-tags", "origin", ref); err != nil {
+		return err
+	}
+	got, err := w.output(ctx, dir, "rev-parse", "FETCH_HEAD")
+	if err != nil {
+		return err
+	}
+	if got != headOID {
+		return fmt.Errorf("%w: #%d went from %.7s to %.7s", ErrHeadMoved, number, headOID, got)
+	}
+	if err := w.git(ctx, dir, "checkout", "-q", "--detach", "--force", "FETCH_HEAD"); err != nil {
+		return err
+	}
+	return w.git(ctx, dir, "clean", "-q", "-ffdx")
+}
+
+// PruneAfter is how long a checkout of a repository not in the config is
+// kept unused. Runs with other configs share the checkouts, so one run
+// cannot tell a repository dropped from its config from another config's.
+const PruneAfter = 30 * 24 * time.Hour
+
 // Prune removes the checkouts of repositories not in keep (as
-// "owner/name"), such as ones dropped from the config, and the owner
-// directories left empty.
+// "owner/name") that no review used for PruneAfter, such as ones dropped
+// from the config, and the owner directories left empty.
 func (w *Workspace) Prune(keep map[string]bool) error {
 	owners, err := os.ReadDir(w.Root)
 	if errors.Is(err, os.ErrNotExist) {
@@ -86,6 +125,13 @@ func (w *Workspace) Prune(keep map[string]bool) error {
 		left := len(names)
 		for _, n := range names {
 			if keep[o.Name()+"/"+n.Name()] {
+				continue
+			}
+			info, err := n.Info()
+			if err != nil {
+				return err
+			}
+			if time.Since(info.ModTime()) < PruneAfter {
 				continue
 			}
 			if err := os.RemoveAll(filepath.Join(ownerDir, n.Name())); err != nil {

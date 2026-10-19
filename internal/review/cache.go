@@ -1,6 +1,7 @@
 package review
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,8 @@ type Cache struct {
 	now     func() time.Time
 	mu      sync.Mutex
 	entries map[string]cacheEntry
+	// recovered says what happened to an unreadable cache file.
+	recovered string
 }
 
 type cacheEntry struct {
@@ -42,36 +45,83 @@ type cacheEntry struct {
 
 // Entry is one cached verdict.
 type Entry struct {
-	Key        string
-	Agent      string
+	Key   string
+	Agent string
+	// HeadOID is the commit reviewed; a rejection holds for it only.
+	HeadOID    string
 	ReviewedAt time.Time
 	// Expires is when the verdict stops being reused.
 	Expires time.Time
 	Verdict policy.Verdict
 }
 
-// OpenCache reads the cache at path; a missing file is an empty cache.
+// OpenCache reads the cache at path; a missing or empty file is an empty
+// cache. A file that cannot be read as one is moved aside, and
+// TakeRecovered says so.
 func OpenCache(path string) (*Cache, error) {
-	entries, err := readEntries(path)
+	c := &Cache{path: path, now: time.Now}
+	entries, err := c.readEntries()
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{path: path, now: time.Now, entries: entries}, nil
+	c.entries = entries
+	return c, nil
 }
 
-func readEntries(path string) (map[string]cacheEntry, error) {
+// TakeRecovered describes the unreadable cache file this cache last moved
+// aside and started over from, on opening or on a write since, or is empty
+// when there was none. Each is described once, so a caller can ask again
+// after every write and warn about each.
+func (c *Cache) TakeRecovered() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	msg := c.recovered
+	c.recovered = ""
+	return msg
+}
+
+// readEntries reads the cache file. One that is not valid JSON, as when a
+// crash cut a write short on a filesystem that does not order it, is
+// renamed to path.corrupt-TIMESTAMP so that the verdicts in it are not
+// lost and the cache works again.
+func (c *Cache) readEntries() (map[string]cacheEntry, error) {
 	entries := map[string]cacheEntry{}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+	data, err := os.ReadFile(c.path)
+	if errors.Is(err, os.ErrNotExist) || err == nil && len(bytes.TrimSpace(data)) == 0 {
 		return entries, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return nil, fmt.Errorf("%s: %w (delete it to start over)", path, err)
+	var stored map[string]cacheEntry
+	if perr := json.Unmarshal(data, &stored); perr != nil {
+		aside := c.path + ".corrupt-" + c.now().UTC().Format("20060102T150405Z")
+		if err := os.Rename(c.path, aside); errors.Is(err, os.ErrNotExist) {
+			return entries, nil // another process moved it aside first
+		} else if err != nil {
+			return nil, fmt.Errorf("%s: %w (and could not move it aside: %v)", c.path, perr, err)
+		}
+		c.recovered = fmt.Sprintf("verdict cache %s was unreadable (%v); moved it to %s and started with no cached verdicts", c.path, perr, aside)
+		return entries, nil
+	}
+	for k, e := range stored {
+		// Keys written before the repository was lower-cased in them.
+		k = normKey(k)
+		if old, ok := entries[k]; !ok || e.ReviewedAt.After(old.ReviewedAt) {
+			entries[k] = e
+		}
 	}
 	return entries, nil
+}
+
+// normKey lower-cases the repository ("owner/name") at the start of key,
+// as Request.Key does.
+func normKey(key string) string {
+	i := strings.IndexAny(key, "# ")
+	if i < 0 {
+		i = len(key)
+	}
+	return strings.ToLower(key[:i]) + key[i:]
 }
 
 // Get returns the verdict stored under key for the PR at head, unless it
@@ -79,7 +129,7 @@ func readEntries(path string) (map[string]cacheEntry, error) {
 func (c *Cache) Get(key, head string) *policy.Verdict {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e, ok := c.entries[key]
+	e, ok := c.entries[normKey(key)]
 	if !ok || c.expired(e) || !e.Verdict.Approved && e.HeadOID != "" && e.HeadOID != head {
 		return nil
 	}
@@ -93,7 +143,7 @@ func (c *Cache) Entries() []Entry {
 	var out []Entry
 	for k, e := range c.entries {
 		if !c.expired(e) {
-			out = append(out, Entry{Key: k, Agent: e.Agent, ReviewedAt: e.ReviewedAt, Expires: e.ReviewedAt.Add(CacheTTL), Verdict: e.Verdict})
+			out = append(out, Entry{Key: k, Agent: e.Agent, HeadOID: e.HeadOID, ReviewedAt: e.ReviewedAt, Expires: e.ReviewedAt.Add(CacheTTL), Verdict: e.Verdict})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
@@ -105,7 +155,7 @@ func (c *Cache) Put(key, head, agent string, v policy.Verdict) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.update(func(entries map[string]cacheEntry) {
-		entries[key] = cacheEntry{Verdict: v, Agent: agent, HeadOID: head, ReviewedAt: c.now()}
+		entries[normKey(key)] = cacheEntry{Verdict: v, Agent: agent, HeadOID: head, ReviewedAt: c.now()}
 	})
 }
 
@@ -151,7 +201,7 @@ func (c *Cache) update(change func(map[string]cacheEntry)) error {
 		return err
 	}
 	defer unlock()
-	entries, err := readEntries(c.path)
+	entries, err := c.readEntries()
 	if err != nil {
 		return err
 	}
@@ -172,6 +222,12 @@ func (c *Cache) update(change func(map[string]cacheEntry)) error {
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	// Have the data on disk before the rename can be, so a crash cannot
+	// leave an empty or partial cache in place of the old one.
+	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		return err
 	}

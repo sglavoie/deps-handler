@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -69,8 +70,9 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	cmd := exec.CommandContext(ctx, or(c.Command, "claude"), args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Env = agentEnv()
 	if c.ConfigDir != "" {
-		cmd.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+c.ConfigDir)
+		cmd.Env = append(cmd.Env, "CLAUDE_CONFIG_DIR="+c.ConfigDir)
 	}
 	out, err := run(cmd)
 	if err != nil {
@@ -125,8 +127,9 @@ func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	cmd := exec.CommandContext(ctx, or(c.Command, "codex"), append(args, "-")...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Env = agentEnv()
 	if c.Home != "" {
-		cmd.Env = append(os.Environ(), "CODEX_HOME="+c.Home)
+		cmd.Env = append(cmd.Env, "CODEX_HOME="+c.Home)
 	}
 	if _, err := run(cmd); err != nil {
 		return Answer{}, err
@@ -142,17 +145,42 @@ func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	return a, nil
 }
 
+// githubTokens are the environment variables gh and other GitHub tools
+// read a token from. An agent has no use for one, so it does not get it.
+var githubTokens = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
+// agentEnv is this process's environment without the GitHub tokens.
+func agentEnv() []string {
+	env := os.Environ()
+	return slices.DeleteFunc(env, func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		return slices.ContainsFunc(githubTokens, func(t string) bool { return strings.EqualFold(name, t) })
+	})
+}
+
+// waitDelay is how long run waits for output pipes once the process has
+// exited or been killed.
+var waitDelay = 5 * time.Second
+
 // run runs cmd and returns its stdout, folding the end of stderr into the
 // error when it fails.
 func run(cmd *exec.Cmd) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	// Give up on output pipes held open by the agent's own children once
-	// it has been killed.
-	cmd.WaitDelay = 5 * time.Second
+	// it has exited or been killed.
+	cmd.WaitDelay = waitDelay
 	ownGroup(cmd)
 	name := filepath.Base(cmd.Path)
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	// Whatever the agent left running goes with it, even when it succeeded.
+	killGroup(cmd)
+	if errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		// The agent exited cleanly but a child of its kept the output
+		// open: what it wrote before exiting is its answer.
+		err = nil
+	}
+	if err != nil {
 		if msg := clip(stderr.String()); msg != "" {
 			return nil, fmt.Errorf("%s: %w: %s", name, err, msg)
 		}

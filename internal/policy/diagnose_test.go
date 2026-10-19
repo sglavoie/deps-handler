@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -123,6 +124,35 @@ func TestDiagnoseNoChecksIgnoresWaitingPRs(t *testing.T) {
 	}
 }
 
+func TestDiagnoseNoChecksIgnoresUnassessedPRs(t *testing.T) {
+	noCI := func(pr github.PullRequest) github.PullRequest {
+		pr.Checks = nil
+		return pr
+	}
+	draft := noCI(testutil.PR(1))
+	draft.IsDraft = true
+	edited := noCI(testutil.PR(2))
+	edited.Commits[0].Authors = append(edited.Commits[0].Authors, github.Author{Login: "sglavoie"})
+	if f := findings(testutil.Repo(draft, edited)); len(f[FindingNoChecks]) != 0 {
+		t.Fatalf("no-checks = %+v; neither PR was judged on its checks", f[FindingNoChecks])
+	}
+	archived := testutil.Repo(noCI(testutil.PR(3)))
+	archived.Archived = true
+	if f := findings(archived); len(f[FindingNoChecks]) != 0 {
+		t.Fatalf("no-checks = %+v; an archived repository's PRs were not judged", f[FindingNoChecks])
+	}
+}
+
+func TestFindingListsAreNeverNull(t *testing.T) {
+	b, err := json.Marshal(Finding{Kind: FindingReadOnly, Summary: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"kind":"read-only","summary":"s","prs":[],"details":[],"suggestions":[]}`; string(b) != want {
+		t.Fatalf("json = %s, want %s", b, want)
+	}
+}
+
 func TestDiagnoseReviewRequired(t *testing.T) {
 	blocked := func(n int) github.PullRequest {
 		pr := testutil.PR(n)
@@ -164,9 +194,19 @@ func TestDiagnoseStaleCheckIsNotRepoWide(t *testing.T) {
 
 func TestDiagnoseTruncatedSearch(t *testing.T) {
 	repo := testutil.Repo(testutil.PR(1))
-	repo.OpenPRCount = 140
+	repo.OpenPRCount, repo.SearchCount = 140, 100
 	f := findings(repo)
-	if len(f[FindingTruncated]) != 1 || !strings.Contains(f[FindingTruncated][0].Summary, "1 of 140") {
+	if len(f[FindingTruncated]) != 1 || !strings.Contains(f[FindingTruncated][0].Summary, "100 of 140") {
+		t.Fatalf("truncated = %+v", f[FindingTruncated])
+	}
+}
+
+func TestDiagnoseClosedPRsInSearchAreNotTruncation(t *testing.T) {
+	// GitHub's search still counts two PRs closed since it indexed them;
+	// it returned them, and FetchRepo dropped them.
+	repo := testutil.Repo(testutil.PR(1))
+	repo.OpenPRCount, repo.SearchCount = 3, 3
+	if f := findings(repo); len(f[FindingTruncated]) != 0 {
 		t.Fatalf("truncated = %+v", f[FindingTruncated])
 	}
 }

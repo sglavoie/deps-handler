@@ -3,6 +3,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -79,6 +80,16 @@ type Verdict struct {
 	Error string `json:"error,omitempty"`
 }
 
+// MarshalJSON writes no concerns as an empty list rather than null, which
+// is what a failed review or an older cached verdict would otherwise give.
+func (v Verdict) MarshalJSON() ([]byte, error) {
+	type plain Verdict
+	if v.Concerns == nil {
+		v.Concerns = []string{}
+	}
+	return json.Marshal(plain(v))
+}
+
 // Judge returns the agent's verdict on a PR whose size the policy does not
 // allow, or nil when the agent has not reviewed it. A nil Judge means agent
 // reviews are off, and such PRs are skipped.
@@ -129,18 +140,28 @@ func queueRebases(ds []Decision) {
 	}
 }
 
-// LatestChecks drops the check runs a newer suite reran under the same name,
-// as GitHub does when it shows a pull request's checks: a run cancelled in
-// favour of a later one says nothing about the update. Runs sharing a suite,
-// like matrix jobs, all count.
+// LatestChecks drops the check runs a newer suite of the same app and
+// workflow reran under the same name, as GitHub does when it shows a pull
+// request's checks: a run cancelled in favour of a later one says nothing
+// about the update. Runs sharing a suite, like matrix jobs, all count, and
+// so does every status context: GitHub reports only the latest of each.
+// Same-named checks from different workflows or apps are different checks,
+// and a failing "test" in one is never hidden by a passing "test" in another.
 func LatestChecks(checks []github.Check) []github.Check {
-	newest := map[string]int64{}
+	type origin struct {
+		app, workflow int64
+		name          string
+	}
+	newest := map[origin]int64{}
 	for _, c := range checks {
-		newest[c.Name] = max(newest[c.Name], c.Suite)
+		if !c.Status {
+			o := origin{c.App, c.Workflow, c.Name}
+			newest[o] = max(newest[o], c.Suite)
+		}
 	}
 	out := make([]github.Check, 0, len(checks))
 	for _, c := range checks {
-		if c.Suite == newest[c.Name] {
+		if c.Status || c.Suite == newest[origin{c.App, c.Workflow, c.Name}] {
 			out = append(out, c)
 		}
 	}
@@ -202,7 +223,23 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return skip("too many commits to verify (%d)", pr.CommitCount)
 	}
 	for _, c := range pr.Commits {
-		for _, a := range c.Authors {
+		if len(c.Authors) == 0 {
+			return skip("commit %.7s has no author; left for a human", c.OID)
+		}
+		// Dependabot's own commits always link their author to its
+		// account; a name or email alone is anyone's to type. Only
+		// Co-authored-by trailers, which link no account, are judged by
+		// them.
+		if a := c.Authors[0]; !dependabot.IsLogin(a.Login) {
+			if a.Login == "" && a.Name == "" {
+				return skip("commit %.7s author is not linked to Dependabot's account; left for a human", c.OID)
+			}
+			if a.Login == "" {
+				return skip("commit %.7s author %q is not linked to Dependabot's account; left for a human", c.OID, a.Name)
+			}
+			return skip("modified by %s (commit %.7s); left for a human", a.Login, c.OID)
+		}
+		for _, a := range c.Authors[1:] {
 			if !dependabot.IsCommitAuthor(a.Login, a.Name, a.Email) {
 				who := a.Login
 				if who == "" {
@@ -214,6 +251,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		// Author identities can be forged; GitHub's signature cannot.
 		if !c.SignedByGitHub {
 			return skip("commit %.7s is not signed by GitHub; left for a human", c.OID)
+		}
+		if !c.CommittedByGitHub {
+			return skip("commit %.7s was not committed by GitHub; left for a human", c.OID)
 		}
 	}
 	d.assessed = true
@@ -287,10 +327,17 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 			safe.Reason = "no checks ran, within policy"
 		}
 	case "BEHIND":
-		if at, ok := rebaseRequested(pr, viewer); ok {
+		if at, seen, ok := rebaseRequested(pr, viewer); ok {
+			requested := "rebase requested"
+			if !seen {
+				requested = "rebase may have been requested (older comments not read)"
+			}
 			if age := repo.FetchedAt.Sub(at); age >= rebaseTimeout {
 				d.stalledRebase = true
-				return skip("rebase requested %s ago and not done; left for a human", days(age))
+				return skip("%s %s ago and not done; left for a human", requested, days(age))
+			}
+			if !seen {
+				return wait(true, "%s", requested)
 			}
 			return wait(true, "rebase already requested")
 		}
@@ -335,18 +382,25 @@ func pushedAt(pr *github.PullRequest) time.Time {
 }
 
 // rebaseRequested returns when viewer first asked for a rebase since the
-// PR's latest commit, if it did.
-func rebaseRequested(pr *github.PullRequest, viewer string) (time.Time, bool) {
+// PR's latest commit, if it did; seen is false when the request may only
+// hide among comments that were not fetched. Only the latest comments are:
+// when older ones were cut off and even the oldest fetched one is newer
+// than the commit, a request counts as made no later than that comment, so
+// a busy PR is not asked blindly again and still stalls in time.
+func rebaseRequested(pr *github.PullRequest, viewer string) (at time.Time, seen, ok bool) {
 	if len(pr.Commits) == 0 {
-		return time.Time{}, false
+		return time.Time{}, false, false
 	}
 	last := pushedAt(pr)
 	for _, c := range pr.Comments {
 		if c.Author == viewer && c.CreatedAt.After(last) && strings.Contains(c.Body, RebaseCommand) {
-			return c.CreatedAt, true
+			return c.CreatedAt, true, true
 		}
 	}
-	return time.Time{}, false
+	if pr.CommentCount > len(pr.Comments) && len(pr.Comments) > 0 && pr.Comments[0].CreatedAt.After(last) {
+		return pr.Comments[0].CreatedAt, false, true
+	}
+	return time.Time{}, false, false
 }
 
 // days describes an age of a day or more in whole days.

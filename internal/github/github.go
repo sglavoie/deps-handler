@@ -34,10 +34,20 @@ type Check struct {
 	Name  string     `json:"name"`
 	State CheckState `json:"state"`
 	// Suite identifies the check suite (one workflow run) a check run
-	// belongs to; a newer suite with the same check name supersedes it, as
-	// when concurrency cancels a run in favour of a later one. Zero for
-	// status contexts, of which GitHub reports only the latest.
+	// belongs to; a newer suite of the same app and workflow with the same
+	// check name supersedes it, as when concurrency cancels a run in favour
+	// of a later one. Zero for status contexts.
 	Suite int64 `json:"-"`
+	// App and Workflow identify what produced a check run: the GitHub App
+	// behind its suite and, for GitHub Actions, the workflow. Two workflows
+	// can each have a job called "test"; neither says anything about the
+	// other's.
+	App      int64 `json:"-"`
+	Workflow int64 `json:"-"`
+	// Status is true for a commit status context rather than a check run.
+	// GitHub reports only the latest status per context, and a status
+	// never stands in for a check run of the same name or the reverse.
+	Status bool `json:"-"`
 }
 
 type Author struct {
@@ -50,12 +60,23 @@ type Commit struct {
 	OID           string    `json:"oid"`
 	Message       string    `json:"-"`
 	CommittedDate time.Time `json:"committed_date"`
-	// Authors is the commit author followed by every Co-authored-by trailer.
+	// Authors is the commit author followed by every Co-authored-by
+	// trailer. The first is always the author GitHub recorded, empty when
+	// it recorded none; only it can carry a Login, since a trailer links no
+	// account.
 	Authors []Author `json:"authors"`
 	// SignedByGitHub is true when the commit carries a valid signature made
 	// with GitHub's own key, as Dependabot's commits do.
 	SignedByGitHub bool `json:"signed_by_github"`
+	// CommittedByGitHub is true when GitHub itself is the committer, as on
+	// every commit Dependabot makes. An API call that names its own
+	// committer gets no such commit, even when GitHub signs it.
+	CommittedByGitHub bool `json:"committed_by_github"`
 }
+
+// gitHubCommitter is the committer email GitHub writes on the commits it
+// creates, Dependabot's among them.
+const gitHubCommitter = "noreply@github.com"
 
 type Comment struct {
 	Author    string    `json:"author"`
@@ -83,8 +104,11 @@ type PullRequest struct {
 	ChecksOID string `json:"checks_oid"`
 	// CheckCount is the total number of checks, which can exceed the number
 	// fetched into Checks.
-	CheckCount int       `json:"check_count"`
-	Comments   []Comment `json:"-"`
+	CheckCount int `json:"check_count"`
+	// Comments are the latest comments, oldest first; CommentCount is how
+	// many the PR has, which can exceed the number fetched.
+	Comments     []Comment `json:"-"`
+	CommentCount int       `json:"-"`
 }
 
 type Repo struct {
@@ -98,6 +122,11 @@ type Repo struct {
 	// OpenPRCount is how many open Dependabot PRs GitHub reports, which can
 	// exceed the number fetched into PullRequests.
 	OpenPRCount int `json:"open_pr_count"`
+	// SearchCount is how many results the search returned, before closed
+	// PRs still in its index were dropped. Only when it falls short of
+	// OpenPRCount were some PRs left unread: GitHub counts those closed PRs
+	// too.
+	SearchCount int `json:"search_count"`
 	// FetchedAt is when this state was read, the "now" that the age of
 	// commits and comments is measured against.
 	FetchedAt time.Time `json:"-"`
@@ -195,17 +224,20 @@ query($owner: String!, $name: String!, $search: String!) {
           nodes { commit {
             oid message committedDate
             author { name email user { login } }
+            committer { email }
             signature { isValid wasSignedByGitHub }
           } }
         }
         last: commits(last: 1) {
           nodes { commit { oid statusCheckRollup { contexts(first: 100) { totalCount nodes {
             __typename
-            ... on CheckRun { name status conclusion checkSuite { databaseId } }
+            ... on CheckRun { name status conclusion checkSuite {
+              databaseId app { databaseId } workflowRun { workflow { databaseId } }
+            } }
             ... on StatusContext { context state }
           } } } } }
         }
-        comments(last: 30) { nodes { body createdAt author { login } } }
+        comments(last: 50) { totalCount nodes { body createdAt author { login } } }
       }
     }
   }
@@ -247,6 +279,7 @@ type gqlRepo struct {
 							Email string
 							User  *struct{ Login string }
 						}
+						Committer *struct{ Email string }
 						Signature *struct {
 							IsValid           bool
 							WasSignedByGitHub bool
@@ -266,9 +299,15 @@ type gqlRepo struct {
 									Name       string
 									Status     string
 									Conclusion string
-									CheckSuite *struct{ DatabaseID int64 }
-									Context    string
-									State      string
+									CheckSuite *struct {
+										DatabaseID  int64
+										App         *struct{ DatabaseID int64 }
+										WorkflowRun *struct {
+											Workflow struct{ DatabaseID int64 }
+										}
+									}
+									Context string
+									State   string
 								}
 							}
 						}
@@ -276,7 +315,8 @@ type gqlRepo struct {
 				}
 			}
 			Comments struct {
-				Nodes []struct {
+				TotalCount int
+				Nodes      []struct {
 					Body      string
 					CreatedAt time.Time
 					Author    *struct{ Login string }
@@ -294,7 +334,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 	}
 	var resp gqlRepo
 	if err := c.gql.DoWithContext(ctx, repoQuery, vars, &resp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s/%s: %w", owner, name, c.withReset(ctx, err))
 	}
 	if resp.Repository == nil {
 		return nil, fmt.Errorf("%s/%s: repository not found or not accessible", owner, name)
@@ -307,6 +347,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		MergeAllowed:  resp.Repository.MergeCommitAllowed,
 		RebaseAllowed: resp.Repository.RebaseMergeAllowed,
 		OpenPRCount:   resp.Search.IssueCount,
+		SearchCount:   len(resp.Search.Nodes),
 		FetchedAt:     time.Now(),
 	}
 	for _, n := range resp.Search.Nodes {
@@ -325,6 +366,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			MergeState:     n.MergeStateStatus,
 			ReviewDecision: n.ReviewDecision,
 			CommitCount:    n.Commits.TotalCount,
+			CommentCount:   n.Comments.TotalCount,
 		}
 		if n.Author != nil {
 			pr.Author = n.Author.Login
@@ -338,13 +380,19 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			if sig := cn.Commit.Signature; sig != nil {
 				cm.SignedByGitHub = sig.IsValid && sig.WasSignedByGitHub
 			}
+			if cr := cn.Commit.Committer; cr != nil {
+				cm.CommittedByGitHub = strings.EqualFold(cr.Email, gitHubCommitter)
+			}
+			// The author goes first even when GitHub recorded none, so a
+			// trailer can never pass for it.
+			var au Author
 			if a := cn.Commit.Author; a != nil {
-				au := Author{Name: a.Name, Email: a.Email}
+				au = Author{Name: a.Name, Email: a.Email}
 				if a.User != nil {
 					au.Login = a.User.Login
 				}
-				cm.Authors = append(cm.Authors, au)
 			}
+			cm.Authors = append(cm.Authors, au)
 			cm.Authors = append(cm.Authors, coAuthors(cn.Commit.Message)...)
 			pr.Commits = append(pr.Commits, cm)
 		}
@@ -356,11 +404,17 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			pr.CheckCount = ln.Commit.StatusCheckRollup.Contexts.TotalCount
 			for _, cx := range ln.Commit.StatusCheckRollup.Contexts.Nodes {
 				if cx.Typename == "StatusContext" {
-					pr.Checks = append(pr.Checks, Check{Name: cx.Context, State: statusState(cx.State)})
+					pr.Checks = append(pr.Checks, Check{Name: cx.Context, State: statusState(cx.State), Status: true})
 				} else {
 					c := Check{Name: cx.Name, State: checkRunState(cx.Status, cx.Conclusion)}
-					if cx.CheckSuite != nil {
-						c.Suite = cx.CheckSuite.DatabaseID
+					if s := cx.CheckSuite; s != nil {
+						c.Suite = s.DatabaseID
+						if s.App != nil {
+							c.App = s.App.DatabaseID
+						}
+						if s.WorkflowRun != nil {
+							c.Workflow = s.WorkflowRun.Workflow.DatabaseID
+						}
 					}
 					pr.Checks = append(pr.Checks, c)
 				}
@@ -451,7 +505,7 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d", owner, name, number)
 	var pr struct{ Body string }
 	if err := c.rest.DoWithContext(ctx, "GET", path, nil, &pr); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s/%s#%d: %w", owner, name, number, err)
 	}
 	d := &PullRequestDetails{Body: pr.Body}
 	resp, err := c.diff.RequestWithContext(ctx, "GET", path, nil)
@@ -465,7 +519,7 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxDiffBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s/%s#%d: read diff: %w", owner, name, number, err)
 	}
 	d.Truncated = len(data) > MaxDiffBytes
 	d.Diff = strings.ToValidUTF8(string(data[:min(len(data), MaxDiffBytes)]), "")
@@ -520,15 +574,59 @@ func RateLimited(err error) (time.Duration, bool) {
 		}
 		return 0, false
 	}
+	var rl *RateLimitError
+	if errors.As(err, &rl) {
+		return max(0, time.Until(rl.Reset)), true
+	}
+	if graphQLRateLimited(err) {
+		// GraphQL's limit is an hourly budget, and its error does not say
+		// when it lifts: assume the worst rather than retry blindly.
+		return time.Hour, true
+	}
+	return 0, false
+}
+
+// RateLimitError is a GraphQL query refused for the rate limit, with when
+// the limit lifts: unlike REST, GitHub's GraphQL error does not say.
+type RateLimitError struct {
+	Err   error
+	Reset time.Time
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("%v (the GraphQL rate limit resets at %s)", e.Err, e.Reset.Local().Format("15:04:05"))
+}
+
+func (e *RateLimitError) Unwrap() error { return e.Err }
+
+func graphQLRateLimited(err error) bool {
 	var ge *api.GraphQLError
 	if errors.As(err, &ge) {
 		for _, e := range ge.Errors {
 			if e.Type == "RATE_LIMITED" {
-				return time.Minute, true
+				return true
 			}
 		}
 	}
-	return 0, false
+	return false
+}
+
+// withReset adds to a GraphQL rate limit error when the limit lifts, read
+// from the REST rate_limit endpoint, which does not count against it. Any
+// other error, or one whose reset cannot be read, is returned as it is.
+func (c *client) withReset(ctx context.Context, err error) error {
+	if !graphQLRateLimited(err) || c.rest == nil {
+		return err
+	}
+	var limits struct {
+		Resources struct {
+			GraphQL struct{ Reset int64 } `json:"graphql"`
+		}
+	}
+	if c.rest.DoWithContext(ctx, "GET", "rate_limit", nil, &limits) != nil || limits.Resources.GraphQL.Reset == 0 {
+		return err
+	}
+	return &RateLimitError{Err: err, Reset: time.Unix(limits.Resources.GraphQL.Reset, 0)}
 }
 
 // Backoff says how long to pause before making a failed call again, and
@@ -552,6 +650,9 @@ func Again[T any](ctx context.Context, pause time.Duration, sleep func(context.C
 	}
 	d, ok := Backoff(err, pause)
 	if !ok {
+		if _, limited := RateLimited(err); limited {
+			return v, fmt.Errorf("%w; not waiting up to %s for the rate limit to lift", err, d.Round(time.Second))
+		}
 		return v, err
 	}
 	if sleep == nil {

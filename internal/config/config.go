@@ -290,9 +290,9 @@ func Parse(data []byte) (*Config, error) {
 	cfg := &Config{Agent: agent}
 	seen := map[string]bool{}
 	for i, e := range f.Repos {
-		owner, name, ok := strings.Cut(strings.TrimSpace(e.Repo), "/")
-		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-			return nil, fmt.Errorf("repos[%d]: %q is not owner/name", i, e.Repo)
+		owner, name, err := parseRepoName(e.Repo)
+		if err != nil {
+			return nil, fmt.Errorf("repos[%d]: %w", i, err)
 		}
 		key := strings.ToLower(owner + "/" + name)
 		if seen[key] {
@@ -311,10 +311,48 @@ func Parse(data []byte) (*Config, error) {
 	return cfg, nil
 }
 
+// parseRepoName splits an entry's "owner/name", ignoring surrounding
+// whitespace as YAML would for an unquoted value, and checks both parts
+// against the characters GitHub allows, so a typo fails here rather than
+// as a "not found" from GitHub on every run.
+func parseRepoName(s string) (owner, name string, err error) {
+	owner, name, ok := strings.Cut(strings.TrimSpace(s), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return "", "", fmt.Errorf("%q is not owner/name", s)
+	}
+	if !validOwner(owner) {
+		return "", "", fmt.Errorf("%q: owner %q may only hold letters, digits and hyphens, and cannot start with a hyphen", s, owner)
+	}
+	if strings.HasSuffix(strings.ToLower(name), ".git") {
+		return "", "", fmt.Errorf("%q: drop the .git suffix; write the repository as owner/name", s)
+	}
+	if !validName(name) {
+		return "", "", fmt.Errorf("%q: name %q may only hold letters, digits, hyphens, underscores and dots", s, name)
+	}
+	return owner, name, nil
+}
+
+func validOwner(s string) bool {
+	return !strings.HasPrefix(s, "-") && !strings.ContainsFunc(s, func(r rune) bool { return !isAlnum(r) && r != '-' })
+}
+
+func validName(s string) bool {
+	return s != "." && s != ".." && !strings.ContainsFunc(s, func(r rune) bool { return !isAlnum(r) && !strings.ContainsRune("-_.", r) })
+}
+
+func isAlnum(r rune) bool {
+	return 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' || '0' <= r && r <= '9'
+}
+
+// apply layers o over base. A merge_without_checks_after that o sets but
+// that has no effect, because checks are optional where it applies (set
+// alongside require_checks: false, or inherited from the defaults), is an
+// error rather than silently ignored. One inherited from the defaults by a
+// repo that turns checks off is not: the default is meant for the others.
 func apply(base Policy, o overrides) (Policy, error) {
 	p := base
 	if o.MergeMethod != nil {
-		m := strings.ToLower(*o.MergeMethod)
+		m := strings.ToLower(strings.TrimSpace(*o.MergeMethod))
 		if !validMergeMethods[m] {
 			return p, fmt.Errorf("invalid merge_method %q (want squash, merge or rebase)", *o.MergeMethod)
 		}
@@ -339,12 +377,15 @@ func apply(base Policy, o overrides) (Policy, error) {
 			return p, fmt.Errorf("invalid merge_without_checks_after %q (want a duration such as 10m, or 0)", *o.MergeWithoutChecksAfter)
 		}
 		p.MergeWithoutChecksAfter = d
+		if d > 0 && !p.RequireChecks {
+			return p, fmt.Errorf("merge_without_checks_after %q has no effect with require_checks: false, which merges PRs without checks anyway; remove one of them", *o.MergeWithoutChecksAfter)
+		}
 	}
 	return p, nil
 }
 
 func parseAgent(e agentEntry) (Agent, error) {
-	a := Agent{Use: strings.ToLower(e.Use), Timeout: DefaultAgentTimeout, Claude: e.Claude, Codex: e.Codex}
+	a := Agent{Use: strings.ToLower(strings.TrimSpace(e.Use)), Timeout: DefaultAgentTimeout, Claude: e.Claude, Codex: e.Codex}
 	if a.Use == "" {
 		a.Use = Agents[0]
 	}
@@ -386,7 +427,8 @@ func expandHome(path string) (string, error) {
 
 // Filter keeps only the repos named in only (case-insensitive owner/name or
 // bare name), including skipped ones, each once and in config order. An
-// empty filter keeps every repo not marked skip.
+// empty filter keeps every repo not marked skip. A bare name shared by
+// repos of several owners is an error rather than a pick of them all.
 func (c *Config) Filter(only []string) ([]Repo, error) {
 	if len(only) == 0 {
 		var out []Repo
@@ -400,16 +442,25 @@ func (c *Config) Filter(only []string) ([]Repo, error) {
 	picked := make([]bool, len(c.Repos))
 	for _, want := range only {
 		w := strings.ToLower(want)
-		found := false
+		var matches []int
 		for i, r := range c.Repos {
 			if strings.ToLower(r.FullName()) == w || strings.ToLower(r.Name) == w {
-				picked[i] = true
-				found = true
+				matches = append(matches, i)
 			}
 		}
-		if !found {
+		switch len(matches) {
+		case 0:
 			return nil, fmt.Errorf("repo %q is not in the config", want)
+		case 1:
+		default:
+			// Only a bare name can match more than one repo.
+			names := make([]string, len(matches))
+			for j, i := range matches {
+				names[j] = c.Repos[i].FullName()
+			}
+			return nil, fmt.Errorf("ambiguous: %s matches %s; use owner/name", want, strings.Join(names, ", "))
 		}
+		picked[matches[0]] = true
 	}
 	var out []Repo
 	for i, r := range c.Repos {

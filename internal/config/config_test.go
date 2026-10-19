@@ -34,22 +34,32 @@ repos:
 
 func TestParseRejectsBadInput(t *testing.T) {
 	for name, in := range map[string]string{
-		"no repos":      "repos: []",
-		"bad name":      "repos: [acme]",
-		"duplicate":     "repos: [a/b, A/B]",
-		"bad method":    "repos: [{repo: a/b, merge_method: yolo}]",
-		"bad update":    "repos: [{repo: a/b, max_update_type: huge}]",
-		"unknown field": "repos: [{repo: a/b, auto: true}]",
-		"unknown top":   "repo: [a/b]",
-		"empty":         "",
-		"only comments": "# nothing here\n",
-		"bad agent":     "agent: {use: gemini}\nrepos: [a/b]",
-		"bad timeout":   "agent: {timeout: soon}\nrepos: [a/b]",
-		"zero timeout":  "agent: {timeout: 0s}\nrepos: [a/b]",
-		"agent field":   "agent: {claude: {config: x}}\nrepos: [a/b]",
-		"bad budget":    "agent: {claude: {max_budget_usd: -1}}\nrepos: [a/b]",
-		"bad no-checks": "repos: [{repo: a/b, merge_without_checks_after: soon}]",
-		"neg no-checks": "repos: [{repo: a/b, merge_without_checks_after: -1m}]",
+		"no repos":                     "repos: []",
+		"bad name":                     "repos: [acme]",
+		"duplicate":                    "repos: [a/b, A/B]",
+		"bad method":                   "repos: [{repo: a/b, merge_method: yolo}]",
+		"bad update":                   "repos: [{repo: a/b, max_update_type: huge}]",
+		"unknown field":                "repos: [{repo: a/b, auto: true}]",
+		"unknown top":                  "repo: [a/b]",
+		"empty":                        "",
+		"only comments":                "# nothing here\n",
+		"bad agent":                    "agent: {use: gemini}\nrepos: [a/b]",
+		"bad timeout":                  "agent: {timeout: soon}\nrepos: [a/b]",
+		"zero timeout":                 "agent: {timeout: 0s}\nrepos: [a/b]",
+		"agent field":                  "agent: {claude: {config: x}}\nrepos: [a/b]",
+		"bad budget":                   "agent: {claude: {max_budget_usd: -1}}\nrepos: [a/b]",
+		"bad no-checks":                "repos: [{repo: a/b, merge_without_checks_after: soon}]",
+		"neg no-checks":                "repos: [{repo: a/b, merge_without_checks_after: -1m}]",
+		"space in name":                `repos: ["acme/ z"]`,
+		"space owner":                  `repos: ["ac me/z"]`,
+		"bad owner":                    "repos: [ac_me/z]",
+		"dash owner":                   "repos: [-acme/z]",
+		"bad char":                     "repos: [acme/z!]",
+		"dot name":                     "repos: [acme/..]",
+		"git suffix":                   "repos: [acme/x.git]",
+		"no-checks unused here":        "repos: [{repo: a/b, require_checks: false, merge_without_checks_after: 10m}]",
+		"no-checks unused in defaults": "defaults: {require_checks: false, merge_without_checks_after: 10m}\nrepos: [a/b]",
+		"no-checks unused by default":  "defaults: {require_checks: false}\nrepos: [{repo: a/b, merge_without_checks_after: 10m}]",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected error", name)
@@ -58,7 +68,7 @@ func TestParseRejectsBadInput(t *testing.T) {
 }
 
 func TestParseAcceptsEveryEntryField(t *testing.T) {
-	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: false, agent_review: false, merge_without_checks_after: 5m, skip: true}\n"
+	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: true, agent_review: false, merge_without_checks_after: 5m, skip: true}\n"
 	if _, err := Parse([]byte(in)); err != nil {
 		t.Fatal(err)
 	}
@@ -164,5 +174,55 @@ func TestPolicyJSONWritesDurations(t *testing.T) {
 	want := `{"merge_method":"squash","max_update_type":"minor","require_checks":true,"agent_review":true,"merge_without_checks_after":"10m"}`
 	if string(data) != want {
 		t.Fatalf("got %s\nwant %s", data, want)
+	}
+}
+
+func TestParseRepoNames(t *testing.T) {
+	cfg, err := Parse([]byte("repos: [\"  acme/x.y_z-1  \", my-org/.github, a/b.gitignore]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"acme/x.y_z-1", "my-org/.github", "a/b.gitignore"} {
+		if got := cfg.Repos[i].FullName(); got != want {
+			t.Errorf("repos[%d] = %q, want %q", i, got, want)
+		}
+	}
+	if _, err := Parse([]byte("repos: [acme/x.git]")); err == nil || !strings.Contains(err.Error(), "drop the .git suffix") {
+		t.Errorf(".git suffix err = %v", err)
+	}
+}
+
+func TestParseNormalizesMergeMethod(t *testing.T) {
+	cfg, err := Parse([]byte(`repos: [{repo: a/b, merge_method: " Rebase ", max_update_type: " Major "}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := cfg.Repos[0].Policy; p.MergeMethod != "rebase" || p.MaxUpdateType != UpdateMajor {
+		t.Fatalf("policy = %+v", p)
+	}
+}
+
+func TestParseNoChecksErrorSaysWhy(t *testing.T) {
+	_, err := Parse([]byte("repos: [{repo: a/b, require_checks: false, merge_without_checks_after: 10m}]"))
+	if err == nil || !strings.Contains(err.Error(), "a/b: merge_without_checks_after \"10m\" has no effect with require_checks: false") {
+		t.Fatalf("err = %v", err)
+	}
+	// A default meant for the other repos does not stop one turning checks off.
+	if _, err := Parse([]byte("defaults: {merge_without_checks_after: 10m}\nrepos: [a/b, {repo: a/c, require_checks: false}]")); err != nil {
+		t.Fatalf("inherited default: %v", err)
+	}
+}
+
+func TestFilterAmbiguousName(t *testing.T) {
+	cfg, err := Parse([]byte("repos: [acme/docs, other/docs, acme/api]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.Filter([]string{"docs"}); err == nil || err.Error() != "ambiguous: docs matches acme/docs, other/docs; use owner/name" {
+		t.Fatalf("Filter(docs) err = %v", err)
+	}
+	got, err := cfg.Filter([]string{"other/docs", "api"})
+	if err != nil || len(got) != 2 || got[0].FullName() != "other/docs" || got[1].FullName() != "acme/api" {
+		t.Fatalf("Filter = %v, %v", got, err)
 	}
 }

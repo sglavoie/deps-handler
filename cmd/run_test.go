@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -114,6 +115,32 @@ func TestRunOpenLeavesOutQuietRepos(t *testing.T) {
 	}
 	if doc.Apply || len(doc.Results) != 1 || doc.Results[0].Repo != "o/busy" || len(doc.Results[0].Decisions) != 2 {
 		t.Fatalf("json = %+v", doc)
+	}
+}
+
+func TestRunOpenSummaryCountsHiddenRepos(t *testing.T) {
+	_, cfg := runFixture(t)
+	if _, out, _ := run("run", "-c", cfg, "--open"); !strings.Contains(out, "1 repos (1 without open PRs hidden): 1 would merge, 1 skip") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+func TestRunReviewSkipsSetupWithoutAgentReview(t *testing.T) {
+	_, _ = runFixture(t)
+	cfg := writeConfig(t, "defaults:\n  agent_review: false\nrepos:\n  - o/busy\n")
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir()) // no agent installed
+	code, out, stderr := run("run", "-c", cfg, "--review", "--max-reviews", "3")
+	if code != 0 || !strings.Contains(stderr, "every selected repo sets agent_review: false") || !strings.Contains(out, "would merge") {
+		t.Fatalf("code %d, stderr %q:\n%s", code, stderr, out)
+	}
+	if _, err := os.Stat(filepath.Join(state, "deps-merger")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("review setup ran anyway: %v", err)
+	}
+	if code, _, stderr := run("run", "-c", cfg, "--agent", "gemini"); code != 1 || !strings.Contains(stderr, `unknown agent "gemini"`) {
+		t.Errorf("unknown agent: code %d, %q", code, stderr)
 	}
 }
 

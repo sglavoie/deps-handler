@@ -1,4 +1,5 @@
-# deps-merger config. Copy to ~/.config/deps-merger/config.yaml.
+# deps-merger config. Copy to ~/.config/deps-merger/config.yaml
+# ($XDG_CONFIG_HOME/deps-merger/config.yaml when that is set).
 #
 # defaults apply to every repo; any repo entry can override them.
 #   merge_method:    squash | merge | rebase (falls back to what the repo allows)
@@ -6,11 +7,12 @@
 #   require_checks:  true = a PR with no CI checks is never merged...
 #   merge_without_checks_after: ...unless its latest commit has gone this
 #                    long (e.g. 10m) without any check, as on a repo whose CI
-#                    only runs for some paths (default 0: never)
+#                    only runs for some paths (default 0: never; an error
+#                    alongside require_checks: false, where it does nothing)
 #   agent_review:    true = with --review, the agent may approve updates over
 #                    max_update_type or of unknown size (default true)
 # A repo entry can also set skip: true to leave it out of runs; naming it
-# with --repo still runs it.
+# with --repo still runs it. Write repos as owner/name, without .git.
 defaults:
   merge_method: squash
   max_update_type: minor

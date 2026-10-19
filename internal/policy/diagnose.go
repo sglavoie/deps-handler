@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -49,19 +50,38 @@ const (
 type Finding struct {
 	Kind        FindingKind `json:"kind"`
 	Summary     string      `json:"summary"`
-	PRs         []int       `json:"prs,omitempty"`
-	Details     []string    `json:"details,omitempty"`
-	Suggestions []string    `json:"suggestions,omitempty"`
+	PRs         []int       `json:"prs"`
+	Details     []string    `json:"details"`
+	Suggestions []string    `json:"suggestions"`
+}
+
+// MarshalJSON writes every list, empty ones as [] rather than null, so a
+// script can read a finding's fields without checking for them first.
+func (f Finding) MarshalJSON() ([]byte, error) {
+	type plain Finding
+	if f.PRs == nil {
+		f.PRs = []int{}
+	}
+	if f.Details == nil {
+		f.Details = []string{}
+	}
+	if f.Suggestions == nil {
+		f.Suggestions = []string{}
+	}
+	return json.Marshal(plain(f))
 }
 
 // Diagnose looks across all decisions of one repository for problems that
 // need a change in the repository rather than a merge.
 func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Finding {
 	out := []Finding{}
-	if repo.OpenPRCount > len(repo.PullRequests) {
+	// The search counts closed PRs its index has not caught up with, which
+	// are dropped from PullRequests: only results it did not return were
+	// left unread.
+	if repo.OpenPRCount > repo.SearchCount {
 		out = append(out, Finding{
 			Kind:    FindingTruncated,
-			Summary: fmt.Sprintf("only %d of %d open Dependabot PRs were evaluated; the rest wait for a later run", len(repo.PullRequests), repo.OpenPRCount),
+			Summary: fmt.Sprintf("only %d of %d open Dependabot PRs were evaluated; the rest wait for a later run", repo.SearchCount, repo.OpenPRCount),
 		})
 	}
 	if len(decisions) == 0 {
@@ -136,8 +156,10 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 				PRs:     []int{d.Number},
 			})
 		}
-		// A PR still waiting may yet get checks.
-		if len(d.PR.Checks) == 0 && d.Action != ActionWait {
+		// A PR still waiting may yet get checks, and one that is a draft,
+		// someone else's work or in an archived repository was never
+		// judged on its checks at all.
+		if d.assessed && len(d.PR.Checks) == 0 && d.Action != ActionWait {
 			noChecks = append(noChecks, d.Number)
 		}
 		if d.needsReview {

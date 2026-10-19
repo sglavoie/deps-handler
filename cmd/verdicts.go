@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -26,32 +27,44 @@ reused for 14 days, until the PR moves to new versions; a rejection only
 until Dependabot rebases the PR. Use "verdicts forget" to have an update
 reviewed again.
 
+HEAD is the commit a rejection was given for: it holds for that commit
+only. An approval holds for any head.
+
 A target narrows the list to a repository (owner/name) or a pull request
-(owner/name#7).`,
+(owner/name#7). Exits 1 if a target matched nothing.`,
+		Args: func(_ *cobra.Command, targets []string) error {
+			for _, t := range targets {
+				if !targetPattern.MatchString(t) {
+					return fmt.Errorf("%q is neither a command nor a target (owner/name or owner/name#7); the command is \"verdicts forget\"", t)
+				}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, targets []string) error {
-			cache, err := openVerdicts()
+			cache, err := openVerdicts(cmd)
 			if err != nil {
 				return err
 			}
 			entries := cache.Entries()
+			unmatched := 0
 			if len(targets) > 0 {
+				for _, t := range targets {
+					if !slices.ContainsFunc(entries, func(e review.Entry) bool { return review.Matches(e.Key, t) }) {
+						fmt.Fprintf(cmd.ErrOrStderr(), "deps-merger: no cached verdict matches %q\n", t)
+						unmatched++
+					}
+				}
 				entries = slices.DeleteFunc(entries, func(e review.Entry) bool {
 					return !slices.ContainsFunc(targets, func(t string) bool { return review.Matches(e.Key, t) })
 				})
 			}
-			if asJSON {
-				return verdictsJSON(cmd, entries)
+			if err := printVerdicts(cmd, entries, asJSON); err != nil {
+				return err
 			}
-			if len(entries) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no cached verdicts")
-				return nil
+			if unmatched > 0 {
+				return exitError{code: 1}
 			}
-			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "UPDATE\tVERDICT\tAGENT\tREVIEWED\tEXPIRES\tSUMMARY")
-			for _, e := range entries {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", e.Key, verdictWord(e), e.Agent, e.ReviewedAt.Local().Format("2006-01-02 15:04"), e.Expires.Local().Format("2006-01-02"), clipSummary(e.Verdict.Summary))
-			}
-			return tw.Flush()
+			return nil
 		},
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "print verdicts as JSON, with their concerns")
@@ -63,7 +76,7 @@ A target is a repository (owner/name), a pull request (owner/name#7) or an
 update as "verdicts" lists it. Exits 1 if a target matched nothing.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, targets []string) error {
-			cache, err := openVerdicts()
+			cache, err := openVerdicts(cmd)
 			if err != nil {
 				return err
 			}
@@ -89,6 +102,35 @@ update as "verdicts" lists it. Exits 1 if a target matched nothing.`,
 	return c
 }
 
+// targetPattern is a repository (owner/name) or a pull request
+// (owner/name#7).
+var targetPattern = regexp.MustCompile(`^[^/#\s]+/[^/#\s]+(#[0-9]+)?$`)
+
+func printVerdicts(cmd *cobra.Command, entries []review.Entry, asJSON bool) error {
+	if asJSON {
+		return verdictsJSON(cmd, entries)
+	}
+	if len(entries) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "no cached verdicts")
+		return nil
+	}
+	tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "UPDATE\tVERDICT\tAGENT\tHEAD\tREVIEWED\tEXPIRES\tSUMMARY")
+	for _, e := range entries {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.Key, verdictWord(e), e.Agent, heldFor(e), e.ReviewedAt.Local().Format("2006-01-02 15:04"), e.Expires.Local().Format("2006-01-02"), clipSummary(e.Verdict.Summary))
+	}
+	return tw.Flush()
+}
+
+// heldFor is the head a verdict holds for: a rejection holds for the
+// commit reviewed only.
+func heldFor(e review.Entry) string {
+	if e.Verdict.Approved || e.HeadOID == "" {
+		return "any"
+	}
+	return fmt.Sprintf("%.7s", e.HeadOID)
+}
+
 func verdictWord(e review.Entry) string {
 	if e.Verdict.Approved {
 		return "approved"
@@ -110,6 +152,7 @@ func verdictsJSON(cmd *cobra.Command, entries []review.Entry) error {
 		Update     string    `json:"update"`
 		Verdict    string    `json:"verdict"`
 		Agent      string    `json:"agent"`
+		HeadOID    string    `json:"head_oid"`
 		ReviewedAt time.Time `json:"reviewed_at"`
 		Expires    time.Time `json:"expires"`
 		Summary    string    `json:"summary"`
@@ -121,17 +164,26 @@ func verdictsJSON(cmd *cobra.Command, entries []review.Entry) error {
 		if concerns == nil {
 			concerns = []string{}
 		}
-		out = append(out, verdict{e.Key, verdictWord(e), e.Agent, e.ReviewedAt, e.Expires, e.Verdict.Summary, concerns})
+		out = append(out, verdict{e.Key, verdictWord(e), e.Agent, e.HeadOID, e.ReviewedAt, e.Expires, e.Verdict.Summary, concerns})
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
 }
 
-func openVerdicts() (*review.Cache, error) {
+// openVerdicts opens the verdict cache, warning on cmd's stderr when it
+// had to move an unreadable cache file aside.
+func openVerdicts(cmd *cobra.Command) (*review.Cache, error) {
 	stateDir, err := config.StateDir()
 	if err != nil {
 		return nil, err
 	}
-	return review.OpenCache(verdictsPath(stateDir))
+	cache, err := review.OpenCache(verdictsPath(stateDir))
+	if err != nil {
+		return nil, err
+	}
+	if msg := cache.TakeRecovered(); msg != "" {
+		fmt.Fprintln(cmd.ErrOrStderr(), "deps-merger: warning:", msg)
+	}
+	return cache, nil
 }

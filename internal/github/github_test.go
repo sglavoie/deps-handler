@@ -88,8 +88,9 @@ func TestRateLimited(t *testing.T) {
 		"429":         {&api.HTTPError{StatusCode: 429}, time.Minute, true},
 		"secondary":   {&api.HTTPError{StatusCode: 403, Message: "You have exceeded a secondary rate limit"}, time.Minute, true},
 		"forbidden":   {&api.HTTPError{StatusCode: 403, Message: "Resource not accessible by integration"}, 0, false},
-		"graphql":     {&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Type: "RATE_LIMITED"}}}, time.Minute, true},
-		"other":       {errors.New("boom"), 0, false},
+		// Without its reset, GraphQL's hourly limit is not waited for.
+		"graphql": {&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Type: "RATE_LIMITED"}}}, time.Hour, true},
+		"other":   {errors.New("boom"), 0, false},
 	} {
 		if got, ok := RateLimited(c.err); got != c.want || ok != c.ok {
 			t.Errorf("%s: RateLimited = %s, %t; want %s, %t", name, got, ok, c.want, c.ok)
@@ -98,6 +99,10 @@ func TestRateLimited(t *testing.T) {
 	reset := &api.HTTPError{StatusCode: 403, Headers: http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {soon}}}
 	if d, ok := RateLimited(reset); !ok || d <= 0 || d > 30*time.Second {
 		t.Errorf("reset: RateLimited = %s, %t", d, ok)
+	}
+	gqlReset := fmt.Errorf("o/r: %w", &RateLimitError{Err: &api.GraphQLError{}, Reset: time.Now().Add(30 * time.Second)})
+	if d, ok := RateLimited(gqlReset); !ok || d <= 0 || d > 30*time.Second {
+		t.Errorf("graphql reset: RateLimited = %s, %t", d, ok)
 	}
 }
 
@@ -167,11 +172,15 @@ const fetchResponse = `{"data": {
      "commits": {"totalCount": 1, "nodes": [{"commit": {
        "oid": "c1", "message": "bump\n\nCo-authored-by: Jane <jane@example.com>", "committedDate": "2026-10-01T12:00:00Z",
        "author": {"name": "dependabot[bot]", "email": "e", "user": {"login": "dependabot[bot]"}},
+       "committer": {"email": "noreply@github.com"},
        "signature": {"isValid": true, "wasSignedByGitHub": true}}}]},
      "last": {"nodes": [{"commit": {"oid": "abc", "statusCheckRollup": {"contexts": {"totalCount": 120, "nodes": [
-       {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS", "checkSuite": {"databaseId": 42}},
+       {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS", "checkSuite": {"databaseId": 42,
+         "app": {"databaseId": 15368}, "workflowRun": {"workflow": {"databaseId": 7}}}},
+       {"__typename": "CheckRun", "name": "sonar", "status": "COMPLETED", "conclusion": "SUCCESS", "checkSuite": {"databaseId": 43,
+         "app": {"databaseId": 99}, "workflowRun": null}},
        {"__typename": "StatusContext", "context": "ci/legacy", "state": "PENDING"}]}}}}]},
-     "comments": {"nodes": [{"body": "@dependabot rebase", "createdAt": "2026-10-01T13:00:00Z", "author": {"login": "me"}}]}}
+     "comments": {"totalCount": 64, "nodes": [{"body": "@dependabot rebase", "createdAt": "2026-10-01T13:00:00Z", "author": {"login": "me"}}]}}
   ]}
 }}`
 
@@ -184,7 +193,7 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.FullName != "o/r" || !r.CanWrite() || !r.SquashAllowed || r.MergeAllowed || r.OpenPRCount != 3 {
+	if r.FullName != "o/r" || !r.CanWrite() || !r.SquashAllowed || r.MergeAllowed || r.OpenPRCount != 3 || r.SearchCount != 3 {
 		t.Fatalf("repo = %+v", r)
 	}
 	if len(r.PullRequests) != 1 {
@@ -195,15 +204,24 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 		t.Fatalf("pr = %+v", pr)
 	}
 	c := pr.Commits[0]
-	if !c.SignedByGitHub || len(c.Authors) != 2 || c.Authors[0].Login != "dependabot[bot]" || c.Authors[1] != (Author{Name: "Jane", Email: "jane@example.com"}) {
+	if !c.SignedByGitHub || !c.CommittedByGitHub || len(c.Authors) != 2 || c.Authors[0].Login != "dependabot[bot]" || c.Authors[1] != (Author{Name: "Jane", Email: "jane@example.com"}) {
 		t.Fatalf("commit = %+v", c)
 	}
-	want := []Check{{Name: "build", State: CheckPassed, Suite: 42}, {Name: "ci/legacy", State: CheckPending}}
-	if len(pr.Checks) != 2 || pr.Checks[0] != want[0] || pr.Checks[1] != want[1] {
+	want := []Check{
+		{Name: "build", State: CheckPassed, Suite: 42, App: 15368, Workflow: 7},
+		{Name: "sonar", State: CheckPassed, Suite: 43, App: 99},
+		{Name: "ci/legacy", State: CheckPending, Status: true},
+	}
+	if len(pr.Checks) != len(want) {
 		t.Fatalf("checks = %+v", pr.Checks)
 	}
-	if len(pr.Comments) != 1 || pr.Comments[0].Author != "me" {
-		t.Fatalf("comments = %+v", pr.Comments)
+	for i := range want {
+		if pr.Checks[i] != want[i] {
+			t.Errorf("checks[%d] = %+v, want %+v", i, pr.Checks[i], want[i])
+		}
+	}
+	if len(pr.Comments) != 1 || pr.Comments[0].Author != "me" || pr.CommentCount != 64 {
+		t.Fatalf("comments = %+v of %d", pr.Comments, pr.CommentCount)
 	}
 }
 
@@ -219,6 +237,22 @@ func TestFetchRepoUnsignedCommit(t *testing.T) {
 	}
 	if r.PullRequests[0].Commits[0].SignedByGitHub {
 		t.Fatal("a commit without a signature must not count as signed")
+	}
+}
+
+func TestFetchRepoCommitWithoutAuthor(t *testing.T) {
+	resp := strings.Replace(fetchResponse, `"author": {"name": "dependabot[bot]", "email": "e", "user": {"login": "dependabot[bot]"}}`, `"author": null`, 1)
+	gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(resp)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The trailer must not move into the author's place.
+	if a := r.PullRequests[0].Commits[0].Authors; len(a) != 2 || a[0] != (Author{}) || a[1].Name != "Jane" {
+		t.Fatalf("authors = %+v", a)
 	}
 }
 
@@ -396,5 +430,63 @@ func TestFetchRepoWithoutChecksOrRepository(t *testing.T) {
 	}
 	if _, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "gone"); err == nil || !strings.Contains(err.Error(), "not found or not accessible") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+const rateLimitedResponse = `{"data": null, "errors": [{"type": "RATE_LIMITED", "message": "API rate limit exceeded for user ID 1."}]}`
+
+func TestFetchRepoRateLimitedSaysWhenItLifts(t *testing.T) {
+	limited := func(reset time.Time) *client {
+		rt := &routes{answers: map[string]*http.Response{
+			"POST /graphql":   reply(200, rateLimitedResponse),
+			"GET /rate_limit": reply(200, fmt.Sprintf(`{"resources": {"core": {"reset": 1}, "graphql": {"reset": %d}}}`, reset.Unix())),
+		}, bodies: map[string]string{}}
+		c := restClient(t, rt)
+		gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: rt})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.gql = gql
+		return c
+	}
+	ctx := context.Background()
+	_, err := limited(time.Now().Add(30*time.Second)).FetchRepo(ctx, "o", "r")
+	if d, ok := RateLimited(err); !ok || d <= 0 || d > 30*time.Second {
+		t.Fatalf("RateLimited = %s, %t for %v", d, ok, err)
+	}
+	if !strings.HasPrefix(err.Error(), "o/r: ") || !strings.Contains(err.Error(), "resets at") {
+		t.Fatalf("err = %v", err)
+	}
+
+	slept := 0
+	sleep := func(context.Context, time.Duration) error { slept++; return nil }
+	// Half a minute over, as the reset GitHub gives drops the fraction of
+	// a second the wait would otherwise be printed short by.
+	c := limited(time.Now().Add(40*time.Minute + 30*time.Second))
+	_, err = Again(ctx, time.Second, sleep, func() (*Repo, error) { return c.FetchRepo(ctx, "o", "r") })
+	if slept != 0 || err == nil || !strings.Contains(err.Error(), "not waiting up to 40m") {
+		t.Fatalf("slept %d times, err = %v; a limit lifting in 40 minutes should fail at once", slept, err)
+	}
+}
+
+func TestErrorsNameTheirPullRequest(t *testing.T) {
+	rt := &routes{answers: map[string]*http.Response{}, bodies: map[string]string{}}
+	if _, err := restClient(t, rt).PullRequestDetails(context.Background(), "o", "r", 5); err == nil || !strings.HasPrefix(err.Error(), "o/r#5: ") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestFetchRepoCommitterNotGitHub(t *testing.T) {
+	resp := strings.Replace(fetchResponse, `"committer": {"email": "noreply@github.com"}`, `"committer": {"email": "jane@example.com"}`, 1)
+	gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(resp)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.PullRequests[0].Commits[0].CommittedByGitHub {
+		t.Fatal("a commit someone else committed must not count as GitHub's")
 	}
 }

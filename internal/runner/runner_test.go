@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -33,8 +34,16 @@ type fakeClient struct {
 	// merge that timed out on its way back can.
 	mergeErrs    map[int][]error
 	mergedAnyway map[int]bool
-	// fetchErrs are returned by the next fetches, in order.
-	fetchErrs []error
+	// fetchErrs are returned by the next fetches, in order; Merge adds
+	// fetchErrsAfterMerge to them once it merges.
+	fetchErrs           []error
+	fetchErrsAfterMerge []error
+	// lag keeps a merged PR open in that many more fetches, as GitHub can
+	// right after a merge; merging it again meanwhile fails with a 405.
+	lag     int
+	lagging map[int]int
+	// commentErrs fail a PR's rebase requests.
+	commentErrs map[int]error
 }
 
 func (f *fakeClient) Viewer(context.Context) (string, error) { return "me", nil }
@@ -47,6 +56,14 @@ func (f *fakeClient) FetchRepo(ctx context.Context, _, _ string) (*github.Repo, 
 		err := f.fetchErrs[0]
 		f.fetchErrs = f.fetchErrs[1:]
 		return nil, err
+	}
+	for n, left := range f.lagging {
+		if left == 0 {
+			f.drop(n)
+			delete(f.lagging, n)
+			continue
+		}
+		f.lagging[n]--
 	}
 	cp := *f.repo
 	cp.PullRequests = append([]github.PullRequest(nil), f.repo.PullRequests...)
@@ -67,6 +84,9 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 		f.transient[n]--
 		return &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}
 	}
+	if _, ok := f.lagging[n]; ok {
+		return &api.HTTPError{StatusCode: 405, Message: "Pull Request is not mergeable"}
+	}
 	var err error
 	if errs := f.mergeErrs[n]; len(errs) > 0 {
 		err, f.mergeErrs[n] = errs[0], errs[1:]
@@ -75,6 +95,20 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 		}
 	}
 	f.merges = append(f.merges, n)
+	f.fetchErrs = append(f.fetchErrs, f.fetchErrsAfterMerge...)
+	if f.lag > 0 {
+		if f.lagging == nil {
+			f.lagging = map[int]int{}
+		}
+		f.lagging[n] = f.lag
+		return err
+	}
+	f.drop(n)
+	f.unknownFor = 2
+	return err
+}
+
+func (f *fakeClient) drop(n int) {
 	var keep []github.PullRequest
 	for _, pr := range f.repo.PullRequests {
 		if pr.Number != n {
@@ -82,11 +116,12 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 		}
 	}
 	f.repo.PullRequests = keep
-	f.unknownFor = 2
-	return err
 }
 
 func (f *fakeClient) Comment(_ context.Context, _, _ string, n int, body string) error {
+	if err := f.commentErrs[n]; err != nil {
+		return err
+	}
 	if f.comments == nil {
 		f.comments = map[int][]string{}
 	}
@@ -528,6 +563,26 @@ func TestUncachedVerdictIsAWarning(t *testing.T) {
 	}
 }
 
+func TestCacheCorruptedMidRunIsAWarning(t *testing.T) {
+	path := t.TempDir() + "/verdicts.json"
+	cache, err := review.OpenCache(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The file goes bad after the run opened the cache, as when another
+	// process's write was cut short.
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	r := reviewRunner(c, &fakeReviewer{}, true)
+	r.Verdicts = cache
+	res := r.RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(c.merges) != "[1]" || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "unreadable") {
+		t.Fatalf("merges %v, warnings %q", c.merges, res.Warnings)
+	}
+}
+
 func TestCachedRejectionLapsesWhenTheHeadMoves(t *testing.T) {
 	cache, err := review.OpenCache(t.TempDir() + "/verdicts.json")
 	if err != nil {
@@ -543,5 +598,111 @@ func TestCachedRejectionLapsesWhenTheHeadMoves(t *testing.T) {
 	}
 	if len(rv.calls) != 2 {
 		t.Fatalf("reviews %v; want the rebase alone to bring a new review", rv.calls)
+	}
+}
+
+func TestMergeThatWentThroughButStillReadsOpenIsReportedMerged(t *testing.T) {
+	// The merge times out but goes through; GitHub still shows the PR open
+	// on the next read, so the retry gets a 405.
+	fc := &fakeClient{
+		repo:         testutil.Repo(testutil.PR(1)),
+		mergeErrs:    map[int][]error{1: {&api.HTTPError{StatusCode: 502}}},
+		mergedAnyway: map[int]bool{1: true},
+		lag:          1,
+	}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(fc.merges) != "[1]" || len(res.Events) != 1 || res.Events[0].Kind != EventMerged || res.Failed() {
+		t.Fatalf("merges %v, events %+v", fc.merges, res.Events)
+	}
+	if !strings.Contains(res.Events[0].Detail, "after HTTP 502") {
+		t.Fatalf("detail %q should name the first failure", res.Events[0].Detail)
+	}
+}
+
+func TestTimedOutMergeRefusedOnRetryIsAFailure(t *testing.T) {
+	notMergeable := &api.HTTPError{StatusCode: 405, Message: "Pull Request is not mergeable"}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {&api.HTTPError{StatusCode: 504}, notMergeable}}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 0 || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed || !res.Failed() {
+		t.Fatalf("merges %v, events %+v", fc.merges, res.Events)
+	}
+	if !strings.Contains(res.Events[0].Detail, "not mergeable") {
+		t.Fatalf("detail %q", res.Events[0].Detail)
+	}
+}
+
+func TestTimedOutMergeIsReportedWhenTheRepoCannotBeReadAgain(t *testing.T) {
+	bad := &api.HTTPError{StatusCode: 502}
+	fc := &fakeClient{
+		repo:                testutil.Repo(testutil.PR(1)),
+		mergeErrs:           map[int][]error{1: {&api.HTTPError{StatusCode: 504}}},
+		mergedAnyway:        map[int]bool{1: true},
+		fetchErrsAfterMerge: []error{bad, bad},
+	}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if res.Error == "" || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed {
+		t.Fatalf("error %q, events %+v", res.Error, res.Events)
+	}
+	if !strings.Contains(res.Events[0].Detail, "may have merged after HTTP 504") {
+		t.Fatalf("detail %q", res.Events[0].Detail)
+	}
+}
+
+func TestTimedOutRebaseRequestIsAWarning(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.MergeState = "BEHIND"
+	fc := &fakeClient{repo: testutil.Repo(pr), commentErrs: map[int]error{1: &api.HTTPError{StatusCode: 504}}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(res.Events) != 1 || res.Events[0].Kind != EventRebaseRequested || !strings.Contains(res.Events[0].Detail, "may not have been posted") || res.Failed() {
+		t.Fatalf("events %+v", res.Events)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "#1: the rebase request may not have been posted") {
+		t.Fatalf("warnings %q", res.Warnings)
+	}
+
+	fc = &fakeClient{repo: testutil.Repo(pr), commentErrs: map[int]error{1: &api.HTTPError{StatusCode: 403, Message: "Resource not accessible"}}}
+	res = newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(res.Events) != 1 || res.Events[0].Kind != EventRebaseFailed || !res.Failed() {
+		t.Fatalf("events %+v; a refused comment is a failure", res.Events)
+	}
+}
+
+func TestFailedReviewHasNoNullConcerns(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	res := reviewRunner(c, &fakeReviewer{fail: map[int]bool{1: true}}, true).RunRepo(context.Background(), repoCfg)
+	b, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "null") || !strings.Contains(string(b), `"concerns":[]`) {
+		t.Fatalf("json = %s", b)
+	}
+}
+
+func TestRefusedReviewDoesNotUseUpTheLimit(t *testing.T) {
+	// With a limit of one: o/a's review starts, o/b is refused meanwhile,
+	// then o/a's head moves, which gives its review back. Its new head
+	// must still get that review.
+	c := &reposClient{repos: map[string]*fakeClient{
+		"a": {repo: testutil.Repo(testutil.PR(1, "lib:major"))},
+		"b": {repo: testutil.Repo(testutil.PR(2, "lib:major"))},
+	}}
+	moved := fmt.Errorf("checkout: %w", review.ErrHeadMoved)
+	var r *Runner
+	var refused RepoResult
+	rv := &fakeReviewer{errs: map[int][]error{1: {moved}}}
+	rv.onReview = func(req review.Request) {
+		if len(rv.calls) == 1 {
+			refused = r.RunRepo(context.Background(), config.Repo{Owner: "o", Name: "b", Policy: config.Builtin})
+		}
+	}
+	r = reviewRunner(c, rv, false)
+	r.MaxReviews = 1
+	res := r.RunRepo(context.Background(), config.Repo{Owner: "o", Name: "a", Policy: config.Builtin})
+	if fmt.Sprint(rv.calls) != "[1 1]" || res.Decisions[0].Action != policy.ActionMerge {
+		t.Fatalf("reviews %v, decision %+v", rv.calls, res.Decisions[0])
+	}
+	if d := refused.Decisions[0]; !strings.Contains(d.Reason, "review limit of 1 reached") {
+		t.Fatalf("o/b decision %+v", d)
 	}
 }

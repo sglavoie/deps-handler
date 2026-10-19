@@ -46,6 +46,29 @@ func TestCancelKillsAgentChildren(t *testing.T) {
 	t.Fatal("the agent's child outlived it")
 }
 
+func TestAgentSucceedsDespiteChildHoldingOutput(t *testing.T) {
+	defer func(d time.Duration) { waitDelay = d }(waitDelay)
+	waitDelay = 100 * time.Millisecond
+	dir := t.TempDir()
+	// The child keeps stdout open after the agent exits 0.
+	cmd, _ := fakeAgent(t, `sleep 30 & echo $! > "`+dir+`/child"
+echo '{"is_error":false,"structured_output":{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":[]}}'
+exit 0`)
+	a, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p")
+	if err != nil || a.Decision != "approve" {
+		t.Fatalf("answer %+v, %v; a clean exit must count as success", a, err)
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(read(t, dir+"/child")))
+	for range 50 {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	syscall.Kill(pid, syscall.SIGKILL)
+	t.Fatal("the agent's child outlived its success")
+}
+
 func TestLock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state", "review.lock")
 	release, err := Lock(path)

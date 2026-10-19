@@ -50,6 +50,7 @@ lint:
 # Everything CI should check
 ci: vet lint test
     @test -z "$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
+    go mod tidy -diff
 
 # Dry run against the configured repos
 dry-run *args:
