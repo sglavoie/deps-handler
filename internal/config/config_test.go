@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -150,5 +151,18 @@ repos: [a/b]
 	}
 	if cfg.Agent != want {
 		t.Errorf("agent = %+v\nwant %+v", cfg.Agent, want)
+	}
+}
+
+func TestPolicyJSONWritesDurations(t *testing.T) {
+	p := Builtin
+	p.MergeWithoutChecksAfter = 10 * time.Minute
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"merge_method":"squash","max_update_type":"minor","require_checks":true,"agent_review":true,"merge_without_checks_after":"10m"}`
+	if string(data) != want {
+		t.Fatalf("got %s\nwant %s", data, want)
 	}
 }

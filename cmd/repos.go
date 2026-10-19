@@ -22,12 +22,34 @@ func newReposCmd() *cobra.Command {
 			fmt.Fprintln(tw, "REPO\tMERGE\tMAX UPDATE\tREQUIRE CHECKS\tNO-CHECKS MERGE\tAGENT REVIEW\tSKIP")
 			for _, r := range cfg.Repos {
 				noChecks := "never"
-				if d := r.Policy.MergeWithoutChecksAfter; d > 0 {
+				switch d := r.Policy.MergeWithoutChecksAfter; {
+				case !r.Policy.RequireChecks:
+					noChecks = "-" // checks are optional anyway
+				case d > 0:
 					noChecks = "after " + config.ShortDuration(d)
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%t\t%s\t%t\t%t\n", r.FullName(), r.Policy.MergeMethod, r.Policy.MaxUpdateType, r.Policy.RequireChecks, noChecks, r.Policy.AgentReview, r.Skip)
 			}
-			return tw.Flush()
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "\nagent for --review: "+agentSummary(cfg.Agent))
+			return nil
 		},
 	}
+}
+
+// agentSummary describes the configured agent and its limits.
+func agentSummary(a config.Agent) string {
+	model, extra := a.Codex.Model, ""
+	if a.Use == "claude" {
+		model = a.Claude.Model
+		if a.Claude.MaxBudgetUSD > 0 {
+			extra = fmt.Sprintf(", up to $%g per review", a.Claude.MaxBudgetUSD)
+		}
+	}
+	if model == "" {
+		model = "default model"
+	}
+	return fmt.Sprintf("%s (%s, %s timeout%s)", a.Use, model, config.ShortDuration(a.Timeout), extra)
 }

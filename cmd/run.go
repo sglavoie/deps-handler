@@ -108,9 +108,11 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 			}
 			r := runner.New(client, viewer, apply)
 			if agent != nil {
-				if err := setupReviews(r, cfg.Agent, agent, client, maxReviews); err != nil {
+				release, err := setupReviews(r, cfg.Agent, agent, client, maxReviews)
+				if err != nil {
 					return err
 				}
+				defer release()
 			}
 			results := r.Run(ctx, selected, progress)
 			if asJSON {
@@ -166,19 +168,24 @@ func newAgent(cfg config.Agent, name string) (review.Agent, error) {
 }
 
 // setupReviews gives r an agent reviewer with its checkouts and verdict
-// cache in the XDG cache and state directories.
-func setupReviews(r *runner.Runner, cfg config.Agent, agent review.Agent, client github.Client, maxReviews int) error {
+// cache in the XDG cache and state directories. It holds a lock until
+// release is called, so a second review run cannot share the checkouts.
+func setupReviews(r *runner.Runner, cfg config.Agent, agent review.Agent, client github.Client, maxReviews int) (release func(), err error) {
 	cacheDir, err := config.CacheDir()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stateDir, err := config.StateDir()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	verdicts, err := review.OpenCache(filepath.Join(stateDir, "verdicts.json"))
+	if release, err = review.Lock(filepath.Join(stateDir, "review.lock")); err != nil {
+		return nil, err
+	}
+	verdicts, err := review.OpenCache(verdictsPath(stateDir))
 	if err != nil {
-		return err
+		release()
+		return nil, err
 	}
 	token, _ := auth.TokenForHost("github.com")
 	r.Reviewer = &review.AgentReviewer{
@@ -188,7 +195,10 @@ func setupReviews(r *runner.Runner, cfg config.Agent, agent review.Agent, client
 		Timeout:   cfg.Timeout,
 	}
 	r.AgentName, r.Verdicts, r.MaxReviews = agent.Name(), verdicts, maxReviews
-	return nil
+	return release, nil
 }
+
+// verdictsPath is where agent verdicts are kept between runs.
+func verdictsPath(stateDir string) string { return filepath.Join(stateDir, "verdicts.json") }
 
 var errInterrupted = errors.New("interrupted")

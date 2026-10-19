@@ -55,6 +55,9 @@ type Decision struct {
 	stalledRebase bool
 	// needsReview is true when branch protection wants an approval.
 	needsReview bool
+	// heldForSize is true for a PR skipped for its size alone: it would
+	// merge or rebase if the policy allowed updates that size.
+	heldForSize bool
 }
 
 const (
@@ -80,6 +83,9 @@ type Verdict struct {
 // allow, or nil when the agent has not reviewed it. A nil Judge means agent
 // reviews are off, and such PRs are skipped.
 type Judge func(Decision) *Verdict
+
+// approveAll approves every update, to tell whether size alone holds a PR.
+func approveAll(Decision) *Verdict { return &Verdict{Approved: true} }
 
 // Evaluate decides what to do with every Dependabot PR of repo. viewer is
 // the authenticated login, used to avoid repeating our own rebase requests.
@@ -123,11 +129,11 @@ func queueRebases(ds []Decision) {
 	}
 }
 
-// latestChecks drops the check runs a newer suite reran under the same name,
+// LatestChecks drops the check runs a newer suite reran under the same name,
 // as GitHub does when it shows a pull request's checks: a run cancelled in
 // favour of a later one says nothing about the update. Runs sharing a suite,
 // like matrix jobs, all count.
-func latestChecks(checks []github.Check) []github.Check {
+func LatestChecks(checks []github.Check) []github.Check {
 	newest := map[string]int64{}
 	for _, c := range checks {
 		newest[c.Name] = max(newest[c.Name], c.Suite)
@@ -147,7 +153,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		d.Dependencies = append(d.Dependencies, dependabot.ParseCommitMessage(c.Message)...)
 	}
 	d.Grade = dependabot.Grade(d.Dependencies)
-	checks := latestChecks(pr.Checks)
+	checks := LatestChecks(pr.Checks)
 	seen := map[string]bool{}
 	var stale []string
 	for _, c := range checks {
@@ -221,6 +227,12 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	if oversized != "" {
 		switch v := d.Verdict; {
 		case judge == nil || !p.AgentReview:
+			reviewed := p
+			reviewed.AgentReview = true
+			switch evaluate(repo, pr, reviewed, viewer, approveAll).Action {
+			case ActionMerge, ActionRebase:
+				d.heldForSize = true
+			}
 			return skip("%s", oversized)
 		case v != nil && v.Error != "":
 			return skip("%s; agent review failed: %s", oversized, v.Error)

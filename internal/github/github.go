@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"time"
 
@@ -466,8 +467,29 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 		return nil, err
 	}
 	d.Truncated = len(data) > MaxDiffBytes
-	d.Diff = string(data[:min(len(data), MaxDiffBytes)])
+	d.Diff = strings.ToValidUTF8(string(data[:min(len(data), MaxDiffBytes)]), "")
 	return d, nil
+}
+
+// Transient reports whether a failed read may succeed if made again:
+// GitHub answers a heavy query it could not finish in time with a 502 or
+// 504, or with a GraphQL error saying something went wrong.
+func Transient(err error) bool {
+	var he *api.HTTPError
+	if errors.As(err, &he) {
+		return he.StatusCode == 502 || he.StatusCode == 503 || he.StatusCode == 504
+	}
+	var ge *api.GraphQLError
+	if errors.As(err, &ge) {
+		for _, e := range ge.Errors {
+			if strings.Contains(e.Message, "Something went wrong") {
+				return true
+			}
+		}
+		return false
+	}
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 // Retryable reports whether a failed merge may succeed once GitHub catches

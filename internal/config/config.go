@@ -4,6 +4,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -69,6 +70,16 @@ type Policy struct {
 	// not merge (over max_update_type, or of unknown size) when a run asks
 	// for agent reviews.
 	AgentReview bool `json:"agent_review"`
+}
+
+// MarshalJSON writes MergeWithoutChecksAfter as the config would, "10m",
+// rather than as nanoseconds.
+func (p Policy) MarshalJSON() ([]byte, error) {
+	type plain Policy
+	return json.Marshal(struct {
+		plain
+		MergeWithoutChecksAfter string `json:"merge_without_checks_after"`
+	}{plain(p), ShortDuration(p.MergeWithoutChecksAfter)})
 }
 
 // ShortDuration formats d as the config would write it: 10m, not 10m0s.

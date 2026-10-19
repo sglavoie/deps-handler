@@ -93,6 +93,27 @@ func TestDiagnoseHeldMajorAndNoChecks(t *testing.T) {
 	}
 }
 
+func TestDiagnoseHeldOnlyForSize(t *testing.T) {
+	conflicting := testutil.PR(2, "lib:major")
+	conflicting.Mergeable = "CONFLICTING"
+	pinned := testutil.PR(3, "actions/checkout:unknown")
+	f := findings(testutil.Repo(testutil.PR(1, "lib:major"), conflicting, pinned))
+	if held := f[FindingHeldMajor]; len(held) != 1 || held[0].PRs[0] != 1 || !strings.Contains(held[0].Summary, "--review") {
+		t.Errorf("held-major = %+v; a conflicting major is not held by policy alone", held)
+	}
+	if held := f[FindingHeldUnknown]; len(held) != 1 || held[0].PRs[0] != 3 {
+		t.Errorf("held-unknown = %+v", held)
+	}
+
+	p := defaultPolicy
+	p.AgentReview = false
+	repo := testutil.Repo(testutil.PR(1, "lib:major"))
+	got := Diagnose(repo, p, Evaluate(repo, p, "me", nil))
+	if len(got) != 1 || got[0].Kind != FindingHeldMajor || strings.Contains(got[0].Summary, "--review") {
+		t.Errorf("findings = %+v; --review cannot help where agent_review is off", got)
+	}
+}
+
 func TestDiagnoseNoChecksIgnoresWaitingPRs(t *testing.T) {
 	fresh := testutil.PR(1)
 	fresh.Checks = nil

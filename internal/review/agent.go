@@ -150,6 +150,7 @@ func run(cmd *exec.Cmd) ([]byte, error) {
 	// Give up on output pipes held open by the agent's own children once
 	// it has been killed.
 	cmd.WaitDelay = 5 * time.Second
+	ownGroup(cmd)
 	name := filepath.Base(cmd.Path)
 	if err := cmd.Run(); err != nil {
 		if msg := clip(stderr.String()); msg != "" {
@@ -161,12 +162,12 @@ func run(cmd *exec.Cmd) ([]byte, error) {
 }
 
 // clip keeps the last few hundred bytes of an agent's message, where the
-// cause of a failure usually is.
+// cause of a failure usually is, without splitting a character.
 func clip(s string) string {
 	s = strings.TrimSpace(s)
 	const keep = 300
 	if len(s) > keep {
-		s = "…" + s[len(s)-keep:]
+		s = "…" + strings.ToValidUTF8(s[len(s)-keep:], "")
 	}
 	return s
 }

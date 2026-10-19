@@ -12,6 +12,7 @@ deps-merger run --apply           # merge safe PRs
 deps-merger run --open            # only repos with open Dependabot PRs
 deps-merger run -r Storefront --json  # one repo, machine-readable
 deps-merger run --review --apply  # let an AI agent judge majors too
+deps-merger verdicts              # the agent's cached verdicts
 ```
 
 ## What counts as safe
@@ -78,20 +79,29 @@ answers `approve` or `reject` with its reasons. It runs read-only:
   Read, Grep and Glob tools, no MCP servers and no settings files;
 - Codex: `codex exec --sandbox read-only --ephemeral`.
 
+The checks the agent is shown are the ones the policy judged, without runs
+that a newer run of the same check superseded. An agent is killed along
+with every process it started when its review times out or the run is
+interrupted.
+
 The agent never merges anything. An approved PR is evaluated again and
 merged (or rebased) like any other: Dependabot's signed commits, green
 checks, mergeability and the pinned head SHA are all checked again first.
 A rejection is reported with the agent's concerns under "needs
 attention"; a review that fails or times out leaves the PR alone and makes
 the run exit 1. The PR description is treated as untrusted: the prompt
-tells the agent it cannot change its instructions.
+tells the agent it cannot change its instructions, and fences it with
+markers carrying a random token, so the description cannot fake its own end.
 
 Reviews run after the run's other merges, two at a time, at most
 `--max-reviews` (default 10) per run. Verdicts are kept for 14 days in
 `~/.local/state/deps-merger/verdicts.json`, keyed by the PR and the
 versions it moves to, so a rebase does not trigger a new review but a new
-version does. Delete an entry, or the file, to have an update reviewed
-again.
+version does. `deps-merger verdicts` lists them; `deps-merger verdicts
+forget acme/Storefront#42` (or a whole `owner/name`) has those updates
+reviewed again on the next run. Only one `--review` run works at a time:
+a second one, such as an overlapping cron job, fails at once rather than
+share the checkouts.
 
 Configure the agent under `agent:` in the config. `claude.config_dir` is
 passed as `CLAUDE_CONFIG_DIR`, picking the Claude Code account and
@@ -108,7 +118,11 @@ Under each repo the report lists, without acting on them:
 - **incompatible updates**: a PR failing its own checks, with the
   `@dependabot ignore …` command that would stop it coming back (only for
   PRs Dependabot alone wrote, whose checks ran on their head commit);
-- **held majors**: green major updates blocked only by policy;
+- **held majors**: major updates that would merge or rebase but for
+  `max_update_type`;
+- **held updates of unknown size**: updates that would merge but for
+  Dependabot not recording a semver bump (a GitHub Action pinned by commit,
+  a Docker digest), when no agent reviewed them;
 - **review required**: branch protection wants an approving review, which
   deps-merger never gives;
 - **stalled rebases**: a rebase request Dependabot ignored for a day, with
@@ -126,7 +140,9 @@ A dry run never writes, so `deps-merger run` is safe to schedule. For
 
 - `0`: every repository was processed and every write succeeded;
 - `1`: a repository could not be processed, a merge or rebase request
-  failed, or an agent review could not be done (the report says which);
+  failed, or an agent review could not be done (the report says which).
+  A read GitHub fails with a 502, 503 or 504, a timeout or "Something
+  went wrong" is tried once more before the repository counts as failed;
 - `130`: interrupted (Ctrl-C or `SIGTERM`).
 
 `--json` prints `{"apply": bool, "results": [...]}` with one result per
@@ -138,7 +154,8 @@ reviewed it), `findings` (`kind`, `summary`, `prs`, `details`,
 `merged`, `merge-failed`, `rebase-requested`, `rebase-failed`, each with the
 PR's `url` and `grade`), `merge_method` (the one merges use) and `error`
 when the repository could not be read (`interrupted` if the run was
-stopped). Lists are always arrays, never `null`. When stderr is a terminal,
+stopped). Durations such as `policy.merge_without_checks_after` are written
+as in the config (`"10m"`, `"0s"`). Lists are always arrays, never `null`. When stderr is a terminal,
 a line per repository reports progress there while the JSON waits for the
 end.
 

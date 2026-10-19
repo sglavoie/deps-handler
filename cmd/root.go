@@ -34,7 +34,7 @@ by anyone else, are never changed.`,
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-merger/config.yaml)")
-	root.AddCommand(newRunCmd(), newReposCmd())
+	root.AddCommand(newRunCmd(), newReposCmd(), newVerdictsCmd())
 	return root
 }
 

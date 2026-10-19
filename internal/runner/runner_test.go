@@ -27,6 +27,8 @@ type fakeClient struct {
 	// transient fails a PR's merge with this error that many times first.
 	transient  map[int]int
 	unknownFor int
+	// fetchErrs are returned by the next fetches, in order.
+	fetchErrs []error
 }
 
 func (f *fakeClient) Viewer(context.Context) (string, error) { return "me", nil }
@@ -34,6 +36,11 @@ func (f *fakeClient) Viewer(context.Context) (string, error) { return "me", nil 
 func (f *fakeClient) FetchRepo(ctx context.Context, _, _ string) (*github.Repo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("Post \"https://api.github.com/graphql\": %w", err)
+	}
+	if len(f.fetchErrs) > 0 {
+		err := f.fetchErrs[0]
+		f.fetchErrs = f.fetchErrs[1:]
+		return nil, err
 	}
 	cp := *f.repo
 	cp.PullRequests = append([]github.PullRequest(nil), f.repo.PullRequests...)
@@ -148,6 +155,22 @@ func TestApplyGivesUpAfterSecondTransientFailure(t *testing.T) {
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
 	if len(fc.merges) != 0 || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed {
 		t.Fatalf("merges = %v events = %+v", fc.merges, res.Events)
+	}
+}
+
+func TestFetchRetriesTransientFailureOnce(t *testing.T) {
+	bad := &api.HTTPError{StatusCode: 502}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), fetchErrs: []error{bad}}
+	if res := newRunner(fc, true).RunRepo(context.Background(), repoCfg); res.Error != "" || len(fc.merges) != 1 {
+		t.Fatalf("error %q, merges %v; one 502 should be retried", res.Error, fc.merges)
+	}
+	fc = &fakeClient{repo: testutil.Repo(testutil.PR(1)), fetchErrs: []error{bad, bad}}
+	if res := newRunner(fc, true).RunRepo(context.Background(), repoCfg); res.Error == "" {
+		t.Fatal("a second 502 should fail the repo")
+	}
+	fc = &fakeClient{repo: testutil.Repo(testutil.PR(1)), fetchErrs: []error{&api.HTTPError{StatusCode: 404}}}
+	if res := newRunner(fc, true).RunRepo(context.Background(), repoCfg); res.Error == "" {
+		t.Fatal("a 404 should not be retried")
 	}
 }
 

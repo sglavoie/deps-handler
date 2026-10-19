@@ -18,8 +18,11 @@ const (
 	FindingRepoCheck FindingKind = "repo-wide-failure"
 	// FindingIncompatible is an update that fails its own checks.
 	FindingIncompatible FindingKind = "incompatible-update"
-	// FindingHeldMajor is a green major update held back by policy.
+	// FindingHeldMajor is a major update held back by policy alone.
 	FindingHeldMajor FindingKind = "held-major"
+	// FindingHeldUnknown is an update held back by policy alone because
+	// Dependabot records no semver size for it.
+	FindingHeldUnknown FindingKind = "held-unknown"
 	// FindingNoChecks means the repository runs no CI on Dependabot PRs.
 	FindingNoChecks FindingKind = "no-checks"
 	// FindingReadOnly means the viewer cannot merge in this repository.
@@ -110,12 +113,16 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 				PRs:     []int{d.Number},
 				Details: d.Verdict.Concerns,
 			})
-		case d.Grade == config.UpdateMajor && p.MaxUpdateType < config.UpdateMajor &&
-			d.Action != ActionReview && d.Verdict == nil &&
-			len(d.PR.Checks) > 0 && allPassed(latestChecks(d.PR.Checks)):
+		case d.heldForSize && d.Grade == config.UpdateMajor:
 			out = append(out, Finding{
 				Kind:    FindingHeldMajor,
-				Summary: fmt.Sprintf("#%d is a green major update held by policy (allow with max_update_type: major)", d.Number),
+				Summary: fmt.Sprintf("#%d is a major update held only by policy (allow with max_update_type: major%s)", d.Number, orReview(p)),
+				PRs:     []int{d.Number},
+			})
+		case d.heldForSize && d.Grade == config.UpdateUnknown:
+			out = append(out, Finding{
+				Kind:    FindingHeldUnknown,
+				Summary: fmt.Sprintf("#%d would merge, but Dependabot records no semver size for it (merge it by hand%s)", d.Number, orReview(p)),
 				PRs:     []int{d.Number},
 			})
 		}
@@ -162,7 +169,7 @@ func repoWideChecks(decisions []Decision) map[string][]int {
 	failed := map[string][]int{}
 	for _, d := range decisions {
 		seen := map[string]bool{}
-		for _, c := range latestChecks(d.PR.Checks) {
+		for _, c := range LatestChecks(d.PR.Checks) {
 			if c.Name == "" || seen[c.Name] {
 				continue
 			}
@@ -192,13 +199,13 @@ func ownFailures(d Decision, repoWide map[string][]int) []string {
 	return own
 }
 
-func allPassed(checks []github.Check) bool {
-	for _, c := range checks {
-		if c.State != github.CheckPassed {
-			return false
-		}
+// orReview suggests an agent review for a held update, where the repo
+// allows one: a PR held for its size alone was not reviewed this run.
+func orReview(p config.Policy) string {
+	if p.AgentReview {
+		return ", or run with --review"
 	}
-	return true
+	return ""
 }
 
 const maxSuggestions = 5

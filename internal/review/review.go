@@ -7,7 +7,9 @@ package review
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -34,14 +36,23 @@ type Request struct {
 	Reason       string
 	Dependencies []dependabot.Dependency
 	Checks       []github.Check
+	// NoChecks explains to the agent why the PR may merge without checks,
+	// should none have run.
+	NoChecks string
 }
 
-// NewRequest describes the PR behind d in repository rc.
+// NewRequest describes the PR behind d in repository rc. Its checks are
+// the ones the policy judged: runs a newer suite superseded are left out.
 func NewRequest(rc config.Repo, d policy.Decision) Request {
+	noChecks := "the repository does not require checks"
+	if rc.Policy.RequireChecks {
+		noChecks = fmt.Sprintf("no check started within %s of the latest commit, after which the repository's policy merges without them because its CI does not run for every change", config.ShortDuration(rc.Policy.MergeWithoutChecksAfter))
+	}
 	return Request{
 		Owner: rc.Owner, Name: rc.Name, Number: d.Number, Title: d.Title, URL: d.URL,
 		HeadOID: d.PR.HeadOID, BaseRef: d.PR.BaseRef, Grade: d.Grade, Limit: rc.Policy.MaxUpdateType,
-		Reason: strings.TrimSuffix(d.Reason, policy.AwaitingReview), Dependencies: d.Dependencies, Checks: d.PR.Checks,
+		Reason: strings.TrimSuffix(d.Reason, policy.AwaitingReview), Dependencies: d.Dependencies, Checks: policy.LatestChecks(d.PR.Checks),
+		NoChecks: noChecks,
 	}
 }
 
@@ -135,11 +146,13 @@ var promptTmpl = template.Must(template.New("prompt").Parse(promptText))
 // maxBodyBytes caps the PR description in the prompt.
 const maxBodyBytes = 60_000
 
-// Prompt renders the instructions given to the agent.
+// Prompt renders the instructions given to the agent. The untrusted
+// material is fenced by markers carrying a random token, so text in it
+// cannot close its own block and pass for instructions.
 func Prompt(req Request, d *github.PullRequestDetails) (string, error) {
 	body := d.Body
 	if len(body) > maxBodyBytes {
-		body = body[:maxBodyBytes] + "\n[description truncated]"
+		body = strings.ToValidUTF8(body[:maxBodyBytes], "") + "\n[description truncated]"
 	}
 	diff := d.Diff
 	switch {
@@ -148,10 +161,14 @@ func Prompt(req Request, d *github.PullRequestDetails) (string, error) {
 	case d.Truncated:
 		diff += "\n[diff truncated]"
 	}
+	token := make([]byte, 8)
+	if _, err := rand.Read(token); err != nil {
+		return "", err
+	}
 	var b bytes.Buffer
 	err := promptTmpl.Execute(&b, struct {
 		Request
-		Body, Diff string
-	}{req, body, diff})
+		Body, Diff, Token string
+	}{req, body, diff, hex.EncodeToString(token)})
 	return b.String(), err
 }

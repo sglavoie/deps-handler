@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -54,6 +55,22 @@ func TestRetryable(t *testing.T) {
 	} {
 		if got := Retryable(err); got != want {
 			t.Errorf("Retryable(%v) = %t, want %t", err, got, want)
+		}
+	}
+}
+
+func TestTransient(t *testing.T) {
+	for err, want := range map[error]bool{
+		&api.HTTPError{StatusCode: 502}:                         true,
+		fmt.Errorf("wrap: %w", &api.HTTPError{StatusCode: 504}): true,
+		&api.HTTPError{StatusCode: 404}:                         false,
+		&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Message: "Something went wrong while executing your query."}}}: true,
+		&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Message: "Could not resolve to a Repository"}}}:                false,
+		&net.DNSError{IsTimeout: true}: true,
+		errors.New("502"):              false,
+	} {
+		if got := Transient(err); got != want {
+			t.Errorf("Transient(%v) = %t, want %t", err, got, want)
 		}
 	}
 }
@@ -192,5 +209,123 @@ func TestFetchRepoSearchesOldestFirst(t *testing.T) {
 	}
 	if !strings.Contains(rec.body, `repo:o/r is:pr is:open author:app/dependabot sort:created-asc`) {
 		t.Fatalf("search not sorted oldest first: %s", rec.body)
+	}
+}
+
+// routes answers REST requests by "METHOD path", recording each request
+// body; a path it does not know gets a 404.
+type routes struct {
+	answers map[string]*http.Response
+	bodies  map[string]string
+}
+
+func (r *routes) RoundTrip(req *http.Request) (*http.Response, error) {
+	key := req.Method + " " + req.URL.Path
+	if req.Header.Get("Accept") == "application/vnd.github.diff" {
+		key += " diff"
+	}
+	if req.Body != nil {
+		b, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		r.bodies[key] = string(b)
+	}
+	resp, ok := r.answers[key]
+	if !ok {
+		resp = reply(404, `{"message": "Not Found"}`)
+	}
+	resp.Request = req
+	return resp, nil
+}
+
+func reply(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func restClient(t *testing.T, rt http.RoundTripper) *client {
+	t.Helper()
+	rest, err := api.NewRESTClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: rt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := api.NewRESTClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: rt,
+		Headers: map[string]string{"Accept": "application/vnd.github.diff"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &client{rest: rest, diff: diff}
+}
+
+func TestMergePinsHeadAndMethod(t *testing.T) {
+	rt := &routes{answers: map[string]*http.Response{"PUT /repos/o/r/pulls/5/merge": reply(200, `{"merged": true}`)}, bodies: map[string]string{}}
+	if err := restClient(t, rt).Merge(context.Background(), "o", "r", 5, "squash", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if got := rt.bodies["PUT /repos/o/r/pulls/5/merge"]; got != `{"merge_method":"squash","sha":"abc"}` {
+		t.Fatalf("body = %s", got)
+	}
+	rt.answers["PUT /repos/o/r/pulls/5/merge"] = reply(405, `{"message": "Pull Request is not mergeable"}`)
+	if err := restClient(t, rt).Merge(context.Background(), "o", "r", 5, "squash", "abc"); !Retryable(err) {
+		t.Fatalf("err = %v; a 405 should come back retryable", err)
+	}
+}
+
+func TestCommentPostsBody(t *testing.T) {
+	rt := &routes{answers: map[string]*http.Response{"POST /repos/o/r/issues/5/comments": reply(201, `{}`)}, bodies: map[string]string{}}
+	if err := restClient(t, rt).Comment(context.Background(), "o", "r", 5, "@dependabot rebase"); err != nil {
+		t.Fatal(err)
+	}
+	if got := rt.bodies["POST /repos/o/r/issues/5/comments"]; got != `{"body":"@dependabot rebase"}` {
+		t.Fatalf("body = %s", got)
+	}
+}
+
+func TestPullRequestDetails(t *testing.T) {
+	diff := strings.Repeat("a", MaxDiffBytes-1) + "é"
+	rt := &routes{answers: map[string]*http.Response{
+		"GET /repos/o/r/pulls/5":      reply(200, `{"body": "release notes"}`),
+		"GET /repos/o/r/pulls/5 diff": reply(200, diff),
+	}, bodies: map[string]string{}}
+	d, err := restClient(t, rt).PullRequestDetails(context.Background(), "o", "r", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Body != "release notes" || !d.Truncated || d.Diff != strings.Repeat("a", MaxDiffBytes-1) {
+		t.Fatalf("details = body %q, truncated %t, diff of %d bytes", d.Body, d.Truncated, len(d.Diff))
+	}
+
+	rt.answers["GET /repos/o/r/pulls/5"] = reply(200, `{"body": "notes"}`)
+	rt.answers["GET /repos/o/r/pulls/5 diff"] = reply(406, `{"message": "diff too large"}`)
+	d, err = restClient(t, rt).PullRequestDetails(context.Background(), "o", "r", 5)
+	if err != nil || d.Diff != "" || !strings.Contains(d.DiffError, "406") {
+		t.Fatalf("details = %+v, %v; a refused diff is not a failed review", d, err)
+	}
+}
+
+func TestFetchRepoWithoutChecksOrRepository(t *testing.T) {
+	resp := strings.Replace(fetchResponse, `"statusCheckRollup": {`, `"statusCheckRollup": null, "x": {`, 1)
+	gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(resp)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr := r.PullRequests[0]; len(pr.Checks) != 0 || pr.CheckCount != 0 || pr.ChecksOID != "abc" {
+		t.Fatalf("pr = %+v; no rollup means no checks yet on abc", pr)
+	}
+
+	gql, err = api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(`{"data": {"repository": null, "search": {"issueCount": 0, "nodes": []}}}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "gone"); err == nil || !strings.Contains(err.Error(), "not found or not accessible") {
+		t.Fatalf("err = %v", err)
 	}
 }

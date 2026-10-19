@@ -202,7 +202,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	}
 
 	for {
-		repo, err := r.Client.FetchRepo(ctx, rc.Owner, rc.Name)
+		repo, err := r.fetch(ctx, rc)
 		if err != nil {
 			res.Error = errText(ctx, err)
 			return res
@@ -296,6 +296,19 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		}
 		res.Events = append(res.Events, ev)
 	}
+}
+
+// fetch reads the repository, once more after a pause when GitHub fails in
+// a way that usually passes, so one hiccup does not fail a scheduled run.
+func (r *Runner) fetch(ctx context.Context, rc config.Repo) (*github.Repo, error) {
+	repo, err := r.Client.FetchRepo(ctx, rc.Owner, rc.Name)
+	if err == nil || ctx.Err() != nil || !github.Transient(err) {
+		return repo, err
+	}
+	if err := r.Sleep(ctx, r.PollInterval); err != nil {
+		return nil, err
+	}
+	return r.Client.FetchRepo(ctx, rc.Owner, rc.Name)
 }
 
 // reviewNext has the agent review the first PR awaiting review and reports
