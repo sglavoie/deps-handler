@@ -22,6 +22,9 @@ const (
 	CheckPassed  CheckState = "passed"
 	CheckPending CheckState = "pending"
 	CheckFailed  CheckState = "failed"
+	// CheckStale is a check run GitHub gave up on after it sat unfinished
+	// for 14 days: it will never pass, but says nothing about the update.
+	CheckStale CheckState = "stale"
 )
 
 type Check struct {
@@ -67,6 +70,9 @@ type PullRequest struct {
 	CommitCount    int       `json:"commit_count"`
 	Commits        []Commit  `json:"commits"`
 	Checks         []Check   `json:"checks"`
+	// ChecksOID is the commit Checks were read from; checks for any commit
+	// but HeadOID say nothing about what would be merged.
+	ChecksOID string `json:"checks_oid"`
 	// CheckCount is the total number of checks, which can exceed the number
 	// fetched into Checks.
 	CheckCount int       `json:"check_count"`
@@ -157,7 +163,7 @@ query($owner: String!, $name: String!, $search: String!) {
           } }
         }
         last: commits(last: 1) {
-          nodes { commit { statusCheckRollup { contexts(first: 100) { totalCount nodes {
+          nodes { commit { oid statusCheckRollup { contexts(first: 100) { totalCount nodes {
             __typename
             ... on CheckRun { name status conclusion }
             ... on StatusContext { context state }
@@ -215,6 +221,7 @@ type gqlRepo struct {
 			Last struct {
 				Nodes []struct {
 					Commit struct {
+						Oid               string
 						StatusCheckRollup *struct {
 							Contexts struct {
 								TotalCount int
@@ -246,7 +253,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 	vars := map[string]any{
 		"owner":  owner,
 		"name":   name,
-		"search": fmt.Sprintf("repo:%s/%s is:pr is:open author:app/dependabot", owner, name),
+		"search": fmt.Sprintf("repo:%s/%s is:pr is:open author:app/dependabot sort:created-asc", owner, name),
 	}
 	var resp gqlRepo
 	if err := c.gql.DoWithContext(ctx, repoQuery, vars, &resp); err != nil {
@@ -304,6 +311,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			pr.Commits = append(pr.Commits, cm)
 		}
 		for _, ln := range n.Last.Nodes {
+			pr.ChecksOID = ln.Commit.Oid
 			if ln.Commit.StatusCheckRollup == nil {
 				continue
 			}
@@ -356,6 +364,8 @@ func checkRunState(status, conclusion string) CheckState {
 	switch conclusion {
 	case "SUCCESS", "NEUTRAL", "SKIPPED":
 		return CheckPassed
+	case "STALE":
+		return CheckStale
 	}
 	return CheckFailed
 }

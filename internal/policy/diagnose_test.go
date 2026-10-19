@@ -105,3 +105,14 @@ func TestDiagnoseEmptyIsNotNil(t *testing.T) {
 		t.Fatal("Diagnose returned nil; JSON would print null")
 	}
 }
+
+func TestDiagnoseIgnoresUnassessedFailures(t *testing.T) {
+	edited := failing(testutil.PR(1, "lib:major"), "build")
+	edited.Commits[0].Authors = append(edited.Commits[0].Authors, github.Author{Login: "sglavoie"})
+	moved := failing(testutil.PR(2), "build")
+	moved.ChecksOID = "older"
+	f := findings(testutil.Repo(edited, moved, testutil.PR(3), testutil.PR(4)))
+	if len(f[FindingIncompatible]) != 0 {
+		t.Fatalf("incompatible = %+v; a failure on a human's change or another commit is not the update's", f[FindingIncompatible])
+	}
+}

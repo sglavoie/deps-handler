@@ -24,6 +24,7 @@ func TestCheckRunState(t *testing.T) {
 		{"COMPLETED", "CANCELLED", CheckFailed},
 		{"COMPLETED", "TIMED_OUT", CheckFailed},
 		{"COMPLETED", "ACTION_REQUIRED", CheckFailed},
+		{"COMPLETED", "STALE", CheckStale},
 		{"IN_PROGRESS", "", CheckPending},
 		{"QUEUED", "", CheckPending},
 	} {
@@ -81,7 +82,7 @@ const fetchResponse = `{"data": {
        "oid": "c1", "message": "bump\n\nCo-authored-by: Jane <jane@example.com>", "committedDate": "2026-10-01T12:00:00Z",
        "author": {"name": "dependabot[bot]", "email": "e", "user": {"login": "dependabot[bot]"}},
        "signature": {"isValid": true, "wasSignedByGitHub": true}}}]},
-     "last": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"totalCount": 120, "nodes": [
+     "last": {"nodes": [{"commit": {"oid": "abc", "statusCheckRollup": {"contexts": {"totalCount": 120, "nodes": [
        {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
        {"__typename": "StatusContext", "context": "ci/legacy", "state": "PENDING"}]}}}}]},
      "comments": {"nodes": [{"body": "@dependabot rebase", "createdAt": "2026-10-01T13:00:00Z", "author": {"login": "me"}}]}}
@@ -104,7 +105,7 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 		t.Fatalf("want only the open PR, got %+v", r.PullRequests)
 	}
 	pr := r.PullRequests[0]
-	if pr.Number != 5 || pr.Author != "dependabot" || pr.HeadOID != "abc" || pr.MergeState != "CLEAN" || pr.CheckCount != 120 {
+	if pr.Number != 5 || pr.Author != "dependabot" || pr.HeadOID != "abc" || pr.ChecksOID != "abc" || pr.MergeState != "CLEAN" || pr.CheckCount != 120 {
 		t.Fatalf("pr = %+v", pr)
 	}
 	c := pr.Commits[0]
@@ -153,5 +154,34 @@ func TestCoAuthors(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// recorder answers like canned and keeps the last request body.
+type recorder struct {
+	canned
+	body string
+}
+
+func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	b, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	r.body = string(b)
+	return r.canned.RoundTrip(req)
+}
+
+func TestFetchRepoSearchesOldestFirst(t *testing.T) {
+	rec := &recorder{canned: canned(fetchResponse)}
+	gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: rec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "r"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rec.body, `repo:o/r is:pr is:open author:app/dependabot sort:created-asc`) {
+		t.Fatalf("search not sorted oldest first: %s", rec.body)
 	}
 }

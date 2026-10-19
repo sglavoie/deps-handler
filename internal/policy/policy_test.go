@@ -93,6 +93,10 @@ func TestEvaluate(t *testing.T) {
 			}},
 		{name: "checks truncated", action: ActionSkip, reason: "too many checks to verify (101)",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.CheckCount = 101 }},
+		{name: "stale check", action: ActionSkip, reason: "stale checks: build",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckStale }},
+		{name: "checks from another commit", action: ActionWait, reason: "checks not yet reported for head commit sha1",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.ChecksOID = "older" }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -128,5 +132,37 @@ func TestMergeMethodFallsBack(t *testing.T) {
 	}
 	if _, err := MergeMethod(&github.Repo{FullName: "o/r"}, "squash"); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestEvaluateQueuesRebases(t *testing.T) {
+	behind := func(n int) github.PullRequest {
+		pr := testutil.PR(n)
+		pr.MergeState = "BEHIND"
+		return pr
+	}
+	actions := func(ds []Decision) string {
+		var parts []string
+		for _, d := range ds {
+			parts = append(parts, string(d.Action)+" "+d.Reason)
+		}
+		return strings.Join(parts, "; ")
+	}
+
+	ds := Evaluate(testutil.Repo(behind(1), behind(2), behind(3)), defaultPolicy, "me")
+	if got, want := actions(ds), "rebase behind base branch; wait queued behind #1; wait queued behind #1"; got != want {
+		t.Errorf("all behind:\n got %s\nwant %s", got, want)
+	}
+
+	ds = Evaluate(testutil.Repo(behind(1), testutil.PR(2)), defaultPolicy, "me")
+	if got, want := actions(ds), "wait queued behind #2; merge checks green, within policy"; got != want {
+		t.Errorf("merge pending:\n got %s\nwant %s", got, want)
+	}
+
+	requested := behind(1)
+	requested.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
+	ds = Evaluate(testutil.Repo(requested, behind(2)), defaultPolicy, "me")
+	if got, want := actions(ds), "wait rebase already requested; wait queued behind #1"; got != want {
+		t.Errorf("rebase in flight:\n got %s\nwant %s", got, want)
 	}
 }

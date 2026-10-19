@@ -77,6 +77,9 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	for _, d := range decisions {
 		own := ownFailures(d, repoWide)
 		switch {
+		case !d.assessed:
+			// A PR someone else changed, or whose checks ran on another
+			// commit, says nothing about whether the update itself works.
 		case len(own) > 0:
 			out = append(out, Finding{
 				Kind:        FindingIncompatible,

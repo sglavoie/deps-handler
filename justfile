@@ -38,9 +38,9 @@ vet:
 tidy:
     go mod tidy
 
-# Static analysis (go install honnef.co/go/tools/cmd/staticcheck@latest)
+# Static analysis (staticcheck is pinned as a tool in go.mod)
 lint:
-    staticcheck ./...
+    go tool staticcheck ./...
 
 # Everything CI should check
 ci: vet lint test

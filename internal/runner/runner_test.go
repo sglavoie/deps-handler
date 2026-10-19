@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -26,7 +27,10 @@ type fakeClient struct {
 
 func (f *fakeClient) Viewer(context.Context) (string, error) { return "me", nil }
 
-func (f *fakeClient) FetchRepo(context.Context, string, string) (*github.Repo, error) {
+func (f *fakeClient) FetchRepo(ctx context.Context, _, _ string) (*github.Repo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("Post \"https://api.github.com/graphql\": %w", err)
+	}
 	cp := *f.repo
 	cp.PullRequests = append([]github.PullRequest(nil), f.repo.PullRequests...)
 	if f.unknownFor > 0 {
@@ -152,5 +156,45 @@ func TestDryRunPollsUnknownMergeability(t *testing.T) {
 	res := newRunner(fc, false).RunRepo(context.Background(), repoCfg)
 	if len(res.Decisions) != 1 || res.Decisions[0].Action != "merge" {
 		t.Fatalf("decisions = %+v", res.Decisions)
+	}
+}
+
+func TestApplyRequestsOneRebaseAtATime(t *testing.T) {
+	var prs []github.PullRequest
+	for n := 1; n <= 3; n++ {
+		pr := testutil.PR(n)
+		pr.MergeState = "BEHIND"
+		prs = append(prs, pr)
+	}
+	fc := &fakeClient{repo: testutil.Repo(prs...)}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.comments) != 1 || len(fc.comments[1]) != 1 {
+		t.Fatalf("comments = %v; only #1 should be rebased", fc.comments)
+	}
+	if len(res.Events) != 1 || res.Events[0].Kind != EventRebaseRequested {
+		t.Fatalf("events = %+v", res.Events)
+	}
+}
+
+func TestApplyFallsBackToAllowedMergeMethod(t *testing.T) {
+	repo := testutil.Repo(testutil.PR(1, "lib:minor"))
+	repo.SquashAllowed, repo.MergeAllowed = false, true
+	fc := &fakeClient{repo: repo}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if res.MergeMethod != "merge" {
+		t.Fatalf("merge method = %q", res.MergeMethod)
+	}
+	if len(res.Events) != 1 || res.Events[0].Detail != "merge" || res.Events[0].Grade != config.UpdateMinor {
+		t.Fatalf("events = %+v", res.Events)
+	}
+}
+
+func TestInterruptedRunSaysSo(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1))}
+	res := newRunner(fc, true).RunRepo(ctx, repoCfg)
+	if res.Error != "interrupted" {
+		t.Fatalf("error = %q", res.Error)
 	}
 }

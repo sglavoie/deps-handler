@@ -36,7 +36,12 @@ type Decision struct {
 	Action       Action                  `json:"action"`
 	Reason       string                  `json:"reason"`
 	FailedChecks []string                `json:"failed_checks,omitempty"`
+	// assessed is true when the PR is Dependabot's own work and its checks
+	// ran on its head commit, so they speak for the update itself.
+	assessed bool
 }
+
+const reasonRebaseRequested = "rebase already requested"
 
 // Evaluate decides what to do with every Dependabot PR of repo. viewer is
 // the authenticated login, used to avoid repeating our own rebase requests.
@@ -51,7 +56,32 @@ func Evaluate(repo *github.Repo, p config.Policy, viewer string) []Decision {
 		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	queueRebases(out)
 	return out
+}
+
+// queueRebases keeps at most one PR moving towards the base branch at a
+// time. When the base must be up to date, each merge puts every other PR
+// behind again, so rebasing them all at once reruns CI on each of them for
+// every merge. The rest wait behind the next merge or rebase.
+func queueRebases(ds []Decision) {
+	ahead := 0
+	for _, d := range ds {
+		if d.Action == ActionMerge || (d.Action == ActionWait && d.Reason == reasonRebaseRequested) {
+			ahead = d.Number
+			break
+		}
+	}
+	for i := range ds {
+		if ds[i].Action != ActionRebase {
+			continue
+		}
+		if ahead == 0 {
+			ahead = ds[i].Number
+			continue
+		}
+		ds[i].Action, ds[i].Reason = ActionWait, fmt.Sprintf("queued behind #%d", ahead)
+	}
 }
 
 func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string) Decision {
@@ -61,10 +91,18 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	}
 	d.Grade = dependabot.Grade(d.Dependencies)
 	seen := map[string]bool{}
+	var stale []string
 	for _, c := range pr.Checks {
-		if c.State == github.CheckFailed && !seen[c.Name] {
-			seen[c.Name] = true // matrix jobs can repeat a name
+		if seen[c.Name] {
+			continue // matrix jobs can repeat a name
+		}
+		switch c.State {
+		case github.CheckFailed:
+			seen[c.Name] = true
 			d.FailedChecks = append(d.FailedChecks, c.Name)
+		case github.CheckStale:
+			seen[c.Name] = true
+			stale = append(stale, c.Name)
 		}
 	}
 
@@ -97,6 +135,12 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 			return skip("commit %.7s is not signed by GitHub; left for a human", c.OID)
 		}
 	}
+	d.assessed = true
+	if pr.ChecksOID != pr.HeadOID {
+		d.assessed = false
+		d.Action, d.Reason = ActionWait, fmt.Sprintf("checks not yet reported for head commit %.7s", pr.HeadOID)
+		return d
+	}
 	if d.Grade == config.UpdateUnknown {
 		return skip("cannot determine update type from Dependabot metadata")
 	}
@@ -119,6 +163,8 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	case pending > 0:
 		d.Action, d.Reason = ActionWait, fmt.Sprintf("%d check(s) still running", pending)
 		return d
+	case len(stale) > 0:
+		return skip("stale checks: %s (rerun them or comment @dependabot recreate)", strings.Join(stale, ", "))
 	case len(pr.Checks) == 0 && p.RequireChecks:
 		return skip("no checks ran (set require_checks: false to opt in)")
 	}
@@ -138,7 +184,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		safe.Action, safe.Reason = ActionMerge, "checks green, within policy"
 	case "BEHIND":
 		if rebaseRequested(pr, viewer) {
-			d.Action, d.Reason = ActionWait, "rebase already requested"
+			d.Action, d.Reason = ActionWait, reasonRebaseRequested
 			return d
 		}
 		safe = d

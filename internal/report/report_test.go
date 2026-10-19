@@ -26,8 +26,8 @@ var applied = runner.RepoResult{
 	},
 	Findings: []policy.Finding{{Kind: policy.FindingNoChecks, Summary: "no checks ran", PRs: []int{4, 5}}},
 	Events: []runner.Event{
-		{Number: 1, Title: "bump lib", Kind: runner.EventMerged, Detail: "squash, patch"},
-		{Number: 2, Title: "bump lib", Kind: runner.EventMergeFailed, Detail: "405 not mergeable"},
+		{Number: 1, Title: "bump lib", Grade: config.UpdatePatch, Kind: runner.EventMerged, Detail: "squash"},
+		{Number: 2, Title: "bump lib", Grade: config.UpdatePatch, Kind: runner.EventMergeFailed, Detail: "405 not mergeable"},
 	},
 }
 
@@ -35,8 +35,8 @@ func TestRepoAfterApply(t *testing.T) {
 	var b bytes.Buffer
 	Repo(&b, true, applied)
 	want := `o/r  (squash, up to minor, checks required, write access)
-  #1         merged        squash, patch             bump lib
-  #2         merge-failed  405 not mergeable         bump lib
+  #1  patch  merged        squash                    bump lib
+  #2  patch  merge-failed  405 not mergeable         bump lib
   #3  patch  wait          1 check(s) still running  bump lib
   needs attention:
     - no checks ran
@@ -117,5 +117,13 @@ func TestJSON(t *testing.T) {
 	}
 	if !doc.Apply || len(doc.Results) != 1 || doc.Results[0].Policy.MaxUpdateType != "minor" || doc.Results[0].Events[1].Kind != "merge-failed" {
 		t.Fatalf("doc = %+v", doc)
+	}
+}
+
+func TestRepoHeaderShowsFallbackMergeMethod(t *testing.T) {
+	var b bytes.Buffer
+	Repo(&b, false, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, MergeMethod: "merge"})
+	if first, _, _ := strings.Cut(b.String(), "\n"); first != "o/r  (merge; squash not allowed, up to minor, checks required)" {
+		t.Fatalf("header = %q", first)
 	}
 }

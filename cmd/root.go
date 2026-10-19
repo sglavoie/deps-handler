@@ -4,6 +4,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 
@@ -39,7 +40,20 @@ by anyone else, are never changed.`,
 
 // Execute runs the CLI and returns the process exit code.
 func Execute() int {
-	err := newRoot().Execute()
+	return execute(os.Args[1:], os.Stdout, os.Stderr)
+}
+
+func execute(args []string, stdout, stderr io.Writer) int {
+	root := newRoot()
+	root.SetArgs(args)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	return exitCode(root.Execute(), stderr)
+}
+
+// exitCode maps the error a command returned to the documented exit status,
+// printing it unless it was already reported.
+func exitCode(err error, stderr io.Writer) int {
 	var ee exitError
 	switch {
 	case err == nil:
@@ -47,10 +61,10 @@ func Execute() int {
 	case errors.As(err, &ee):
 		return ee.code
 	case errors.Is(err, errInterrupted):
-		fmt.Fprintln(os.Stderr, "deps-merger: interrupted")
+		fmt.Fprintln(stderr, "deps-merger: interrupted")
 		return 130
 	}
-	fmt.Fprintln(os.Stderr, "deps-merger:", err)
+	fmt.Fprintln(stderr, "deps-merger:", err)
 	return 1
 }
 

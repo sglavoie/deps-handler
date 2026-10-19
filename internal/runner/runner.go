@@ -4,7 +4,6 @@ package runner
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/sglavoie/deps-merger/internal/config"
@@ -23,21 +22,25 @@ const (
 )
 
 type Event struct {
-	Number int       `json:"number"`
-	Title  string    `json:"title"`
-	Kind   EventKind `json:"kind"`
-	Detail string    `json:"detail,omitempty"`
+	Number int               `json:"number"`
+	Title  string            `json:"title"`
+	Grade  config.UpdateType `json:"grade"`
+	Kind   EventKind         `json:"kind"`
+	Detail string            `json:"detail,omitempty"`
 }
 
 // RepoResult is everything a run learned and did in one repository.
 type RepoResult struct {
-	Repo       string            `json:"repo"`
-	Policy     config.Policy     `json:"policy"`
-	Permission string            `json:"permission,omitempty"`
-	Decisions  []policy.Decision `json:"decisions"`
-	Findings   []policy.Finding  `json:"findings"`
-	Events     []Event           `json:"events"`
-	Error      string            `json:"error,omitempty"`
+	Repo       string        `json:"repo"`
+	Policy     config.Policy `json:"policy"`
+	Permission string        `json:"permission,omitempty"`
+	// MergeMethod is the method merges use: the policy's, or the first one
+	// the repository allows when it does not allow that.
+	MergeMethod string            `json:"merge_method,omitempty"`
+	Decisions   []policy.Decision `json:"decisions"`
+	Findings    []policy.Finding  `json:"findings"`
+	Events      []Event           `json:"events"`
+	Error       string            `json:"error,omitempty"`
 }
 
 // Failed reports whether the repository could not be processed or a write
@@ -113,10 +116,12 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	for {
 		repo, err := r.Client.FetchRepo(ctx, rc.Owner, rc.Name)
 		if err != nil {
-			res.Error = err.Error()
+			res.Error = errText(ctx, err)
 			return res
 		}
 		res.Permission = repo.Permission
+		method, methodErr := policy.MergeMethod(repo, rc.Policy.MergeMethod)
+		res.MergeMethod = method
 		decisions := policy.Evaluate(repo, rc.Policy, r.Viewer)
 		res.Decisions = decisions
 		res.Findings = policy.Diagnose(repo, rc.Policy, decisions)
@@ -132,7 +137,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		if !r.Apply {
 			again, err := poll()
 			if err != nil {
-				res.Error = err.Error()
+				res.Error = errText(ctx, err)
 			}
 			if again && err == nil {
 				continue
@@ -145,9 +150,9 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 				continue
 			}
 			rebased[d.Number] = true
-			ev := Event{Number: d.Number, Title: d.Title, Kind: EventRebaseRequested}
+			ev := Event{Number: d.Number, Title: d.Title, Grade: d.Grade, Kind: EventRebaseRequested}
 			if err := r.Client.Comment(ctx, rc.Owner, rc.Name, d.Number, policy.RebaseCommand); err != nil {
-				ev.Kind, ev.Detail = EventRebaseFailed, err.Error()
+				ev.Kind, ev.Detail = EventRebaseFailed, errText(ctx, err)
 			}
 			res.Events = append(res.Events, ev)
 		}
@@ -162,7 +167,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		if next == nil {
 			again, err := poll()
 			if err != nil {
-				res.Error = err.Error()
+				res.Error = errText(ctx, err)
 			}
 			if again && err == nil {
 				continue
@@ -171,8 +176,8 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		}
 
 		attempted[next.Number] = true
-		ev := Event{Number: next.Number, Title: next.Title, Kind: EventMerged}
-		method, err := policy.MergeMethod(repo, rc.Policy.MergeMethod)
+		ev := Event{Number: next.Number, Title: next.Title, Grade: next.Grade, Kind: EventMerged}
+		err = methodErr
 		if err == nil {
 			err = r.Client.Merge(ctx, rc.Owner, rc.Name, next.Number, method, next.PR.HeadOID)
 		}
@@ -182,19 +187,28 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			retried[next.Number] = true
 			delete(attempted, next.Number)
 			if err := r.Sleep(ctx, r.PollInterval); err != nil {
-				res.Error = err.Error()
+				res.Error = errText(ctx, err)
 				return res
 			}
 			continue
 		}
 		if err != nil {
-			ev.Kind, ev.Detail = EventMergeFailed, err.Error()
+			ev.Kind, ev.Detail = EventMergeFailed, errText(ctx, err)
 		} else {
-			ev.Detail = fmt.Sprintf("%s, %s", method, next.Grade)
+			ev.Detail = method
 			polls = 0
 		}
 		res.Events = append(res.Events, ev)
 	}
+}
+
+// errText describes err, or just "interrupted" when it comes from the run
+// being cancelled, which would otherwise read like a network failure.
+func errText(ctx context.Context, err error) string {
+	if ctx.Err() != nil {
+		return "interrupted"
+	}
+	return err.Error()
 }
 
 // recomputing reports whether GitHub is still working out whether some PR

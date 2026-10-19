@@ -41,6 +41,9 @@ failed, and 130 when interrupted.`,
 			if err != nil {
 				return err
 			}
+			if len(selected) == 0 {
+				return errors.New("every configured repo has skip: true; name one with --repo to run it")
+			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 

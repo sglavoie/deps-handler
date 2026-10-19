@@ -25,13 +25,18 @@ A PR is merged only when all of these hold:
   largest one is within `max_update_type` (a grouped PR is as risky as its
   riskiest bump);
 - every check on the head commit passed, and at least one ran unless the
-  repo sets `require_checks: false`;
+  repo sets `require_checks: false` (a check GitHub marked stale after it
+  sat unfinished for 14 days blocks the merge until it is rerun);
 - GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`);
 - nothing was cut off: a PR with more than 100 commits or 100 checks is
   skipped rather than judged on partial data.
 
 A safe PR that is only `BEHIND` its base branch gets one `@dependabot rebase`
-comment per head commit. Merges happen one at a time per repository, with
+comment per head commit, one PR at a time: while a PR can merge or a
+requested rebase is still pending, the others wait (`queued behind #N`). If
+the base branch must be up to date, each merge puts every other PR behind
+again, so rebasing them all at once would rerun CI on each for every merge.
+Merges happen one at a time per repository, with
 the head SHA pinned, re-reading state after each. A merge GitHub rejects
 with 405 or 409, as it can right after another merge, is retried once.
 
@@ -46,10 +51,11 @@ Under each repo the report lists, without acting on them:
   it (and that ran on at least half of them), which points at the base
   branch rather than the updates;
 - **incompatible updates**: a PR failing its own checks, with the
-  `@dependabot ignore …` command that would stop it coming back;
+  `@dependabot ignore …` command that would stop it coming back (only for
+  PRs Dependabot alone wrote, whose checks ran on their head commit);
 - **held majors**: green major updates blocked only by policy;
 - **no checks** and **read-only** repositories;
-- **truncated**: more than 100 open Dependabot PRs, so only the first 100
+- **truncated**: more than 100 open Dependabot PRs, so only the oldest 100
   were evaluated.
 
 ## Scripting
@@ -66,14 +72,17 @@ A dry run never writes, so `deps-merger run` is safe to schedule. For
 repository: `repo`, `policy`, `permission`, `decisions` (one per PR, with
 `action` `merge`, `rebase`, `wait` or `skip` and a `reason`), `findings`
 (`kind`, `summary`, `prs`, `suggestions`), `events` (the writes made:
-`merged`, `merge-failed`, `rebase-requested`, `rebase-failed`) and `error`
-when the repository could not be read. Lists are always arrays, never
+`merged`, `merge-failed`, `rebase-requested`, `rebase-failed`, each with the
+PR's `grade`), `merge_method` (the one merges use) and `error` when the
+repository could not be read (`interrupted` if the run was stopped). Lists are always arrays, never
 `null`.
 
 ## Config
 
 See [`config.example.yaml`](config.example.yaml). Defaults: squash,
 patch and minor only, checks required. Every field can be overridden per repo.
+When a repo does not allow the configured merge method, the first one it
+allows (squash, merge, rebase) is used and the report header says so.
 
 To leave a repo out without deleting it, give its entry `skip: true`:
 
@@ -84,4 +93,5 @@ repos:
 ```
 
 `deps-merger run -r Mirror` still runs a skipped repo when you ask for it
-by name.
+by name. A run that would select no repos at all fails instead of reporting
+nothing.

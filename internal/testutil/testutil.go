@@ -51,7 +51,8 @@ func PR(number int, deps ...string) github.PullRequest {
 			OID: fmt.Sprintf("c%d", number), Message: Message(group, deps...),
 			CommittedDate: T0, Authors: []github.Author{dependabotAuthor}, SignedByGitHub: true,
 		}},
-		Checks: []github.Check{{Name: "build", State: github.CheckPassed}},
+		Checks:    []github.Check{{Name: "build", State: github.CheckPassed}},
+		ChecksOID: fmt.Sprintf("sha%d", number),
 	}
 }
 

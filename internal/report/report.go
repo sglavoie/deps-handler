@@ -31,7 +31,11 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 	if !p.RequireChecks {
 		checks = "checks optional"
 	}
-	header := fmt.Sprintf("%s  (%s, up to %s, %s", res.Repo, p.MergeMethod, p.MaxUpdateType, checks)
+	method := p.MergeMethod
+	if res.MergeMethod != "" && res.MergeMethod != p.MergeMethod {
+		method = fmt.Sprintf("%s; %s not allowed", res.MergeMethod, p.MergeMethod)
+	}
+	header := fmt.Sprintf("%s  (%s, up to %s, %s", res.Repo, method, p.MaxUpdateType, checks)
 	if res.Permission != "" {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
@@ -49,7 +53,7 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, ev := range res.Events {
-		fmt.Fprintf(tw, "  #%d\t\t%s\t%s\t%s\n", ev.Number, ev.Kind, ev.Detail, truncate(ev.Title))
+		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", ev.Number, ev.Grade, ev.Kind, ev.Detail, truncate(ev.Title))
 	}
 	for _, d := range decisions {
 		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", d.Number, d.Grade, label(d.Action, apply), d.Reason, truncate(d.Title))
