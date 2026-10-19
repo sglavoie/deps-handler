@@ -56,3 +56,18 @@ func TestFilter(t *testing.T) {
 		t.Fatalf("Filter(nope) err = %v", err)
 	}
 }
+
+func TestFilterSkip(t *testing.T) {
+	cfg, err := Parse([]byte("repos: [a/one, {repo: a/two, skip: true}]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := cfg.Filter(nil)
+	if len(got) != 1 || got[0].Name != "one" {
+		t.Fatalf("Filter(nil) = %v", got)
+	}
+	got, _ = cfg.Filter([]string{"two"})
+	if len(got) != 1 || !got[0].Skip {
+		t.Fatalf("naming a skipped repo should still select it: %v", got)
+	}
+}

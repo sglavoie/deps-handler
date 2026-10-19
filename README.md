@@ -49,3 +49,14 @@ Under each repo the report lists, without acting on them:
 
 See [`config.example.yaml`](config.example.yaml). Defaults: squash,
 patch and minor only, checks required. Every field can be overridden per repo.
+
+To leave a repo out without deleting it, give its entry `skip: true`:
+
+```yaml
+repos:
+  - repo: acme/Mirror
+    skip: true
+```
+
+`deps-merger run -r Mirror` still runs a skipped repo when you ask for it
+by name.

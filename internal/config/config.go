@@ -62,6 +62,8 @@ type Repo struct {
 	Owner  string `json:"owner"`
 	Name   string `json:"name"`
 	Policy Policy `json:"policy"`
+	// Skip leaves the repo out of runs unless it is named explicitly.
+	Skip bool `json:"skip,omitempty"`
 }
 
 func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
@@ -80,10 +82,11 @@ type overrides struct {
 
 type repoEntry struct {
 	Repo      string `yaml:"repo"`
+	Skip      bool   `yaml:"skip"`
 	overrides `yaml:",inline"`
 }
 
-var entryKeys = map[string]bool{"repo": true, "merge_method": true, "max_update_type": true, "require_checks": true}
+var entryKeys = map[string]bool{"repo": true, "merge_method": true, "max_update_type": true, "require_checks": true, "skip": true}
 
 // UnmarshalYAML lets an entry be either "owner/name" or a mapping with
 // "repo:" plus overrides.
@@ -167,7 +170,7 @@ func Parse(data []byte) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Repo, err)
 		}
-		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: p})
+		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: p, Skip: e.Skip})
 	}
 	if len(cfg.Repos) == 0 {
 		return nil, errors.New("config lists no repos")
@@ -198,10 +201,17 @@ func apply(base Policy, o overrides) (Policy, error) {
 }
 
 // Filter keeps only the repos named in only (case-insensitive owner/name or
-// bare name). An empty filter keeps everything.
+// bare name), including skipped ones. An empty filter keeps every repo not
+// marked skip.
 func (c *Config) Filter(only []string) ([]Repo, error) {
 	if len(only) == 0 {
-		return c.Repos, nil
+		var out []Repo
+		for _, r := range c.Repos {
+			if !r.Skip {
+				out = append(out, r)
+			}
+		}
+		return out, nil
 	}
 	var out []Repo
 	for _, want := range only {
