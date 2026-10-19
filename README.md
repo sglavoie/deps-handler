@@ -142,6 +142,11 @@ stopped). Lists are always arrays, never `null`. When stderr is a terminal,
 a line per repository reports progress there while the JSON waits for the
 end.
 
+On a terminal the report is colored: green for merges, cyan for rebases,
+yellow for waits and what needs attention, magenta for agent reviews, red
+for failures and major bumps. `NO_COLOR=1` or `CLICOLOR=0` turns color off;
+`CLICOLOR_FORCE=1` keeps it when the output is piped.
+
 ## Config
 
 See [`config.example.yaml`](config.example.yaml). Defaults: squash,

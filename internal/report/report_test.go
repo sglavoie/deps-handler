@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestRepoLinksTitlesOnATerminal(t *testing.T) {
 	d.URL = "https://github.com/o/r/pull/1"
 	res := runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Decisions: []policy.Decision{d}}
 	var b bytes.Buffer
-	repo(&b, false, res, true)
+	repo(&b, false, res, style{links: true})
 	if want := "\x1b]8;;https://github.com/o/r/pull/1\x1b\\bump lib\x1b]8;;\x1b\\\n"; !strings.Contains(b.String(), want) {
 		t.Fatalf("got %q", b.String())
 	}
@@ -191,5 +192,30 @@ func TestRepoShowsAgentVerdict(t *testing.T) {
 	Summary(&b, true, []runner.RepoResult{res})
 	if got := b.String(); got != "1 repos: 1 review, 1 skip; 1 need attention\n" {
 		t.Errorf("summary = %q", got)
+	}
+}
+
+func TestRepoColorsKeepColumnsAligned(t *testing.T) {
+	var b bytes.Buffer
+	repo(&b, true, applied, style{color: true})
+	plain := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(b.String(), "")
+	var want bytes.Buffer
+	Repo(&want, true, applied)
+	if plain != want.String() {
+		t.Fatalf("colored report differs once stripped:\n%s\nwant:\n%s", plain, want.String())
+	}
+	for _, s := range []string{"\x1b[1mo/r\x1b[0m", "\x1b[32mmerged\x1b[0m", "\x1b[1;31mmerge-failed\x1b[0m", "\x1b[33mwait\x1b[0m", "\x1b[32mpatch\x1b[0m"} {
+		if !strings.Contains(b.String(), s) {
+			t.Errorf("report lacks %q:\n%q", s, b.String())
+		}
+	}
+}
+
+func TestSummaryColors(t *testing.T) {
+	var b bytes.Buffer
+	summary(&b, true, []runner.RepoResult{applied, {Repo: "o/x", Error: "boom"}}, style{color: true})
+	want := "\x1b[1m2 repos:\x1b[0m \x1b[32m1 merged\x1b[0m, \x1b[1;31m1 merge-failed\x1b[0m, \x1b[33m1 wait\x1b[0m; \x1b[33m1 need attention\x1b[0m; \x1b[31m1 failed\x1b[0m\n"
+	if b.String() != want {
+		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
 }

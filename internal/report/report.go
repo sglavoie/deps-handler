@@ -5,11 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
-	"text/tabwriter"
 
-	"github.com/cli/go-gh/v2/pkg/term"
 	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/policy"
 	"github.com/sglavoie/deps-merger/internal/runner"
@@ -28,22 +25,12 @@ func JSON(w io.Writer, apply bool, results []runner.RepoResult) error {
 }
 
 // Repo writes one repository's section. On a terminal, PR titles link to
-// their pull requests.
+// their pull requests and the report is colored.
 func Repo(w io.Writer, apply bool, res runner.RepoResult) {
-	f, ok := w.(*os.File)
-	repo(w, apply, res, ok && term.IsTerminal(f))
+	repo(w, apply, res, styleFor(w))
 }
 
-func repo(w io.Writer, apply bool, res runner.RepoResult, links bool) {
-	title := func(url, s string) string {
-		s = truncate(s)
-		if !links || url == "" {
-			return s
-		}
-		// OSC 8 hyperlink; the title is the last cell, so the escape
-		// codes do not upset column widths.
-		return "\x1b]8;;" + url + "\x1b\\" + s + "\x1b]8;;\x1b\\"
-	}
+func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	p := res.Policy
 	checks := "checks required"
 	if !p.RequireChecks {
@@ -55,43 +42,45 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, links bool) {
 	if res.MergeMethod != "" && res.MergeMethod != p.MergeMethod {
 		method = fmt.Sprintf("%s; %s not allowed", res.MergeMethod, p.MergeMethod)
 	}
-	header := fmt.Sprintf("%s  (%s, up to %s, %s", res.Repo, method, p.MaxUpdateType, checks)
+	header := fmt.Sprintf("(%s, up to %s, %s", method, p.MaxUpdateType, checks)
 	if res.Permission != "" {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
-	fmt.Fprintln(w, header+")")
+	fmt.Fprintln(w, s.paint(bold, res.Repo)+"  "+s.paint(dim, header+")"))
 	if res.Error != "" {
-		fmt.Fprintf(w, "  error: %s\n\n", res.Error)
+		fmt.Fprintf(w, "  %s %s\n\n", s.paint(red, "error:"), res.Error)
 		return
 	}
 	decisions := pending(res)
 	if !HasPRs(res) {
-		fmt.Fprintln(w, "  no open Dependabot PRs")
+		fmt.Fprintln(w, "  "+s.paint(dim, "no open Dependabot PRs"))
 		fmt.Fprintln(w)
 		return
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	var rows [][]cell
 	for _, ev := range res.Events {
-		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", ev.Number, ev.Grade, ev.Kind, ev.Detail, title(ev.URL, ev.Title))
+		k := string(ev.Kind)
+		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", ev.Number)}, {text: ev.Grade.String(), color: gradeColor(ev.Grade)}, {text: k, color: labelColor(k)}, {text: ev.Detail}, {text: truncate(ev.Title), url: ev.URL}})
 	}
 	for _, d := range decisions {
-		fmt.Fprintf(tw, "  #%d\t%s\t%s\t%s\t%s\n", d.Number, d.Grade, label(d.Action, apply), d.Reason, title(d.URL, d.Title))
+		l := label(d.Action, apply)
+		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", d.Number)}, {text: d.Grade.String(), color: gradeColor(d.Grade)}, {text: l, color: labelColor(l)}, {text: d.Reason}, {text: truncate(d.Title), url: d.URL}})
 	}
-	tw.Flush()
+	table(w, s, "  ", rows)
 
 	if len(res.Findings) > 0 {
-		fmt.Fprintln(w, "  needs attention:")
+		fmt.Fprintln(w, "  "+s.paint(bold+";"+yellow, "needs attention:"))
 		for _, f := range res.Findings {
-			fmt.Fprintf(w, "    - %s\n", f.Summary)
+			fmt.Fprintf(w, "    %s %s\n", s.paint(yellow, "-"), f.Summary)
 			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks || f.Kind == policy.FindingReviewRequired {
-				fmt.Fprintf(w, "      PRs: %s\n", prList(f.PRs))
+				fmt.Fprintf(w, "      %s %s\n", s.paint(dim, "PRs:"), prList(f.PRs))
 			}
 			for _, d := range f.Details {
-				fmt.Fprintf(w, "      - %s\n", d)
+				fmt.Fprintf(w, "      %s\n", s.paint(dim, "- "+d))
 			}
-			for _, s := range f.Suggestions {
-				fmt.Fprintf(w, "      suggest: %s\n", s)
+			for _, sg := range f.Suggestions {
+				fmt.Fprintf(w, "      %s %s\n", s.paint(cyan, "suggest:"), sg)
 			}
 		}
 	}
@@ -107,15 +96,20 @@ func HasPRs(res runner.RepoResult) bool {
 // Progress writes a one-line note that a repository is done, for runs whose
 // report only comes at the end.
 func Progress(w io.Writer, res runner.RepoResult) {
+	s := styleFor(w)
 	if res.Error != "" {
-		fmt.Fprintf(w, "%s: error: %s\n", res.Repo, res.Error)
+		fmt.Fprintf(w, "%s: %s %s\n", res.Repo, s.paint(red, "error:"), res.Error)
 		return
 	}
-	fmt.Fprintf(w, "%s: done (%d PRs)\n", res.Repo, len(res.Decisions))
+	fmt.Fprintf(w, "%s: %s (%d PRs)\n", res.Repo, s.paint(green, "done"), len(res.Decisions))
 }
 
 // Summary writes the totals line across all repositories.
 func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
+	summary(w, apply, results, styleFor(w))
+}
+
+func summary(w io.Writer, apply bool, results []runner.RepoResult, s style) {
 	counts := map[string]int{}
 	findings, failed := 0, 0
 	for _, r := range results {
@@ -133,22 +127,22 @@ func Summary(w io.Writer, apply bool, results []runner.RepoResult) {
 	var parts []string
 	for _, k := range []string{"merged", "merge-failed", "merge", "would merge", "rebase-requested", "rebase-failed", "rebase", "would rebase", "review", "wait", "skip"} {
 		if counts[k] > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
+			parts = append(parts, s.paint(labelColor(k), fmt.Sprintf("%d %s", counts[k], k)))
 		}
 	}
 	if len(parts) == 0 {
-		parts = append(parts, "nothing to do")
+		parts = append(parts, s.paint(dim, "nothing to do"))
 	}
-	line := fmt.Sprintf("%d repos: %s", len(results), strings.Join(parts, ", "))
+	line := s.paint(bold, fmt.Sprintf("%d repos:", len(results))) + " " + strings.Join(parts, ", ")
 	if findings > 0 {
-		line += fmt.Sprintf("; %d need attention", findings)
+		line += "; " + s.paint(yellow, fmt.Sprintf("%d need attention", findings))
 	}
 	if failed > 0 {
-		line += fmt.Sprintf("; %d failed", failed)
+		line += "; " + s.paint(red, fmt.Sprintf("%d failed", failed))
 	}
 	fmt.Fprintln(w, line)
 	if !apply && (counts["would merge"] > 0 || counts["would rebase"] > 0) {
-		fmt.Fprintln(w, "dry run: nothing was changed; rerun with --apply to merge")
+		fmt.Fprintln(w, s.paint(dim, "dry run: nothing was changed; rerun with --apply to merge"))
 	}
 }
 
