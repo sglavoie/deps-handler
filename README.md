@@ -17,8 +17,9 @@ deps-merger run -r Storefront --json  # one repo, machine-readable
 A PR is merged only when all of these hold:
 
 - opened by Dependabot, and every commit is authored by Dependabot and
-  signed with GitHub's key, as Dependabot's commits are (a PR anyone else
-  pushed to is left alone, even one forging Dependabot as the author);
+  signed with GitHub's key, as Dependabot's commits are, and has no
+  `Co-authored-by` trailer naming anyone else (a PR anyone else pushed to is
+  left alone, even one forging Dependabot as the author);
 - not a draft; the repository is not archived and you have write access;
 - every dependency in the commit metadata has a known semver bump, and the
   largest one is within `max_update_type` (a grouped PR is as risky as its
@@ -26,8 +27,8 @@ A PR is merged only when all of these hold:
 - every check on the head commit passed, and at least one ran unless the
   repo sets `require_checks: false`;
 - GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`);
-- nothing was cut off: a PR with more than 100 commits, 100 checks or 5
-  authors on a commit is skipped rather than judged on partial data.
+- nothing was cut off: a PR with more than 100 commits or 100 checks is
+  skipped rather than judged on partial data.
 
 A safe PR that is only `BEHIND` its base branch gets one `@dependabot rebase`
 comment per head commit. Merges happen one at a time per repository, with

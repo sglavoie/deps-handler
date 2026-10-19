@@ -78,8 +78,8 @@ const fetchResponse = `{"data": {
      "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN", "reviewDecision": null,
      "author": {"login": "dependabot"},
      "commits": {"totalCount": 1, "nodes": [{"commit": {
-       "oid": "c1", "message": "m", "committedDate": "2026-10-01T12:00:00Z",
-       "authors": {"totalCount": 7, "nodes": [{"name": "dependabot[bot]", "email": "e", "user": {"login": "dependabot[bot]"}}]},
+       "oid": "c1", "message": "bump\n\nCo-authored-by: Jane <jane@example.com>", "committedDate": "2026-10-01T12:00:00Z",
+       "author": {"name": "dependabot[bot]", "email": "e", "user": {"login": "dependabot[bot]"}},
        "signature": {"isValid": true, "wasSignedByGitHub": true}}}]},
      "last": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"totalCount": 120, "nodes": [
        {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
@@ -108,7 +108,7 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 		t.Fatalf("pr = %+v", pr)
 	}
 	c := pr.Commits[0]
-	if !c.SignedByGitHub || c.AuthorCount != 7 || c.Authors[0].Login != "dependabot[bot]" {
+	if !c.SignedByGitHub || len(c.Authors) != 2 || c.Authors[0].Login != "dependabot[bot]" || c.Authors[1] != (Author{Name: "Jane", Email: "jane@example.com"}) {
 		t.Fatalf("commit = %+v", c)
 	}
 	want := []Check{{Name: "build", State: CheckPassed}, {Name: "ci/legacy", State: CheckPending}}
@@ -132,5 +132,26 @@ func TestFetchRepoUnsignedCommit(t *testing.T) {
 	}
 	if r.PullRequests[0].Commits[0].SignedByGitHub {
 		t.Fatal("a commit without a signature must not count as signed")
+	}
+}
+
+func TestCoAuthors(t *testing.T) {
+	msg := "bump\n\nSigned-off-by: dependabot[bot] <support@github.com>\n" +
+		"Co-authored-by: Jane Doe <jane@example.com>\n" +
+		"  co-authored-by:   dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\r\n" +
+		"Co-Authored-By: no email here"
+	want := []Author{
+		{Name: "Jane Doe", Email: "jane@example.com"},
+		{Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"},
+		{Name: "no email here"},
+	}
+	got := coAuthors(msg)
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("[%d] = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }

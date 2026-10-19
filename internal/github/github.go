@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
@@ -38,10 +39,8 @@ type Commit struct {
 	OID           string    `json:"oid"`
 	Message       string    `json:"-"`
 	CommittedDate time.Time `json:"committed_date"`
-	Authors       []Author  `json:"authors"`
-	// AuthorCount is the total number of authors, which can exceed the
-	// number fetched into Authors.
-	AuthorCount int `json:"author_count"`
+	// Authors is the commit author followed by every Co-authored-by trailer.
+	Authors []Author `json:"authors"`
 	// SignedByGitHub is true when the commit carries a valid signature made
 	// with GitHub's own key, as Dependabot's commits do.
 	SignedByGitHub bool `json:"signed_by_github"`
@@ -153,7 +152,7 @@ query($owner: String!, $name: String!, $search: String!) {
           totalCount
           nodes { commit {
             oid message committedDate
-            authors(first: 5) { totalCount nodes { name email user { login } } }
+            author { name email user { login } }
             signature { isValid wasSignedByGitHub }
           } }
         }
@@ -201,13 +200,10 @@ type gqlRepo struct {
 						Oid           string
 						Message       string
 						CommittedDate time.Time
-						Authors       struct {
-							TotalCount int
-							Nodes      []struct {
-								Name  string
-								Email string
-								User  *struct{ Login string }
-							}
+						Author        *struct {
+							Name  string
+							Email string
+							User  *struct{ Login string }
 						}
 						Signature *struct {
 							IsValid           bool
@@ -293,18 +289,18 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 				OID:           cn.Commit.Oid,
 				Message:       cn.Commit.Message,
 				CommittedDate: cn.Commit.CommittedDate,
-				AuthorCount:   cn.Commit.Authors.TotalCount,
 			}
 			if sig := cn.Commit.Signature; sig != nil {
 				cm.SignedByGitHub = sig.IsValid && sig.WasSignedByGitHub
 			}
-			for _, a := range cn.Commit.Authors.Nodes {
+			if a := cn.Commit.Author; a != nil {
 				au := Author{Name: a.Name, Email: a.Email}
 				if a.User != nil {
 					au.Login = a.User.Login
 				}
 				cm.Authors = append(cm.Authors, au)
 			}
+			cm.Authors = append(cm.Authors, coAuthors(cn.Commit.Message)...)
 			pr.Commits = append(pr.Commits, cm)
 		}
 		for _, ln := range n.Last.Nodes {
@@ -330,6 +326,27 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		r.PullRequests = append(r.PullRequests, pr)
 	}
 	return r, nil
+}
+
+// coAuthors reads the Co-authored-by trailers GitHub would list as extra
+// authors. Fetching them from the message instead of the commit's authors
+// connection keeps the query cheap: that connection, nested under every
+// commit of every PR, made up nearly all of its rate-limit cost.
+func coAuthors(msg string) []Author {
+	var out []Author
+	for _, line := range strings.Split(msg, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if !ok || !strings.EqualFold(key, "co-authored-by") {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		name, email := value, ""
+		if i := strings.LastIndex(value, "<"); i >= 0 && strings.HasSuffix(value, ">") {
+			name, email = strings.TrimSpace(value[:i]), value[i+1:len(value)-1]
+		}
+		out = append(out, Author{Name: name, Email: email})
+	}
+	return out
 }
 
 func checkRunState(status, conclusion string) CheckState {

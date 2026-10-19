@@ -87,8 +87,10 @@ func TestEvaluate(t *testing.T) {
 				pr.Commits[0].SignedByGitHub = false
 				pr.Commits[0].Authors = []github.Author{{Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"}}
 			}},
-		{name: "authors truncated", action: ActionSkip, reason: "too many authors",
-			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].AuthorCount = 6 }},
+		{name: "human co-author", action: ActionSkip, reason: "modified by Jane",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Commits[0].Authors = append(pr.Commits[0].Authors, github.Author{Name: "Jane", Email: "jane@example.com"})
+			}},
 		{name: "checks truncated", action: ActionSkip, reason: "too many checks to verify (101)",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.CheckCount = 101 }},
 	}

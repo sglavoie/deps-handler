@@ -83,9 +83,6 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return skip("too many commits to verify (%d)", pr.CommitCount)
 	}
 	for _, c := range pr.Commits {
-		if c.AuthorCount > len(c.Authors) {
-			return skip("too many authors to verify on commit %.7s (%d)", c.OID, c.AuthorCount)
-		}
 		for _, a := range c.Authors {
 			if !dependabot.IsCommitAuthor(a.Login, a.Name, a.Email) {
 				who := a.Login
