@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"text/template"
@@ -138,9 +139,21 @@ func Verdict(a Answer) (policy.Verdict, error) {
 	default:
 		return policy.Verdict{}, fmt.Errorf("agent answered %q instead of approve or reject", a.Decision)
 	}
-	concerns := append(append([]string{}, a.BreakingChanges...), a.Concerns...)
-	return policy.Verdict{Approved: a.Decision == "approve", Summary: strings.TrimSpace(a.Summary), Concerns: concerns}, nil
+	concerns := make([]string, 0, len(a.BreakingChanges)+len(a.Concerns))
+	for _, c := range append(append([]string{}, a.BreakingChanges...), a.Concerns...) {
+		concerns = append(concerns, redact(c))
+	}
+	return policy.Verdict{Approved: a.Decision == "approve", Summary: redact(strings.TrimSpace(a.Summary)), Concerns: concerns}, nil
 }
+
+// githubToken matches the GitHub token formats: classic and fine-grained
+// personal, OAuth, app user, app installation and refresh tokens.
+var githubToken = regexp.MustCompile(`\b(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})`)
+
+// redact hides GitHub tokens in an agent's reasons, which are cached,
+// printed and sent to CI logs: an agent can read files holding one, such
+// as gh's hosts.yml, and a prompt injection could have it quote them.
+func redact(s string) string { return githubToken.ReplaceAllString(s, "[redacted token]") }
 
 //go:embed prompt.tmpl
 var promptText string

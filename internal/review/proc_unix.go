@@ -12,6 +12,7 @@ import (
 // cmd must come from exec.CommandContext.
 func ownGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	dieWithParent(cmd.SysProcAttr)
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 }
 

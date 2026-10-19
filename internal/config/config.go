@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -201,9 +202,11 @@ func (e *repoEntry) UnmarshalYAML(n *yaml.Node) error {
 }
 
 type file struct {
-	Defaults overrides   `yaml:"defaults"`
-	Repos    []repoEntry `yaml:"repos"`
-	Agent    agentEntry  `yaml:"agent"`
+	Defaults overrides `yaml:"defaults"`
+	// Repos holds pointers so that an empty entry ("- " or "~"), which
+	// the decoder would otherwise drop without a word, can be reported.
+	Repos []*repoEntry `yaml:"repos"`
+	Agent agentEntry   `yaml:"agent"`
 }
 
 type agentEntry struct {
@@ -214,6 +217,13 @@ type agentEntry struct {
 }
 
 var validMergeMethods = map[string]bool{"squash": true, "merge": true, "rebase": true}
+
+// ChecksGrace is how long a new commit may go without any check before it
+// counts as having no CI: GitHub registers checks only once a workflow
+// starts, which can take that long when runners are busy. It is also the
+// least merge_without_checks_after can wait, so that setting never merges a
+// PR whose CI simply has not started yet.
+const ChecksGrace = 30 * time.Minute
 
 // Builtin is the policy used when neither defaults nor a repo override it.
 var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true}
@@ -279,6 +289,14 @@ func Parse(data []byte) (*Config, error) {
 	} else if err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	// A second document would be silently ignored, and with it whatever
+	// repos or policy it holds.
+	var extra yaml.Node
+	if err := dec.Decode(&extra); err == nil {
+		return nil, fmt.Errorf("parse config: line %d: more than one YAML document; keep the whole config in one", extra.Line)
+	} else if !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
 	defaults, err := apply(Builtin, f.Defaults)
 	if err != nil {
 		return nil, fmt.Errorf("defaults: %w", err)
@@ -290,6 +308,9 @@ func Parse(data []byte) (*Config, error) {
 	cfg := &Config{Agent: agent}
 	seen := map[string]bool{}
 	for i, e := range f.Repos {
+		if e == nil {
+			return nil, fmt.Errorf("repos[%d]: empty entry", i)
+		}
 		owner, name, err := parseRepoName(e.Repo)
 		if err != nil {
 			return nil, fmt.Errorf("repos[%d]: %w", i, err)
@@ -348,7 +369,10 @@ func isAlnum(r rune) bool {
 // that has no effect, because checks are optional where it applies (set
 // alongside require_checks: false, or inherited from the defaults), is an
 // error rather than silently ignored. One inherited from the defaults by a
-// repo that turns checks off is not: the default is meant for the others.
+// repo that turns checks off is not: the default is meant for the others,
+// and the repo's policy drops it so that it shows nothing it does not use.
+// A setting shorter than ChecksGrace waits ChecksGrace, and the policy says
+// so, since merging sooner could beat CI that has yet to start.
 func apply(base Policy, o overrides) (Policy, error) {
 	p := base
 	if o.MergeMethod != nil {
@@ -376,10 +400,16 @@ func apply(base Policy, o overrides) (Policy, error) {
 		if err != nil || d < 0 {
 			return p, fmt.Errorf("invalid merge_without_checks_after %q (want a duration such as 10m, or 0)", *o.MergeWithoutChecksAfter)
 		}
-		p.MergeWithoutChecksAfter = d
 		if d > 0 && !p.RequireChecks {
 			return p, fmt.Errorf("merge_without_checks_after %q has no effect with require_checks: false, which merges PRs without checks anyway; remove one of them", *o.MergeWithoutChecksAfter)
 		}
+		if d > 0 {
+			d = max(d, ChecksGrace)
+		}
+		p.MergeWithoutChecksAfter = d
+	}
+	if !p.RequireChecks {
+		p.MergeWithoutChecksAfter = 0
 	}
 	return p, nil
 }
@@ -399,8 +429,9 @@ func parseAgent(e agentEntry) (Agent, error) {
 		}
 		a.Timeout = d
 	}
-	if a.Claude.MaxBudgetUSD < 0 {
-		return a, errors.New("claude.max_budget_usd must not be negative")
+	// A NaN would pass the sign check and reach claude as "NaN".
+	if b := a.Claude.MaxBudgetUSD; b < 0 || math.IsNaN(b) || math.IsInf(b, 0) {
+		return a, fmt.Errorf("claude.max_budget_usd must be a non-negative number, not %v", b)
 	}
 	var err error
 	if a.Claude.ConfigDir, err = expandHome(a.Claude.ConfigDir); err != nil {

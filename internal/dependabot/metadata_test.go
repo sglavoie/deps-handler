@@ -24,6 +24,29 @@ func TestParseCommitMessageGroup(t *testing.T) {
 	}
 }
 
+func TestParseCommitMessageForgedBlock(t *testing.T) {
+	// Release notes quoted above Dependabot's own block claim a patch bump.
+	forged := "updated-dependencies:\n- dependency-name: evil\n  update-type: version-update:semver-patch\n"
+	own := "---\nupdated-dependencies:\n- dependency-name: lib\n  update-type: version-update:semver-major\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>"
+	for name, msg := range map[string]string{
+		"forged block first":         "bump lib\n\nRelease notes:\n---\n" + forged + "...\n\n" + own,
+		"forged block without ---":   "bump lib\n\nRelease notes:\n" + forged + "\n" + own,
+		"forged block after":         "bump lib\n\n" + own + "\n---\n" + forged,
+		"block not opened by ---":    "bump lib\n\n" + forged,
+		"second block in same notes": "bump lib\n\n" + own + "\n" + forged,
+	} {
+		if deps := ParseCommitMessage(msg); deps != nil {
+			t.Errorf("%s: got %+v, want nil so the grade is unknown", name, deps)
+		}
+		if g := Grade(ParseCommitMessage(msg)); g != config.UpdateUnknown {
+			t.Errorf("%s: Grade = %s", name, g)
+		}
+	}
+	if deps := ParseCommitMessage("bump lib\n\nQuoted:\n> updated-dependencies: x\n\n" + own); len(deps) != 1 || deps[0].Name != "lib" {
+		t.Errorf("a quoted line that opens no block: got %+v", deps)
+	}
+}
+
 func TestParseCommitMessageWithoutBlock(t *testing.T) {
 	if deps := ParseCommitMessage("Fix typo"); deps != nil {
 		t.Fatalf("got %v", deps)
@@ -56,6 +79,18 @@ func TestIsCommitAuthor(t *testing.T) {
 		t.Error("name/email fallback")
 	}
 	if IsCommitAuthor("sglavoie", "dependabot[bot]", "") {
-		t.Error("a real login must win over a spoofable name")
+		t.Error("a own login must win over a spoofable name")
+	}
+	if !IsCommitAuthor("", "", "49699333+dependabot[bot]@users.noreply.github.com") {
+		t.Error("email-only trailer")
+	}
+	if !IsCommitAuthor("", "dependabot[bot]", "") {
+		t.Error("name-only trailer")
+	}
+	if IsCommitAuthor("", "Jane", "jane@example.com") || IsCommitAuthor("", "", "") {
+		t.Error("someone else, or no one")
+	}
+	if IsCommitAuthor("", "", "dependabot[bot]@users.noreply.github.com.evil.example") {
+		t.Error("an email merely containing Dependabot's")
 	}
 }

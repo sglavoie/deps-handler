@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"text/tabwriter"
 
 	"github.com/sglavoie/deps-merger/internal/config"
@@ -9,7 +11,8 @@ import (
 )
 
 func newReposCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	c := &cobra.Command{
 		Use:   "repos",
 		Short: "List configured repositories and their effective policy",
 		Args:  cobra.NoArgs,
@@ -17,6 +20,9 @@ func newReposCmd() *cobra.Command {
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
+			}
+			if asJSON {
+				return reposJSON(cmd.OutOrStdout(), cfg)
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "REPO\tMERGE\tMAX UPDATE\tREQUIRE CHECKS\tNO-CHECKS MERGE\tAGENT REVIEW\tSKIP")
@@ -37,6 +43,45 @@ func newReposCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&asJSON, "json", false, "print the repositories and the agent as JSON")
+	return c
+}
+
+// reposJSON writes the configured repositories, with their effective
+// policy as run --json reports it, and the agent as configured.
+func reposJSON(w io.Writer, cfg *config.Config) error {
+	type repo struct {
+		Repo   string        `json:"repo"`
+		Policy config.Policy `json:"policy"`
+		Skip   bool          `json:"skip"`
+	}
+	type agent struct {
+		Use     string `json:"use"`
+		Timeout string `json:"timeout"`
+		Claude  struct {
+			Model        string  `json:"model"`
+			ConfigDir    string  `json:"config_dir"`
+			MaxBudgetUSD float64 `json:"max_budget_usd"`
+		} `json:"claude"`
+		Codex struct {
+			Model string `json:"model"`
+			Home  string `json:"home"`
+		} `json:"codex"`
+	}
+	doc := struct {
+		Repos []repo `json:"repos"`
+		Agent agent  `json:"agent"`
+	}{Repos: make([]repo, 0, len(cfg.Repos))}
+	for _, r := range cfg.Repos {
+		doc.Repos = append(doc.Repos, repo{r.FullName(), r.Policy, r.Skip})
+	}
+	a := cfg.Agent
+	doc.Agent.Use, doc.Agent.Timeout = a.Use, config.ShortDuration(a.Timeout)
+	doc.Agent.Claude.Model, doc.Agent.Claude.ConfigDir, doc.Agent.Claude.MaxBudgetUSD = a.Claude.Model, a.Claude.ConfigDir, a.Claude.MaxBudgetUSD
+	doc.Agent.Codex.Model, doc.Agent.Codex.Home = a.Codex.Model, a.Codex.Home
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(doc)
 }
 
 // agentSummary describes the configured agent and its limits.

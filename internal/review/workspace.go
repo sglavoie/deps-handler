@@ -31,12 +31,22 @@ type Workspace struct {
 // Checkout puts the head of pull request number into the repository's
 // checkout and returns its directory. It fails if the head is no longer
 // headOID, so the agent never reads other code than the policy judged.
-// A checkout git cannot work with, as one a killed review left half
-// written, is made again from scratch.
+// A fetch that fails is tried once more. A checkout git cannot work with,
+// as one a killed review left half written, is made again from scratch;
+// one that only failed to fetch is kept when the remote cannot be reached
+// either, since cloning again would fail the same way and lose it.
 func (w *Workspace) Checkout(ctx context.Context, owner, name string, number int, headOID string) (string, error) {
 	dir := filepath.Join(w.Root, owner, name)
 	err := w.checkout(ctx, dir, owner, name, number, headOID)
-	if err != nil && !errors.Is(err, ErrHeadMoved) && ctx.Err() == nil {
+	if errors.Is(err, errFetch) && ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			return "", err
+		case <-time.After(fetchRetryPause):
+		}
+		err = w.checkout(ctx, dir, owner, name, number, headOID)
+	}
+	if err != nil && !errors.Is(err, ErrHeadMoved) && ctx.Err() == nil && (!errors.Is(err, errFetch) || w.reachable(ctx, dir, number)) {
 		if err := os.RemoveAll(dir); err != nil {
 			return "", err
 		}
@@ -51,6 +61,20 @@ func (w *Workspace) Checkout(ctx context.Context, owner, name string, number int
 		return "", err
 	}
 	return dir, nil
+}
+
+// errFetch marks a failed fetch, which the network or GitHub more often
+// causes than the checkout.
+var errFetch = errors.New("fetch failed")
+
+// fetchRetryPause is how long Checkout waits to fetch again.
+var fetchRetryPause = 2 * time.Second
+
+// reachable reports whether the remote of the checkout in dir serves pull
+// request number, without reading the checkout's objects: when it does, a
+// fetch that failed twice points at the checkout itself.
+func (w *Workspace) reachable(ctx context.Context, dir string, number int) bool {
+	return w.git(ctx, dir, "ls-remote", "--exit-code", "origin", fmt.Sprintf("refs/pull/%d/head", number)) == nil
 }
 
 func (w *Workspace) checkout(ctx context.Context, dir, owner, name string, number int, headOID string) error {
@@ -82,7 +106,7 @@ func (w *Workspace) checkout(ctx context.Context, dir, owner, name string, numbe
 	}
 	ref := fmt.Sprintf("+refs/pull/%d/head", number)
 	if err := w.git(ctx, dir, "fetch", "-q", "--depth=1", "--no-tags", "origin", ref); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", errFetch, err)
 	}
 	got, err := w.output(ctx, dir, "rev-parse", "FETCH_HEAD")
 	if err != nil {
@@ -163,7 +187,9 @@ func (w *Workspace) git(ctx context.Context, dir string, args ...string) error {
 func (w *Workspace) output(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	// Git LFS would download every large file at checkout, for an agent
+	// that reads code; the pointer files say what changed.
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1")
 	if w.Token != "" {
 		auth := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + w.Token))
 		cmd.Env = append(cmd.Env,

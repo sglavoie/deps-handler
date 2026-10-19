@@ -21,8 +21,8 @@ func TestCheckRunState(t *testing.T) {
 		want               CheckState
 	}{
 		{"COMPLETED", "SUCCESS", CheckPassed},
-		{"COMPLETED", "NEUTRAL", CheckPassed},
-		{"COMPLETED", "SKIPPED", CheckPassed},
+		{"COMPLETED", "NEUTRAL", CheckSkipped},
+		{"COMPLETED", "SKIPPED", CheckSkipped},
 		{"COMPLETED", "FAILURE", CheckFailed},
 		{"COMPLETED", "CANCELLED", CheckFailed},
 		{"COMPLETED", "TIMED_OUT", CheckFailed},
@@ -176,7 +176,7 @@ const fetchResponse = `{"data": {
        "signature": {"isValid": true, "wasSignedByGitHub": true}}}]},
      "last": {"nodes": [{"commit": {"oid": "abc", "statusCheckRollup": {"contexts": {"totalCount": 120, "nodes": [
        {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS", "checkSuite": {"databaseId": 42,
-         "app": {"databaseId": 15368}, "workflowRun": {"workflow": {"databaseId": 7}}}},
+         "app": {"databaseId": 15368}, "workflowRun": {"event": "pull_request", "workflow": {"databaseId": 7}}}},
        {"__typename": "CheckRun", "name": "sonar", "status": "COMPLETED", "conclusion": "SUCCESS", "checkSuite": {"databaseId": 43,
          "app": {"databaseId": 99}, "workflowRun": null}},
        {"__typename": "StatusContext", "context": "ci/legacy", "state": "PENDING"}]}}}}]},
@@ -208,7 +208,7 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 		t.Fatalf("commit = %+v", c)
 	}
 	want := []Check{
-		{Name: "build", State: CheckPassed, Suite: 42, App: 15368, Workflow: 7},
+		{Name: "build", State: CheckPassed, Suite: 42, App: 15368, Workflow: 7, Event: "pull_request"},
 		{Name: "sonar", State: CheckPassed, Suite: 43, App: 99},
 		{Name: "ci/legacy", State: CheckPending, Status: true},
 	}
@@ -407,6 +407,82 @@ func TestPullRequestDetails(t *testing.T) {
 	d, err = restClient(t, rt).PullRequestDetails(context.Background(), "o", "r", 5)
 	if err != nil || d.Diff != "" || !strings.Contains(d.DiffError, "406") {
 		t.Fatalf("details = %+v, %v; a refused diff is not a failed review", d, err)
+	}
+
+	rt.answers["GET /repos/o/r/pulls/5"] = reply(200, `{"body": "notes"}`)
+	rt.answers["GET /repos/o/r/pulls/5 diff"] = reply(422, `{"message": "diff too large"}`)
+	if d, err = restClient(t, rt).PullRequestDetails(context.Background(), "o", "r", 5); err != nil || !strings.Contains(d.DiffError, "422") {
+		t.Fatalf("details = %+v, %v; a 422 is GitHub refusing the diff too", d, err)
+	}
+
+	// A diff GitHub failed to send, or would not for a rate limit, must
+	// fail the call, for Again to make it once more: a review without the
+	// diff would be cached like any other.
+	rt.answers["GET /repos/o/r/pulls/5"] = reply(200, `{"body": "notes"}`)
+	rt.answers["GET /repos/o/r/pulls/5 diff"] = reply(502, `{"message": "Server Error"}`)
+	if d, err = restClient(t, rt).PullRequestDetails(context.Background(), "o", "r", 5); !Transient(err) || !strings.HasPrefix(err.Error(), "o/r#5: ") {
+		t.Fatalf("details = %+v, %v; a 502 should come back transient", d, err)
+	}
+	rt.answers["GET /repos/o/r/pulls/5"] = reply(200, `{"body": "notes"}`)
+	limited := reply(403, `{"message": "You have exceeded a secondary rate limit"}`)
+	limited.Header.Set("Retry-After", "30")
+	rt.answers["GET /repos/o/r/pulls/5 diff"] = limited
+	if d, err = restClient(t, rt).PullRequestDetails(context.Background(), "o", "r", 5); err == nil {
+		t.Fatalf("details = %+v; a rate-limited diff should fail the call", d)
+	}
+	if wait, ok := RateLimited(err); !ok || wait != 30*time.Second {
+		t.Fatalf("RateLimited = %s, %t for %v", wait, ok, err)
+	}
+}
+
+// hang answers no request, until the request is cancelled.
+type hang struct{}
+
+func (hang) RoundTrip(req *http.Request) (*http.Response, error) {
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
+func TestRequestTimeoutIsTransient(t *testing.T) {
+	// A write that hangs must end, and say it may have gone through.
+	opts := api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: hang{}, Timeout: 10 * time.Millisecond}
+	rest, err := api.NewRESTClient(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gql, err := api.NewGraphQLClient(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &client{gql: gql, rest: rest, diff: rest}
+	if err := c.Merge(context.Background(), "o", "r", 5, "squash", "abc"); !Transient(err) {
+		t.Fatalf("merge err = %v; a timeout should be transient", err)
+	}
+	if _, err := c.FetchRepo(context.Background(), "o", "r"); !Transient(err) {
+		t.Fatalf("fetch err = %v; a timeout should be transient", err)
+	}
+}
+
+func TestPullRequestState(t *testing.T) {
+	for body, want := range map[string]PRState{
+		`{"data": {"repository": {"pullRequest": {"state": "OPEN", "merged": false}}}}`:   PROpen,
+		`{"data": {"repository": {"pullRequest": {"state": "MERGED", "merged": true}}}}`:  PRMerged,
+		`{"data": {"repository": {"pullRequest": {"state": "CLOSED", "merged": false}}}}`: PRClosed,
+	} {
+		gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(body)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := (&client{gql: gql}).PullRequestState(context.Background(), "o", "r", 5); got != want || err != nil {
+			t.Errorf("state = %q, %v; want %q", got, err, want)
+		}
+	}
+	gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(`{"data": {"repository": {"pullRequest": null}}}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&client{gql: gql}).PullRequestState(context.Background(), "o", "r", 5); err == nil || !strings.HasPrefix(err.Error(), "o/r#5: ") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

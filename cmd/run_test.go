@@ -53,6 +53,13 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 	return nil
 }
 
+func (f *fakeClient) PullRequestState(_ context.Context, _, _ string, n int) (github.PRState, error) {
+	if contains(f.merges, n) {
+		return github.PRMerged, nil
+	}
+	return github.PROpen, nil
+}
+
 func (f *fakeClient) Comment(context.Context, string, string, int, string) error { return nil }
 
 func (f *fakeClient) PullRequestDetails(context.Context, string, string, int) (*github.PullRequestDetails, error) {

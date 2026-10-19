@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -44,6 +45,14 @@ type fakeClient struct {
 	lagging map[int]int
 	// commentErrs fail a PR's rebase requests.
 	commentErrs map[int]error
+	// closedAnyway makes a failure from mergeErrs close the PR without
+	// merging it, as someone can meanwhile.
+	closedAnyway map[int]bool
+	// unknownAfterMerge leaves every PR's mergeability UNKNOWN for that
+	// many fetches after any merge attempt, failed ones included.
+	unknownAfterMerge int
+	// stateErrs are returned by the next PR state reads, in order.
+	stateErrs []error
 }
 
 func (f *fakeClient) Viewer(context.Context) (string, error) { return "me", nil }
@@ -77,6 +86,9 @@ func (f *fakeClient) FetchRepo(ctx context.Context, _, _ string) (*github.Repo, 
 }
 
 func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) error {
+	if f.unknownAfterMerge > 0 {
+		defer func() { f.unknownFor = f.unknownAfterMerge }()
+	}
 	if f.failMerge[n] {
 		return errors.New("405 not mergeable")
 	}
@@ -90,6 +102,9 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 	var err error
 	if errs := f.mergeErrs[n]; len(errs) > 0 {
 		err, f.mergeErrs[n] = errs[0], errs[1:]
+		if f.closedAnyway[n] {
+			f.drop(n)
+		}
 		if !f.mergedAnyway[n] {
 			return err
 		}
@@ -131,6 +146,21 @@ func (f *fakeClient) Comment(_ context.Context, _, _ string, n int, body string)
 
 func (f *fakeClient) PullRequestDetails(context.Context, string, string, int) (*github.PullRequestDetails, error) {
 	return &github.PullRequestDetails{Body: "release notes"}, nil
+}
+
+func (f *fakeClient) PullRequestState(_ context.Context, _, _ string, n int) (github.PRState, error) {
+	if len(f.stateErrs) > 0 {
+		err := f.stateErrs[0]
+		f.stateErrs = f.stateErrs[1:]
+		return "", err
+	}
+	switch {
+	case slices.Contains(f.merges, n):
+		return github.PRMerged, nil
+	case slices.ContainsFunc(f.repo.PullRequests, func(pr github.PullRequest) bool { return pr.Number == n }):
+		return github.PROpen, nil
+	}
+	return github.PRClosed, nil
 }
 
 func newRunner(c github.Client, apply bool) *Runner {
@@ -312,6 +342,10 @@ func (c *reposClient) Comment(ctx context.Context, _, name string, n int, body s
 
 func (c *reposClient) PullRequestDetails(ctx context.Context, _, name string, n int) (*github.PullRequestDetails, error) {
 	return c.repos[name].PullRequestDetails(ctx, "", name, n)
+}
+
+func (c *reposClient) PullRequestState(ctx context.Context, _, name string, n int) (github.PRState, error) {
+	return c.repos[name].PullRequestState(ctx, "", name, n)
 }
 
 func TestRunKeepsOrderAndSerialisesWrites(t *testing.T) {
@@ -535,9 +569,18 @@ func TestHeadMovedDuringReviewIsReviewedAgain(t *testing.T) {
 
 func TestHeadThatKeepsMovingWaitsForNextRun(t *testing.T) {
 	moved := fmt.Errorf("checkout: %w", review.ErrHeadMoved)
+	// The update records no versions, so its key moves with its head and
+	// each push looks like an update not reviewed yet.
 	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
 	rv := &fakeReviewer{errs: map[int][]error{1: {moved, moved, moved}}}
-	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
+	rv.onReview = func(review.Request) {
+		pr := &c.repo.PullRequests[0]
+		pr.HeadOID = fmt.Sprintf("pushed%d", len(rv.calls))
+		pr.ChecksOID = pr.HeadOID
+	}
+	r := reviewRunner(c, rv, true)
+	r.MaxReviews = 5
+	res := r.RunRepo(context.Background(), repoCfg)
 	d := res.Decisions[0]
 	if len(c.merges) != 0 || len(rv.calls) != 2 || res.Failed() || d.Action != policy.ActionReview || !strings.Contains(d.Reason, "head moved") {
 		t.Fatalf("merges %v, reviews %v, decision %+v", c.merges, rv.calls, d)
@@ -638,6 +681,7 @@ func TestTimedOutMergeIsReportedWhenTheRepoCannotBeReadAgain(t *testing.T) {
 		mergeErrs:           map[int][]error{1: {&api.HTTPError{StatusCode: 504}}},
 		mergedAnyway:        map[int]bool{1: true},
 		fetchErrsAfterMerge: []error{bad, bad},
+		stateErrs:           []error{bad, bad},
 	}
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
 	if res.Error == "" || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed {
@@ -645,6 +689,74 @@ func TestTimedOutMergeIsReportedWhenTheRepoCannotBeReadAgain(t *testing.T) {
 	}
 	if !strings.Contains(res.Events[0].Detail, "may have merged after HTTP 504") {
 		t.Fatalf("detail %q", res.Events[0].Detail)
+	}
+
+	// GitHub can still say whether the PR merged when the repository
+	// cannot be read.
+	fc = &fakeClient{
+		repo:                testutil.Repo(testutil.PR(1)),
+		mergeErrs:           map[int][]error{1: {&api.HTTPError{StatusCode: 504}}},
+		mergedAnyway:        map[int]bool{1: true},
+		fetchErrsAfterMerge: []error{bad, bad},
+	}
+	res = newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if res.Error == "" || len(res.Events) != 1 || res.Events[0].Kind != EventMerged {
+		t.Fatalf("error %q, events %+v", res.Error, res.Events)
+	}
+}
+
+func TestTimedOutMergeOfAPRThatTurnsUnmergeableIsReported(t *testing.T) {
+	// The merge times out; GitHub still shows the PR open, its
+	// mergeability being recomputed, until the pass ends.
+	fc := &fakeClient{
+		repo:              testutil.Repo(testutil.PR(1)),
+		mergeErrs:         map[int][]error{1: {&api.HTTPError{StatusCode: 502}}},
+		mergedAnyway:      map[int]bool{1: true},
+		lag:               20,
+		unknownAfterMerge: 20,
+	}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if fmt.Sprint(fc.merges) != "[1]" || len(res.Events) != 1 || res.Events[0].Kind != EventMerged || res.Failed() {
+		t.Fatalf("merges %v, events %+v", fc.merges, res.Events)
+	}
+
+	// The same, but the merge did not go through.
+	fc = &fakeClient{
+		repo:              testutil.Repo(testutil.PR(1)),
+		mergeErrs:         map[int][]error{1: {&api.HTTPError{StatusCode: 502}}},
+		unknownAfterMerge: 20,
+	}
+	res = newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 0 || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed || !res.Failed() {
+		t.Fatalf("merges %v, events %+v", fc.merges, res.Events)
+	}
+	if !strings.Contains(res.Events[0].Detail, "not merged after HTTP 502") {
+		t.Fatalf("detail %q", res.Events[0].Detail)
+	}
+}
+
+func TestTimedOutMergeOfAPRClosedMeanwhileIsAFailure(t *testing.T) {
+	fc := &fakeClient{
+		repo:         testutil.Repo(testutil.PR(1)),
+		mergeErrs:    map[int][]error{1: {&api.HTTPError{StatusCode: 504}}},
+		closedAnyway: map[int]bool{1: true},
+	}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 0 || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed || !res.Failed() {
+		t.Fatalf("merges %v, events %+v; a PR closed unmerged is no merge", fc.merges, res.Events)
+	}
+	if !strings.Contains(res.Events[0].Detail, "closed without being merged, after HTTP 504") {
+		t.Fatalf("detail %q", res.Events[0].Detail)
+	}
+}
+
+func TestRunWarningsGoToTheFirstResult(t *testing.T) {
+	c := &reposClient{repos: map[string]*fakeClient{"a": {repo: testutil.Repo()}, "b": {repo: testutil.Repo()}}}
+	r := newRunner(c, false)
+	r.Warn("verdicts.json was unreadable")
+	results := r.Run(context.Background(), []config.Repo{{Owner: "o", Name: "a"}, {Owner: "o", Name: "b"}}, nil)
+	if fmt.Sprint(results[0].Warnings) != "[verdicts.json was unreadable]" || len(results[1].Warnings) != 0 {
+		t.Fatalf("warnings %q, %q", results[0].Warnings, results[1].Warnings)
 	}
 }
 

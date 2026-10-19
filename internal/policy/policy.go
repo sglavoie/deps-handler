@@ -65,7 +65,7 @@ const (
 	// checksGrace is how long a new commit may go without any check before
 	// it counts as having no CI: GitHub registers checks only once a
 	// workflow starts.
-	checksGrace = 30 * time.Minute
+	checksGrace = config.ChecksGrace
 	// rebaseTimeout is how long a rebase request may go unanswered before
 	// the PR stops holding the rebase queue.
 	rebaseTimeout = 24 * time.Hour
@@ -140,32 +140,47 @@ func queueRebases(ds []Decision) {
 	}
 }
 
-// LatestChecks drops the check runs a newer suite of the same app and
-// workflow reran under the same name, as GitHub does when it shows a pull
-// request's checks: a run cancelled in favour of a later one says nothing
-// about the update. Runs sharing a suite, like matrix jobs, all count, and
-// so does every status context: GitHub reports only the latest of each.
-// Same-named checks from different workflows or apps are different checks,
-// and a failing "test" in one is never hidden by a passing "test" in another.
+// LatestChecks drops the check runs a newer suite of the same app,
+// workflow and event reran under the same name, as GitHub does when it
+// shows a pull request's checks: a run cancelled in favour of a later one
+// says nothing about the update. Runs sharing a suite, like matrix jobs, all
+// count, and so does every status context: GitHub reports only the latest
+// of each. Same-named checks from different workflows or apps are different
+// checks, and a failing "test" in one is never hidden by a passing "test" in
+// another. So are the runs of one workflow for different events: one that
+// listens to both push and pull_request runs twice on the same commit, and
+// the newer run passing says nothing about the other failing.
 func LatestChecks(checks []github.Check) []github.Check {
 	type origin struct {
 		app, workflow int64
-		name          string
+		event, name   string
 	}
 	newest := map[origin]int64{}
 	for _, c := range checks {
 		if !c.Status {
-			o := origin{c.App, c.Workflow, c.Name}
+			o := origin{c.App, c.Workflow, c.Event, c.Name}
 			newest[o] = max(newest[o], c.Suite)
 		}
 	}
 	out := make([]github.Check, 0, len(checks))
 	for _, c := range checks {
-		if c.Status || c.Suite == newest[origin{c.App, c.Workflow, c.Name}] {
+		if c.Status || c.Suite == newest[origin{c.App, c.Workflow, c.Event, c.Name}] {
 			out = append(out, c)
 		}
 	}
 	return out
+}
+
+// anyRan reports whether any of checks actually ran. A skipped or neutral
+// check blocks nothing, but a commit whose checks were all skipped was
+// tested by nothing either.
+func anyRan(checks []github.Check) bool {
+	for _, c := range checks {
+		if c.State != github.CheckSkipped {
+			return true
+		}
+	}
+	return false
 }
 
 func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string, judge Judge) Decision {
@@ -297,15 +312,25 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return wait(upToDate, "%d check(s) still running", pending)
 	case len(stale) > 0:
 		return skip("stale checks: %s (rerun them or comment @dependabot recreate)", strings.Join(stale, ", "))
-	case len(checks) == 0 && p.RequireChecks:
+	case !anyRan(checks) && p.RequireChecks:
+		none := "no checks reported yet"
+		if len(checks) > 0 {
+			none = "only skipped checks reported yet"
+		}
 		age := repo.FetchedAt.Sub(pushedAt(pr))
-		switch after := p.MergeWithoutChecksAfter; {
+		// The config already waits at least checksGrace; a policy built
+		// another way must not merge before CI has had time to start.
+		after := p.MergeWithoutChecksAfter
+		if after > 0 {
+			after = max(after, checksGrace)
+		}
+		switch {
 		case after > 0 && age < after:
-			return wait(upToDate, "no checks reported yet; merging without them in %s", config.ShortDuration((after - age).Round(time.Minute)))
+			return wait(upToDate, "%s; merging without them in %s", none, config.ShortDuration((after - age).Round(time.Minute)))
 		case after > 0:
 			// No CI started in time: merge as if checks were optional.
 		case age < checksGrace:
-			return wait(upToDate, "no checks reported yet for a new commit")
+			return wait(upToDate, "%s for a new commit", none)
 		default:
 			return skip("no checks ran (set require_checks: false or merge_without_checks_after to opt in)")
 		}
@@ -323,7 +348,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	case "CLEAN", "HAS_HOOKS":
 		safe = d
 		safe.Action, safe.Reason = ActionMerge, "checks green, within policy"
-		if len(checks) == 0 {
+		if !anyRan(checks) {
 			safe.Reason = "no checks ran, within policy"
 		}
 	case "BEHIND":

@@ -105,6 +105,17 @@ type Runner struct {
 	reviewsOnce    sync.Once
 	reviewSlots    chan struct{}
 	reviewsStarted atomic.Int64
+
+	// warnings are the run's own, given to the first repository's result.
+	warnings []string
+}
+
+// Warn adds a warning about the run as a whole, such as a verdict cache
+// found unreadable as the run starts, to be reported with the first
+// repository's result: under its warnings in JSON, below it in the text
+// report. Call it before Run; it is lost if no repository runs.
+func (r *Runner) Warn(msg string) {
+	r.warnings = append(r.warnings, msg)
 }
 
 func New(c github.Client, viewer string, apply bool) *Runner {
@@ -147,6 +158,9 @@ func (r *Runner) Run(ctx context.Context, repos []config.Repo, progress func(Rep
 	for i := range repos {
 		if !<-started[i] {
 			break
+		}
+		if i == 0 && len(r.warnings) > 0 {
+			results[0].Warnings = append(slices.Clone(r.warnings), results[0].Warnings...)
 		}
 		if progress != nil {
 			progress(results[i])
@@ -192,36 +206,63 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	retried := map[int]bool{}
 	rebased := map[int]bool{}
 	// unsure holds merges GitHub failed in a way that may hide a success,
-	// to be told apart by whether the PR is still open. doubted keeps, for
+	// until the pass tells whether they went through. doubted keeps, for
 	// the rest of the pass, why a PR's merge may have gone through.
 	unsure := map[int]pendingMerge{}
 	doubted := map[int]string{}
-	// settle reports the merges in unsure once the repository is read
-	// again, as repo, or could not be (nil). A PR no longer open merged;
-	// one still open failed if it was already tried twice, and is tried
-	// again otherwise.
+	// resolve reports unsure merge n as it turned out.
+	resolve := func(n int, ev Event) {
+		delete(unsure, n)
+		attempted[n] = true
+		res.Events = append(res.Events, ev)
+	}
+	// settle reports the merges in unsure that repo, the repository read
+	// again, tells apart. One whose PR is still open was not merged: it
+	// failed if it was already tried twice, and is otherwise kept for one
+	// more try. One whose PR is no longer open may have merged or been
+	// closed meanwhile, which GitHub is asked; if it cannot say, finish
+	// asks again.
 	settle := func(repo *github.Repo) {
 		for _, n := range slices.Sorted(maps.Keys(unsure)) {
 			p := unsure[n]
-			delete(unsure, n)
-			ev := p.merged
-			switch {
-			case repo == nil:
-				// Nothing tells either way: report it, as a failure
-				// that says it may not be one.
-				ev.Kind, ev.Detail = EventMergeFailed, fmt.Sprintf("may have merged after %s, but the repository could not be read again to tell", p.cause)
-			case !slices.ContainsFunc(repo.PullRequests, func(pr github.PullRequest) bool { return pr.Number == n }):
-				attempted[n] = true
-			case p.failure != "":
-				ev.Kind, ev.Detail = EventMergeFailed, p.failure
-			default:
-				continue
+			if !slices.ContainsFunc(repo.PullRequests, func(pr github.PullRequest) bool { return pr.Number == n }) {
+				state, err := r.prState(ctx, rc, n)
+				if err != nil {
+					continue
+				}
+				if state != github.PROpen {
+					resolve(n, p.outcome(state))
+					continue
+				}
+				// Open after all: the search had not caught up.
 			}
-			res.Events = append(res.Events, ev)
+			if p.failure != "" {
+				resolve(n, p.failed(p.failure))
+			}
 		}
 	}
+	// finish reports the merges still in unsure as the pass ends, such as
+	// one whose PR became unmergeable for a while, so that none goes
+	// unreported, and returns the result. Each is reported as GitHub says
+	// it turned out, and failed when it cannot say.
+	finish := func() RepoResult {
+		for _, n := range slices.Sorted(maps.Keys(unsure)) {
+			p := unsure[n]
+			switch state, err := r.prState(ctx, rc, n); {
+			case err != nil:
+				resolve(n, p.failed(fmt.Sprintf("may have merged after %s, but GitHub could not say: %s", p.cause, errText(ctx, err))))
+			case state != github.PROpen:
+				resolve(n, p.outcome(state))
+			case p.failure != "":
+				resolve(n, p.failed(p.failure))
+			default:
+				resolve(n, p.failed(fmt.Sprintf("not merged after %s, and not mergeable again in this run", p.cause)))
+			}
+		}
+		return res
+	}
 	polls := 0
-	rv := &repoReviews{verdicts: map[string]*policy.Verdict{}, moved: map[int]bool{}, res: &res}
+	rv := &repoReviews{verdicts: map[string]*policy.Verdict{}, moved: map[int]int{}, res: &res}
 	var judge policy.Judge
 	if r.Reviewer != nil {
 		judge = func(d policy.Decision) *policy.Verdict {
@@ -240,8 +281,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		repo, err := r.fetch(ctx, rc)
 		if err != nil {
 			res.Error = errText(ctx, err)
-			settle(nil)
-			return res
+			return finish()
 		}
 		settle(repo)
 		res.Permission = repo.Permission
@@ -270,7 +310,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			if again && err == nil {
 				continue
 			}
-			return res
+			return finish()
 		}
 
 		for _, d := range decisions {
@@ -314,10 +354,13 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			if again && err == nil {
 				continue
 			}
-			return res
+			return finish()
 		}
 
 		attempted[next.Number] = true
+		// This try supersedes an earlier one that may have gone through:
+		// it merges, or fails in a way that tells whether that one did.
+		delete(unsure, next.Number)
 		ev := Event{Number: next.Number, Title: next.Title, URL: next.URL, Grade: next.Grade, Kind: EventMerged}
 		err = methodErr
 		if err == nil {
@@ -339,8 +382,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			}
 			if err := r.Sleep(ctx, r.PollInterval); err != nil {
 				res.Error = errText(ctx, err)
-				settle(nil)
-				return res
+				return finish()
 			}
 			continue
 		}
@@ -353,8 +395,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			unsure[next.Number] = pendingMerge{merged: ev, cause: cause, failure: errText(ctx, err)}
 			if err := r.Sleep(ctx, r.PollInterval); err != nil {
 				res.Error = errText(ctx, err)
-				settle(nil)
-				return res
+				return finish()
 			}
 			continue
 		}
@@ -377,6 +418,30 @@ type pendingMerge struct {
 	// failure is reported if the PR is still open and was already tried
 	// twice; when empty, it is tried once more instead.
 	failure string
+}
+
+// outcome is the event for a merge whose PR GitHub says is now in state,
+// other than open: merged, or closed by someone without being merged.
+func (p pendingMerge) outcome(state github.PRState) Event {
+	if state == github.PRMerged {
+		return p.merged
+	}
+	return p.failed("closed without being merged, after " + p.cause)
+}
+
+// failed is the event for a merge that did not go through.
+func (p pendingMerge) failed(detail string) Event {
+	ev := p.merged
+	ev.Kind, ev.Detail = EventMergeFailed, detail
+	return ev
+}
+
+// prState asks GitHub whether PR number is open, merged or closed, once
+// more when it fails in a way that may pass.
+func (r *Runner) prState(ctx context.Context, rc config.Repo, number int) (github.PRState, error) {
+	return github.Again(ctx, r.PollInterval, r.Sleep, func() (github.PRState, error) {
+		return r.Client.PullRequestState(ctx, rc.Owner, rc.Name, number)
+	})
 }
 
 // fetch reads the repository, once more when GitHub fails in a way that
@@ -406,12 +471,12 @@ func joinDetail(parts ...string) string {
 // repoReviews is what one repository's pass knows about its reviews.
 type repoReviews struct {
 	// verdicts holds this run's reviews, failed ones included, so a PR is
-	// reviewed at most once per run. A nil verdict leaves the PR for the
-	// next run.
+	// reviewed at most once per run.
 	verdicts map[string]*policy.Verdict
-	// moved holds the PRs whose head moved under a review once, by
-	// number: the key of an update without versions moves with its head.
-	moved map[int]bool
+	// moved counts, by PR number, the reviews a PR's head moved under. It
+	// is kept by number, not by key: the key of an update without versions
+	// moves with its head, so each new head would look unreviewed.
+	moved map[int]int
 	res   *RepoResult
 }
 
@@ -427,13 +492,16 @@ func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []pol
 		if d.Action != policy.ActionReview {
 			continue
 		}
-		req := review.NewRequest(rc, *d)
-		key := req.Key()
-		if v, done := rv.verdicts[key]; done {
-			if v == nil && !strings.HasSuffix(d.Reason, headMoved) {
+		if rv.moved[d.Number] > 1 {
+			if !strings.HasSuffix(d.Reason, headMoved) {
 				d.Reason += headMoved
 			}
-			continue // otherwise an approval the PR has not caught up with yet
+			continue
+		}
+		req := review.NewRequest(rc, *d)
+		key := req.Key()
+		if _, done := rv.verdicts[key]; done {
+			continue // an approval the PR has not caught up with yet
 		}
 		if !r.startReview() {
 			for j := i; j < len(decisions); j++ {
@@ -447,12 +515,10 @@ func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []pol
 		if errors.Is(err, review.ErrHeadMoved) && ctx.Err() == nil {
 			// Dependabot pushed while the review started: not a failure.
 			// Evaluate the new head, and review it once more at most, so a
-			// head that keeps moving cannot hold the run.
+			// head that keeps moving cannot hold the run or use up reviews:
+			// after a second move the PR waits for the next run.
 			r.endReview()
-			if rv.moved[d.Number] {
-				rv.verdicts[key] = nil
-			}
-			rv.moved[d.Number] = true
+			rv.moved[d.Number]++
 			return true
 		}
 		if err != nil {

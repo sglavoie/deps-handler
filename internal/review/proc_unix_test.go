@@ -85,3 +85,37 @@ func TestLock(t *testing.T) {
 	}
 	release()
 }
+
+func TestCacheRecoveryWaitsForTheLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "verdicts.json")
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Another process is writing the cache: what OpenCache read was cut
+	// short, and the file is whole by the time the lock is released.
+	unlock, err := waitLock(path + ".lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *Cache, 1)
+	go func() {
+		c, err := OpenCache(path)
+		if err != nil {
+			t.Error(err)
+		}
+		done <- c
+	}()
+	time.Sleep(100 * time.Millisecond)
+	whole := `{"o/r#1 a@1": {"verdict": {"approved": true}, "reviewed_at": "` + time.Now().UTC().Format(time.RFC3339) + `"}}`
+	if err := os.WriteFile(path, []byte(whole), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+	c := <-done
+	if c == nil {
+		t.FailNow()
+	}
+	if aside, _ := filepath.Glob(path + ".corrupt-*"); len(aside) != 0 || c.TakeRecovered() != "" || len(c.Entries()) != 1 {
+		t.Fatalf("aside %v, entries %+v; a file made whole under the lock must be read, not moved aside", aside, c.Entries())
+	}
+}

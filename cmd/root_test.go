@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,6 +59,40 @@ func TestReposListsPolicy(t *testing.T) {
 	}
 	if !strings.Contains(out, "agent for --review: claude (default model, 15m timeout, up to $2 per review)") {
 		t.Errorf("agent line missing:\n%s", out)
+	}
+}
+
+func TestReposJSON(t *testing.T) {
+	cfg := writeConfig(t, "agent:\n  timeout: 20m\n  claude:\n    max_budget_usd: 2\nrepos:\n  - o/a\n  - repo: o/b\n    skip: true\n    merge_without_checks_after: 2h\n")
+	code, out, _ := run("repos", "-c", cfg, "--json")
+	var doc struct {
+		Repos []struct {
+			Repo   string
+			Skip   bool
+			Policy struct {
+				MergeMethod             string `json:"merge_method"`
+				MaxUpdateType           string `json:"max_update_type"`
+				MergeWithoutChecksAfter string `json:"merge_without_checks_after"`
+			}
+		}
+		Agent struct {
+			Use, Timeout string
+			Claude       struct {
+				MaxBudgetUSD float64 `json:"max_budget_usd"`
+			}
+		}
+	}
+	if err := json.Unmarshal([]byte(out), &doc); code != 0 || err != nil {
+		t.Fatalf("code %d, %v:\n%s", code, err, out)
+	}
+	if len(doc.Repos) != 2 || doc.Repos[0].Repo != "o/a" || doc.Repos[0].Skip || doc.Repos[0].Policy.MergeMethod != "squash" || doc.Repos[0].Policy.MaxUpdateType != "minor" {
+		t.Errorf("repos = %+v", doc.Repos)
+	}
+	if !doc.Repos[1].Skip || doc.Repos[1].Policy.MergeWithoutChecksAfter != "2h" {
+		t.Errorf("skipped repo = %+v", doc.Repos[1])
+	}
+	if doc.Agent.Use != "claude" || doc.Agent.Timeout != "20m" || doc.Agent.Claude.MaxBudgetUSD != 2 {
+		t.Errorf("agent = %+v", doc.Agent)
 	}
 }
 

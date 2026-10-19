@@ -74,21 +74,27 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	if c.ConfigDir != "" {
 		cmd.Env = append(cmd.Env, "CLAUDE_CONFIG_DIR="+c.ConfigDir)
 	}
-	out, err := run(cmd)
-	if err != nil {
-		return Answer{}, err
-	}
+	out, runErr := run(cmd)
 	var res struct {
 		IsError          bool    `json:"is_error"`
 		Subtype          string  `json:"subtype"`
 		Result           string  `json:"result"`
 		StructuredOutput *Answer `json:"structured_output"`
 	}
-	if err := json.Unmarshal(out, &res); err != nil {
-		return Answer{}, fmt.Errorf("claude: unreadable output: %w", err)
+	perr := json.Unmarshal(out, &res)
+	// claude exits 1 on an error it reports in its JSON, where the reason
+	// is: prefer that to the bare exit status.
+	if perr == nil && res.IsError {
+		if msg := clip(res.Result); msg != "" {
+			return Answer{}, fmt.Errorf("claude: %s: %s", res.Subtype, msg)
+		}
+		return Answer{}, fmt.Errorf("claude: %s", or(res.Subtype, "error"))
 	}
-	if res.IsError {
-		return Answer{}, fmt.Errorf("claude: %s: %s", res.Subtype, clip(res.Result))
+	if runErr != nil {
+		return Answer{}, runErr
+	}
+	if perr != nil {
+		return Answer{}, fmt.Errorf("claude: unreadable output: %w", perr)
 	}
 	if res.StructuredOutput == nil {
 		return Answer{}, errors.New("claude: no structured output")
@@ -96,7 +102,10 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	return *res.StructuredOutput, nil
 }
 
-// Codex runs `codex exec` in its read-only sandbox.
+// Codex runs `codex exec` in its read-only sandbox, without the user's
+// config.toml or execpolicy rules: they could add MCP servers, which run
+// outside the sandbox, or let commands escape it. CODEX_HOME still
+// provides the login.
 type Codex struct {
 	Model string
 	// Home, when set, is passed as CODEX_HOME.
@@ -118,7 +127,8 @@ func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 		return Answer{}, err
 	}
 	args := []string{
-		"exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never",
+		"exec", "--sandbox", "read-only", "--ignore-user-config", "--ignore-rules",
+		"--skip-git-repo-check", "--ephemeral", "--color", "never",
 		"--output-schema", schema, "--output-last-message", last, "--cd", dir,
 	}
 	if c.Model != "" {
@@ -163,7 +173,8 @@ func agentEnv() []string {
 var waitDelay = 5 * time.Second
 
 // run runs cmd and returns its stdout, folding the end of stderr into the
-// error when it fails.
+// error when it fails. The stdout of a failed command is returned too, as
+// it may say why.
 func run(cmd *exec.Cmd) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -182,9 +193,9 @@ func run(cmd *exec.Cmd) ([]byte, error) {
 	}
 	if err != nil {
 		if msg := clip(stderr.String()); msg != "" {
-			return nil, fmt.Errorf("%s: %w: %s", name, err, msg)
+			return stdout.Bytes(), fmt.Errorf("%s: %w: %s", name, err, msg)
 		}
-		return nil, fmt.Errorf("%s: %w", name, err)
+		return stdout.Bytes(), fmt.Errorf("%s: %w", name, err)
 	}
 	return stdout.Bytes(), nil
 }

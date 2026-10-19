@@ -60,7 +60,7 @@ type Entry struct {
 // TakeRecovered says so.
 func OpenCache(path string) (*Cache, error) {
 	c := &Cache{path: path, now: time.Now}
-	entries, err := c.readEntries()
+	entries, err := c.readEntries(false)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +83,10 @@ func (c *Cache) TakeRecovered() string {
 // readEntries reads the cache file. One that is not valid JSON, as when a
 // crash cut a write short on a filesystem that does not order it, is
 // renamed to path.corrupt-TIMESTAMP so that the verdicts in it are not
-// lost and the cache works again.
-func (c *Cache) readEntries() (map[string]cacheEntry, error) {
+// lost and the cache works again. locked says the caller holds the lock
+// file; without it, readEntries takes it to read the file again before
+// moving it aside, so a valid file another process wrote meanwhile stays.
+func (c *Cache) readEntries(locked bool) (map[string]cacheEntry, error) {
 	entries := map[string]cacheEntry{}
 	data, err := os.ReadFile(c.path)
 	if errors.Is(err, os.ErrNotExist) || err == nil && len(bytes.TrimSpace(data)) == 0 {
@@ -95,9 +97,20 @@ func (c *Cache) readEntries() (map[string]cacheEntry, error) {
 	}
 	var stored map[string]cacheEntry
 	if perr := json.Unmarshal(data, &stored); perr != nil {
-		aside := c.path + ".corrupt-" + c.now().UTC().Format("20060102T150405Z")
-		if err := os.Rename(c.path, aside); errors.Is(err, os.ErrNotExist) {
-			return entries, nil // another process moved it aside first
+		if !locked {
+			unlock, err := waitLock(c.path + ".lock")
+			if err != nil {
+				return nil, err
+			}
+			defer unlock()
+			return c.readEntries(true)
+		}
+		aside, err := c.asideName()
+		if err == nil {
+			err = os.Rename(c.path, aside)
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			return entries, nil // moved aside by a process that took no lock
 		} else if err != nil {
 			return nil, fmt.Errorf("%s: %w (and could not move it aside: %v)", c.path, perr, err)
 		}
@@ -112,6 +125,24 @@ func (c *Cache) readEntries() (map[string]cacheEntry, error) {
 		}
 	}
 	return entries, nil
+}
+
+// asideName is a name to move the unreadable cache file to that no
+// earlier one took, as when two are found within a second: the time, and
+// a number after it when that is not enough. The lock file must be held.
+func (c *Cache) asideName() (string, error) {
+	base := c.path + ".corrupt-" + c.now().UTC().Format("20060102T150405Z")
+	for i := 1; ; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		if _, err := os.Lstat(name); errors.Is(err, os.ErrNotExist) {
+			return name, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
 }
 
 // normKey lower-cases the repository ("owner/name") at the start of key,
@@ -201,7 +232,7 @@ func (c *Cache) update(change func(map[string]cacheEntry)) error {
 		return err
 	}
 	defer unlock()
-	entries, err := c.readEntries()
+	entries, err := c.readEntries(true)
 	if err != nil {
 		return err
 	}

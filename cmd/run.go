@@ -91,8 +91,15 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 					return err
 				}
 			}
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			// SIGHUP too: an agent runs in a process group of its own, so
+			// the hangup of the terminal would kill deps-merger and leave
+			// the agent running rather than kill it.
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			// The first signal starts an orderly stop; once it has, the
+			// signals act as they normally do, so a second one kills the
+			// process should that stop hang.
+			context.AfterFunc(ctx, stop)
 
 			client, err := newClient()
 			if err != nil {
@@ -127,7 +134,7 @@ failed or an agent review could not be done, and 130 when interrupted.`,
 				}
 				defer release()
 				if msg := r.Verdicts.TakeRecovered(); msg != "" {
-					fmt.Fprintln(errOut, "deps-merger: warning:", msg)
+					r.Warn(msg)
 				}
 			}
 			results := r.Run(ctx, selected, progress)
@@ -190,7 +197,8 @@ var newClient = github.New
 // cache in the XDG cache and state directories. It holds a lock until
 // release is called, so a second review run cannot share the checkouts,
 // and removes the checkouts of repositories not in the config that no
-// review used for 30 days.
+// review used for 30 days. A checkout it cannot remove is a warning of
+// the run's, not a reason to skip the reviews.
 func setupReviews(r *runner.Runner, cfg *config.Config, agent review.Agent, client github.Client, maxReviews int) (release func(), err error) {
 	cacheDir, err := config.CacheDir()
 	if err != nil {
@@ -215,8 +223,7 @@ func setupReviews(r *runner.Runner, cfg *config.Config, agent review.Agent, clie
 		keep[rc.FullName()] = true
 	}
 	if err := ws.Prune(keep); err != nil {
-		release()
-		return nil, fmt.Errorf("prune checkouts: %w", err)
+		r.Warn("prune checkouts: " + err.Error())
 	}
 	r.Reviewer = &review.AgentReviewer{
 		Agent:     agent,

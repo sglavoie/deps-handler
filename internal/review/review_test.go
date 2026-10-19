@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,6 +87,19 @@ func TestVerdict(t *testing.T) {
 	}
 }
 
+func TestVerdictRedactsTokens(t *testing.T) {
+	classic := "ghp_" + strings.Repeat("A1b2", 9)
+	pat := "github_pat_" + strings.Repeat("x_Y9", 20)
+	v, err := Verdict(Answer{Decision: "reject", Summary: "token " + classic + " found",
+		BreakingChanges: []string{"gho_" + strings.Repeat("z", 36)}, Concerns: []string{"hosts.yml has " + pat + ".", "ghp_short stays"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Summary != "token [redacted token] found" || v.Concerns[0] != "[redacted token]" || v.Concerns[1] != "hosts.yml has [redacted token]." || v.Concerns[2] != "ghp_short stays" {
+		t.Fatalf("verdict = %+v", v)
+	}
+}
+
 func TestPrompt(t *testing.T) {
 	p, err := Prompt(request(), &github.PullRequestDetails{Body: "## Breaking\nremoved foo()", Diff: "+lib 2.0.0", Truncated: true})
 	if err != nil {
@@ -96,6 +110,14 @@ func TestPrompt(t *testing.T) {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt lacks %q", want)
 		}
+	}
+	if strings.Contains(p, "Every automated check below passed") || !strings.Contains(p, "skipped without judging anything") {
+		t.Error("skipped checks must not be described as passed")
+	}
+	req := request()
+	req.Checks = append(req.Checks, github.Check{Name: "lint", State: github.CheckSkipped})
+	if p, _ := Prompt(req, &github.PullRequestDetails{}); !strings.Contains(p, "- lint: skipped\n") {
+		t.Error("a skipped check must be listed as skipped")
 	}
 	p, _ = Prompt(request(), &github.PullRequestDetails{DiffError: "HTTP 406"})
 	if !strings.Contains(p, "[diff unavailable: HTTP 406]") {
@@ -226,6 +248,15 @@ func TestClaudeErrors(t *testing.T) {
 	if _, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p"); !strings.Contains(err.Error(), "not logged in") {
 		t.Errorf("stderr missing from %v", err)
 	}
+	// claude exits 1 on an error it describes on stdout.
+	cmd, _ = fakeAgent(t, `echo '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"API Error: 529 overloaded"}'; exit 1`)
+	if _, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p"); err == nil || err.Error() != "claude: error_during_execution: API Error: 529 overloaded" {
+		t.Errorf("err = %v; want the reason claude gave", err)
+	}
+	cmd, _ = fakeAgent(t, `echo '{"subtype":"error_max_turns","is_error":true}'; exit 1`)
+	if _, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p"); err == nil || err.Error() != "claude: error_max_turns" {
+		t.Errorf("err = %v; want the subtype", err)
+	}
 }
 
 func TestCodex(t *testing.T) {
@@ -238,7 +269,7 @@ echo '{"decision":"reject","summary":"breaks","breaking_changes":["x"],"concerns
 		t.Fatalf("answer %+v, %v", a, err)
 	}
 	args := read(t, dir+"/args")
-	for _, want := range []string{"exec\n", "--sandbox\nread-only\n", "--output-schema\n", "--cd\n" + work + "\n", "--model\ngpt-5\n", "\n-\n"} {
+	for _, want := range []string{"exec\n", "--sandbox\nread-only\n", "--ignore-user-config\n", "--ignore-rules\n", "--output-schema\n", "--cd\n" + work + "\n", "--model\ngpt-5\n", "\n-\n"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("args lack %q:\n%s", want, args)
 		}
@@ -373,6 +404,8 @@ func TestWorkspaceCheckout(t *testing.T) {
 }
 
 func TestWorkspaceCheckoutRecovers(t *testing.T) {
+	defer func(d time.Duration) { fetchRetryPause = d }(fetchRetryPause)
+	fetchRetryPause = 0
 	origin, head := gitOrigin(t)
 	// marker survives unless the checkout had to be made again.
 	for name, c := range map[string]struct {
@@ -395,6 +428,11 @@ func TestWorkspaceCheckoutRecovers(t *testing.T) {
 		// Something else git cannot work with: start over.
 		"broken repository": {func(dir string) error {
 			return os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("garbage"), 0o644)
+		}, true},
+		// The fetch fails though the remote serves the PR: the checkout
+		// is at fault.
+		"broken shallow file": {func(dir string) error {
+			return os.WriteFile(filepath.Join(dir, ".git", "shallow"), []byte("garbage\n"), 0o644)
 		}, true},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -420,6 +458,57 @@ func TestWorkspaceCheckoutRecovers(t *testing.T) {
 				t.Errorf("checkout made again = %t, want %t", err != nil, c.remade)
 			}
 		})
+	}
+}
+
+func TestWorkspaceCheckoutKeepsCheckoutWhenFetchFails(t *testing.T) {
+	defer func(d time.Duration) { fetchRetryPause = d }(fetchRetryPause)
+	fetchRetryPause = 0
+	origin, head := gitOrigin(t)
+	gone := filepath.Join(t.TempDir(), "unreachable")
+	// fail says which calls of URL, counted from 1, get an unreachable
+	// remote.
+	var calls int
+	var fail func(n int) bool
+	w := &Workspace{Root: t.TempDir(), URL: func(string, string) string {
+		calls++
+		if fail(calls) {
+			return gone
+		}
+		return origin
+	}}
+	fail = func(int) bool { return false }
+	dir, err := w.Checkout(context.Background(), "o", "r", 7, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, ".git", "marker")
+	if err := os.WriteFile(marker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A fetch failing once is tried again.
+	calls, fail = 0, func(n int) bool { return n == 1 }
+	if _, err := w.Checkout(context.Background(), "o", "r", 7, head); err != nil || calls != 2 {
+		t.Fatalf("checkout after a failed fetch: %v after %d tries", err, calls)
+	}
+	// A remote that cannot be reached is no reason to start over.
+	calls, fail = 0, func(int) bool { return true }
+	if _, err := w.Checkout(context.Background(), "o", "r", 7, head); err == nil || !errors.Is(err, errFetch) || calls != 2 {
+		t.Fatalf("err = %v after %d tries; want a failed fetch, tried twice", err, calls)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Error("an unreachable remote must not cost the checkout")
+	}
+}
+
+func TestWorkspaceGitSkipsLFS(t *testing.T) {
+	// An alias running a shell command shows the environment git got.
+	env, err := (&Workspace{}).output(context.Background(), t.TempDir(), "-c", "alias.env=!env", "env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(env, "GIT_LFS_SKIP_SMUDGE=1\n") || !strings.Contains(env, "GIT_TERMINAL_PROMPT=0\n") {
+		t.Errorf("git environment:\n%s", env)
 	}
 }
 
@@ -531,6 +620,27 @@ func TestCacheMovesCorruptFileAside(t *testing.T) {
 	}
 	if reopened, err := OpenCache(path); err != nil || len(reopened.Entries()) != 1 || reopened.TakeRecovered() != "" {
 		t.Fatalf("reopened: %v", err)
+	}
+}
+
+func TestCacheCorruptFilesGetTheirOwnNames(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "verdicts.json")
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	for i := range 3 {
+		if err := os.WriteFile(path, []byte(fmt.Sprintf("{%d", i)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c := &Cache{path: path, now: func() time.Time { return now }}
+		if _, err := c.readEntries(false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// All within the same second, none lost.
+	base := path + ".corrupt-20261001T000000Z"
+	for i, name := range []string{base, base + "-2", base + "-3"} {
+		if got := read(t, name); got != fmt.Sprintf("{%d", i) {
+			t.Errorf("%s = %q", name, got)
+		}
 	}
 }
 

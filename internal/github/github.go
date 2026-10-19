@@ -25,6 +25,10 @@ const (
 	CheckPassed  CheckState = "passed"
 	CheckPending CheckState = "pending"
 	CheckFailed  CheckState = "failed"
+	// CheckSkipped is a check run that completed without judging anything:
+	// skipped, as a job whose condition was false is, or neutral. It blocks
+	// nothing, but neither does it count as a check that ran.
+	CheckSkipped CheckState = "skipped"
 	// CheckStale is a check run GitHub gave up on after it sat unfinished
 	// for 14 days: it will never pass, but says nothing about the update.
 	CheckStale CheckState = "stale"
@@ -34,9 +38,9 @@ type Check struct {
 	Name  string     `json:"name"`
 	State CheckState `json:"state"`
 	// Suite identifies the check suite (one workflow run) a check run
-	// belongs to; a newer suite of the same app and workflow with the same
-	// check name supersedes it, as when concurrency cancels a run in favour
-	// of a later one. Zero for status contexts.
+	// belongs to; a newer suite of the same app, workflow and event with
+	// the same check name supersedes it, as when concurrency cancels a run
+	// in favour of a later one. Zero for status contexts.
 	Suite int64 `json:"-"`
 	// App and Workflow identify what produced a check run: the GitHub App
 	// behind its suite and, for GitHub Actions, the workflow. Two workflows
@@ -44,6 +48,10 @@ type Check struct {
 	// other's.
 	App      int64 `json:"-"`
 	Workflow int64 `json:"-"`
+	// Event is what triggered a GitHub Actions workflow run, such as
+	// "push" or "pull_request". A workflow listening to both runs twice on
+	// the same commit, and a run for one event never supersedes the other.
+	Event string `json:"-"`
 	// Status is true for a commit status context rather than a check run.
 	// GitHub reports only the latest status per context, and a status
 	// never stands in for a check run of the same name or the reverse.
@@ -148,7 +156,18 @@ type Client interface {
 	Merge(ctx context.Context, owner, name string, number int, method, headOID string) error
 	Comment(ctx context.Context, owner, name string, number int, body string) error
 	PullRequestDetails(ctx context.Context, owner, name string, number int) (*PullRequestDetails, error)
+	PullRequestState(ctx context.Context, owner, name string, number int) (PRState, error)
 }
+
+// PRState is whether a pull request is open, merged, or closed without
+// being merged.
+type PRState string
+
+const (
+	PROpen   PRState = "OPEN"
+	PRMerged PRState = "MERGED"
+	PRClosed PRState = "CLOSED"
+)
 
 // PullRequestDetails is what an agent review reads about a PR beyond what
 // FetchRepo returns, fetched only for the PRs it reviews.
@@ -175,17 +194,24 @@ type client struct {
 	diff *api.RESTClient
 }
 
+// RequestTimeout bounds each request to GitHub, reading the response
+// included. Without it one request that hangs would hold the lock that
+// serialises writes, and with it every repository, for good. A merge that
+// times out may still have gone through: the error is Transient, so it is
+// treated like a 504.
+const RequestTimeout = time.Minute
+
 // New builds a client from the gh CLI's stored credentials or GH_TOKEN.
 func New() (Client, error) {
-	gql, err := api.DefaultGraphQLClient()
+	gql, err := api.NewGraphQLClient(api.ClientOptions{Timeout: RequestTimeout})
 	if err != nil {
 		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
 	}
-	rest, err := api.DefaultRESTClient()
+	rest, err := api.NewRESTClient(api.ClientOptions{Timeout: RequestTimeout})
 	if err != nil {
 		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
 	}
-	diff, err := api.NewRESTClient(api.ClientOptions{Headers: map[string]string{"Accept": "application/vnd.github.diff"}})
+	diff, err := api.NewRESTClient(api.ClientOptions{Timeout: RequestTimeout, Headers: map[string]string{"Accept": "application/vnd.github.diff"}})
 	if err != nil {
 		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
 	}
@@ -232,7 +258,7 @@ query($owner: String!, $name: String!, $search: String!) {
           nodes { commit { oid statusCheckRollup { contexts(first: 100) { totalCount nodes {
             __typename
             ... on CheckRun { name status conclusion checkSuite {
-              databaseId app { databaseId } workflowRun { workflow { databaseId } }
+              databaseId app { databaseId } workflowRun { event workflow { databaseId } }
             } }
             ... on StatusContext { context state }
           } } } } }
@@ -303,6 +329,7 @@ type gqlRepo struct {
 										DatabaseID  int64
 										App         *struct{ DatabaseID int64 }
 										WorkflowRun *struct {
+											Event    string
 											Workflow struct{ DatabaseID int64 }
 										}
 									}
@@ -414,6 +441,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 						}
 						if s.WorkflowRun != nil {
 							c.Workflow = s.WorkflowRun.Workflow.DatabaseID
+							c.Event = s.WorkflowRun.Event
 						}
 					}
 					pr.Checks = append(pr.Checks, c)
@@ -471,8 +499,10 @@ func checkRunState(status, conclusion string) CheckState {
 		return CheckPending
 	}
 	switch conclusion {
-	case "SUCCESS", "NEUTRAL", "SKIPPED":
+	case "SUCCESS":
 		return CheckPassed
+	case "NEUTRAL", "SKIPPED":
+		return CheckSkipped
 	case "STALE":
 		return CheckStale
 	}
@@ -510,8 +540,14 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 	d := &PullRequestDetails{Body: pr.Body}
 	resp, err := c.diff.RequestWithContext(ctx, "GET", path, nil)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, err
+		// Only GitHub declining to render the diff, as it does past its
+		// size limits, leaves the review to go ahead without it. Anything
+		// else, a 5xx or a rate limit above all, fails the call so that it
+		// is made again or the review fails: an approval given without the
+		// diff is cached as long as any other.
+		var he *api.HTTPError
+		if ctx.Err() != nil || !errors.As(err, &he) || (he.StatusCode != 406 && he.StatusCode != 422) {
+			return nil, fmt.Errorf("%s/%s#%d: diff: %w", owner, name, number, err)
 		}
 		d.DiffError = err.Error()
 		return d, nil
@@ -524,6 +560,39 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 	d.Truncated = len(data) > MaxDiffBytes
 	d.Diff = strings.ToValidUTF8(string(data[:min(len(data), MaxDiffBytes)]), "")
 	return d, nil
+}
+
+const stateQuery = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { state merged } }
+}`
+
+// PullRequestState reads whether a PR is open, merged or closed. The search
+// FetchRepo makes lists open PRs only, so a PR missing from it may have
+// been merged or just closed; this tells which.
+func (c *client) PullRequestState(ctx context.Context, owner, name string, number int) (PRState, error) {
+	var resp struct {
+		Repository *struct {
+			PullRequest *struct {
+				State  string
+				Merged bool
+			}
+		}
+	}
+	vars := map[string]any{"owner": owner, "name": name, "number": number}
+	if err := c.gql.DoWithContext(ctx, stateQuery, vars, &resp); err != nil {
+		return "", fmt.Errorf("%s/%s#%d: %w", owner, name, number, c.withReset(ctx, err))
+	}
+	if resp.Repository == nil || resp.Repository.PullRequest == nil {
+		return "", fmt.Errorf("%s/%s#%d: pull request not found", owner, name, number)
+	}
+	switch pr := resp.Repository.PullRequest; {
+	case pr.Merged:
+		return PRMerged, nil
+	case pr.State == "OPEN":
+		return PROpen, nil
+	}
+	return PRClosed, nil
 }
 
 // Transient reports whether a failed read may succeed if made again:

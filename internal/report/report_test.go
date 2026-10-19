@@ -79,10 +79,11 @@ func TestHasPRs(t *testing.T) {
 		res  runner.RepoResult
 		want bool
 	}{
-		"no PRs":      {runner.RepoResult{Repo: "o/r"}, false},
-		"error":       {runner.RepoResult{Repo: "o/r", Error: "boom"}, true},
-		"decisions":   {runner.RepoResult{Repo: "o/r", Decisions: applied.Decisions}, true},
-		"events only": {runner.RepoResult{Repo: "o/r", Events: applied.Events}, true},
+		"no PRs":       {runner.RepoResult{Repo: "o/r"}, false},
+		"error":        {runner.RepoResult{Repo: "o/r", Error: "boom"}, true},
+		"decisions":    {runner.RepoResult{Repo: "o/r", Decisions: applied.Decisions}, true},
+		"events only":  {runner.RepoResult{Repo: "o/r", Events: applied.Events}, true},
+		"warning only": {runner.RepoResult{Repo: "o/r", Warnings: []string{"verdict cache unreadable"}}, true},
 	} {
 		if got := HasPRs(c.res); got != c.want {
 			t.Errorf("%s: HasPRs = %t", name, got)
@@ -95,6 +96,33 @@ func TestRepoError(t *testing.T) {
 	Repo(&b, false, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Error: "boom"})
 	if want := "o/r  (squash, up to minor, checks required)\n  error: boom\n\n"; b.String() != want {
 		t.Fatalf("got %q", b.String())
+	}
+}
+
+func TestRepoErrorStillShowsWhatWasDone(t *testing.T) {
+	res := applied
+	res.Error = "o/r: HTTP 502"
+	res.Warnings = []string{"#4: the rebase request may not have been posted: HTTP 504"}
+	var b bytes.Buffer
+	Repo(&b, true, res)
+	want := `o/r  (squash, up to minor, checks required, write access)
+  error: o/r: HTTP 502
+  #1  patch  merged        squash             bump lib
+  #2  patch  merge-failed  405 not mergeable  bump lib
+  warning: #4: the rebase request may not have been posted: HTTP 504
+
+`
+	if b.String() != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", b.String(), want)
+	}
+}
+
+func TestRepoWithOnlyAWarning(t *testing.T) {
+	var b bytes.Buffer
+	Repo(&b, true, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Warnings: []string{"verdict cache unreadable"}})
+	want := "o/r  (squash, up to minor, checks required)\n  no open Dependabot PRs\n  warning: verdict cache unreadable\n\n"
+	if b.String() != want {
+		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
 }
 

@@ -4,7 +4,7 @@ The current directory is a checkout of the pull request's head commit ({{.HeadOI
 
 ## Why you are asked
 
-Every automated check below passed, the pull request is mergeable, and every commit is Dependabot's own, signed by GitHub. It was not merged automatically only because: {{.Reason}}. The policy limit for this repository is {{.Limit}} updates; this one is graded {{.Grade}}.
+No automated check below failed (each passed, or was skipped without judging anything), the pull request is mergeable, and every commit is Dependabot's own, signed by GitHub. It was not merged automatically only because: {{.Reason}}. The policy limit for this repository is {{.Limit}} updates; this one is graded {{.Grade}}.
 
 Pull request #{{.Number}}: {{.URL}}
 Its title and the dependencies it updates are in the UPDATE block under "Untrusted material" below.
@@ -18,7 +18,7 @@ Checks on the head commit:
 1. From the release notes, changelog and commits in the description below, list what changed between the old and new versions that could break a user: removed or renamed APIs, changed defaults or behaviour, new minimum runtime or language versions, configuration or file format changes, dropped platforms. For an update of unknown size (for example a GitHub Action pinned by commit, a Docker digest, or a version that is not semver), first work out what actually changed.
 2. Search this repository for how it uses each updated dependency: imports, calls, configuration files, workflow steps, Dockerfiles, build scripts. Check runtime and engine constraints (for example `engines`, `python_requires`, `go` directives, CI matrices, base images) against any new minimums.
 3. Decide:
-   - approve only when you found no breaking change that affects how this repository uses the dependency, and the passing checks plausibly exercise the code that uses it;
+   - approve only when you found no breaking change that affects how this repository uses the dependency, and the checks that passed (not the skipped ones) plausibly exercise the code that uses it;
    - reject when a breaking change touches code or configuration this repository relies on, when the checks cannot have covered the affected code, or when you cannot find enough information to be confident. When in doubt, reject: a human will look at it.
 
 Answer with the JSON your output schema describes: `decision` is "approve" or "reject"; `summary` is one or two sentences giving the reason; `breaking_changes` lists the upstream breaking changes you found, each with whether it affects this repository; `concerns` lists anything else a human should check, with file paths where relevant. Keep each entry to one line.

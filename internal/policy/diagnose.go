@@ -158,8 +158,9 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		}
 		// A PR still waiting may yet get checks, and one that is a draft,
 		// someone else's work or in an archived repository was never
-		// judged on its checks at all.
-		if d.assessed && len(d.PR.Checks) == 0 && d.Action != ActionWait {
+		// judged on its checks at all. Checks that were all skipped
+		// tested nothing either.
+		if d.assessed && !anyRan(LatestChecks(d.PR.Checks)) && d.Action != ActionWait {
 			noChecks = append(noChecks, d.Number)
 		}
 		if d.needsReview {
@@ -195,14 +196,23 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 // repoWideChecks returns check names that failed on every PR that ran them,
 // on at least two PRs, mapped to those PR numbers. The check must also have
 // run on at least half of the PRs, so a job only stale PRs still carry is not
-// mistaken for a broken base branch.
+// mistaken for a broken base branch. Only PRs judged on Dependabot's own head
+// commit count, for both: a check failing where a human pushed, or on an
+// older commit, says nothing about the base branch, and such PRs must not
+// dilute the half either.
 func repoWideChecks(decisions []Decision) map[string][]int {
 	ran := map[string]int{}
 	failed := map[string][]int{}
+	judged := 0
 	for _, d := range decisions {
+		if !d.assessed {
+			continue
+		}
+		judged++
 		seen := map[string]bool{}
 		for _, c := range LatestChecks(d.PR.Checks) {
-			if c.Name == "" || seen[c.Name] {
+			// A skipped job did not run here.
+			if c.Name == "" || seen[c.Name] || c.State == github.CheckSkipped {
 				continue
 			}
 			seen[c.Name] = true
@@ -214,7 +224,7 @@ func repoWideChecks(decisions []Decision) map[string][]int {
 	}
 	out := map[string][]int{}
 	for name, prs := range failed {
-		if len(prs) >= 2 && len(prs) == ran[name] && 2*ran[name] >= len(decisions) {
+		if len(prs) >= 2 && len(prs) == ran[name] && 2*ran[name] >= judged {
 			out[name] = prs
 		}
 	}

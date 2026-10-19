@@ -264,3 +264,34 @@ func TestDiagnoseArchived(t *testing.T) {
 		t.Fatalf("an active repo is not archived: %+v", f)
 	}
 }
+
+func TestDiagnoseNoChecksCountsOnlyChecksThatRan(t *testing.T) {
+	skipped := testutil.PR(1)
+	skipped.Checks = []github.Check{{Name: "build", State: github.CheckSkipped}}
+	f := findings(testutil.Repo(skipped, testutil.PR(2)))
+	if n := f[FindingNoChecks]; len(n) != 1 || len(n[0].PRs) != 1 || n[0].PRs[0] != 1 {
+		t.Fatalf("no-checks = %+v; a PR whose every check was skipped ran none", n)
+	}
+}
+
+func TestDiagnoseRepoWideCountsOnlyAssessedPRs(t *testing.T) {
+	moved := func(pr github.PullRequest) github.PullRequest {
+		pr.ChecksOID = "older"
+		return pr
+	}
+	edited := failing(testutil.PR(1), "i18n")
+	edited.Commits[0].Authors = append(edited.Commits[0].Authors, github.Author{Login: "sglavoie"})
+	f := findings(testutil.Repo(edited, moved(failing(testutil.PR(2), "i18n"))))
+	if len(f[FindingRepoCheck]) != 0 {
+		t.Fatalf("repo-wide = %+v; neither failure ran on Dependabot's own head commit", f[FindingRepoCheck])
+	}
+
+	// PRs whose checks ran on another commit do not count towards the half.
+	f = findings(testutil.Repo(
+		failing(testutil.PR(1), "i18n"), failing(testutil.PR(2), "i18n"),
+		moved(testutil.PR(3)), moved(testutil.PR(4)), moved(testutil.PR(5)),
+	))
+	if r := f[FindingRepoCheck]; len(r) != 1 || len(r[0].PRs) != 2 {
+		t.Fatalf("repo-wide = %+v", r)
+	}
+}

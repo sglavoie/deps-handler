@@ -122,13 +122,17 @@ func printVerdicts(cmd *cobra.Command, entries []review.Entry, asJSON bool) erro
 	return tw.Flush()
 }
 
-// heldFor is the head a verdict holds for: a rejection holds for the
-// commit reviewed only.
-func heldFor(e review.Entry) string {
+// heldFor is the head a verdict holds for, shortened: a rejection holds
+// for the commit reviewed only.
+func heldFor(e review.Entry) string { return fmt.Sprintf("%.7s", heldForOID(e)) }
+
+// heldForOID is the head a verdict holds for: the commit a rejection was
+// given for, or "any" for an approval, which survives a rebase.
+func heldForOID(e review.Entry) string {
 	if e.Verdict.Approved || e.HeadOID == "" {
 		return "any"
 	}
-	return fmt.Sprintf("%.7s", e.HeadOID)
+	return e.HeadOID
 }
 
 func verdictWord(e review.Entry) string {
@@ -164,7 +168,7 @@ func verdictsJSON(cmd *cobra.Command, entries []review.Entry) error {
 		if concerns == nil {
 			concerns = []string{}
 		}
-		out = append(out, verdict{e.Key, verdictWord(e), e.Agent, e.HeadOID, e.ReviewedAt, e.Expires, e.Verdict.Summary, concerns})
+		out = append(out, verdict{e.Key, verdictWord(e), e.Agent, heldForOID(e), e.ReviewedAt, e.Expires, e.Verdict.Summary, concerns})
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")

@@ -72,6 +72,13 @@ func TestEvaluate(t *testing.T) {
 					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 8},
 				}
 			}},
+		{name: "the same workflow run for another event is not a rerun", action: ActionSkip, reason: "failing checks: test",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "push"},
+					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
+				}
+			}},
 		{name: "same check name from another app is not a rerun", action: ActionSkip, reason: "failing checks: lint",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
@@ -122,15 +129,37 @@ func TestEvaluate(t *testing.T) {
 		{name: "no checks waits for merge_without_checks_after", action: ActionWait, reason: "merging without them in 5m",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = nil
-				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-5 * time.Minute)
+				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-35 * time.Minute)
 			},
-			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 10 * time.Minute }},
+			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 40 * time.Minute }},
 		{name: "no checks after merge_without_checks_after merges", action: ActionMerge, reason: "no checks ran",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = nil
+				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-41 * time.Minute)
+			},
+			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 40 * time.Minute }},
+		{name: "merge_without_checks_after waits at least for CI to start", action: ActionWait, reason: "merging without them in 19m",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = nil
 				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-11 * time.Minute)
 			},
 			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = 10 * time.Minute }},
+		{name: "only skipped checks is no checks", action: ActionSkip, reason: "no checks ran",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{{Name: "build", State: github.CheckSkipped}, {Name: "sonar", State: github.CheckSkipped}}
+			}},
+		{name: "only skipped checks on a new commit waits for CI to start", action: ActionWait, reason: "only skipped checks reported yet for a new commit",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks[0].State = github.CheckSkipped
+				pr.Commits[0].CommittedDate = testutil.Fetched.Add(-time.Minute)
+			}},
+		{name: "only skipped checks with opt-in merges", action: ActionMerge, reason: "no checks ran, within policy",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckSkipped },
+			policy: func(p *config.Policy) { p.RequireChecks = false }},
+		{name: "a skipped check beside one that passed merges", action: ActionMerge, reason: "checks green, within policy",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = append(pr.Checks, github.Check{Name: "deploy", State: github.CheckSkipped})
+			}},
 		{name: "merge_without_checks_after ignores failing checks", action: ActionSkip, reason: "failing checks: build",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Checks[0].State = github.CheckFailed },
 			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = time.Minute }},
@@ -212,6 +241,10 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Commits[0].Authors = []github.Author{{Name: "dependabot[bot]", Email: "someone@example.com"}}
 			}},
+		{name: "signed commit whose author has only dependabot's email", action: ActionSkip, reason: "commit c1 author is not linked to Dependabot's account",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Commits[0].Authors = []github.Author{{Email: "49699333+dependabot[bot]@users.noreply.github.com"}}
+			}},
 		{name: "commit without an author", action: ActionSkip, reason: "commit c1 has no author",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].Authors = nil }},
 		{name: "unrecorded author before a dependabot trailer", action: ActionSkip, reason: "not linked to Dependabot's account",
@@ -221,6 +254,10 @@ func TestEvaluate(t *testing.T) {
 		{name: "dependabot co-author trailer merges", action: ActionMerge,
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Commits[0].Authors = append(pr.Commits[0].Authors, github.Author{Name: "dependabot[bot]", Email: "49699333+dependabot[bot]@users.noreply.github.com"})
+			}},
+		{name: "dependabot co-author trailer with only an email merges", action: ActionMerge,
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Commits[0].Authors = append(pr.Commits[0].Authors, github.Author{Email: "49699333+dependabot[bot]@users.noreply.github.com"})
 			}},
 		{name: "human co-author", action: ActionSkip, reason: "modified by Jane",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
@@ -421,9 +458,12 @@ func TestLatestChecks(t *testing.T) {
 		{Name: "test", State: github.CheckFailed, Status: true},
 		{Name: "matrix", State: github.CheckPassed, Suite: 3, App: actions, Workflow: 7},
 		{Name: "matrix", State: github.CheckFailed, Suite: 3, App: actions, Workflow: 7},
+		{Name: "both", State: github.CheckFailed, Suite: 4, App: actions, Workflow: 9, Event: "push"},
+		{Name: "both", State: github.CheckPassed, Suite: 5, App: actions, Workflow: 9, Event: "pull_request"},
+		{Name: "both", State: github.CheckFailed, Suite: 4, App: actions, Workflow: 9, Event: "pull_request"},
 	}
 	got := LatestChecks(checks)
-	want := []github.Check{checks[1], checks[2], checks[3], checks[4], checks[5]}
+	want := []github.Check{checks[1], checks[2], checks[3], checks[4], checks[5], checks[6], checks[7]}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)
 	}

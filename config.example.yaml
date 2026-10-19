@@ -5,10 +5,13 @@
 #   merge_method:    squash | merge | rebase (falls back to what the repo allows)
 #   max_update_type: patch | minor | major   (largest semver bump merged)
 #   require_checks:  true = a PR with no CI checks is never merged...
+#                    Skipped or neutral checks do not count as having run.
 #   merge_without_checks_after: ...unless its latest commit has gone this
-#                    long (e.g. 10m) without any check, as on a repo whose CI
-#                    only runs for some paths (default 0: never; an error
-#                    alongside require_checks: false, where it does nothing)
+#                    long (e.g. 1h) without any check, as on a repo whose CI
+#                    only runs for some paths (default 0: never; at least
+#                    30m, the time CI is given to start, so 10m acts as 30m;
+#                    an error alongside require_checks: false, where it does
+#                    nothing)
 #   agent_review:    true = with --review, the agent may approve updates over
 #                    max_update_type or of unknown size (default true)
 # A repo entry can also set skip: true to leave it out of runs; naming it

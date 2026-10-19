@@ -26,15 +26,28 @@ type rawDependency struct {
 	UpdateType string `yaml:"update-type"`
 }
 
+// metadataStart opens the block Dependabot appends to its commit messages,
+// after the release notes and changelog it quotes.
+const metadataStart = "\n---\nupdated-dependencies:"
+
 // ParseCommitMessage extracts the dependencies listed after the "---" line
-// of a Dependabot commit message. It returns nil when there is no block.
+// of a Dependabot commit message. It returns nil when there is no block, and
+// also when there is more than one: the release notes Dependabot quotes
+// above its own block are written by the dependency's authors, who can
+// forge one there, and nil grades the update unknown rather than trusting
+// either.
 func ParseCommitMessage(msg string) []Dependency {
 	msg = strings.ReplaceAll(msg, "\r\n", "\n")
-	start := strings.Index(msg, "\nupdated-dependencies:")
+	// Any line opening a block is a candidate, whether or not a "---"
+	// line introduces it, so a forgery cannot slip past by omitting it.
+	if strings.Count(msg, "\nupdated-dependencies:") != 1 {
+		return nil
+	}
+	start := strings.Index(msg, metadataStart)
 	if start < 0 {
 		return nil
 	}
-	block := msg[start+1:]
+	block := msg[start+len("\n---\n"):]
 	if end := strings.Index(block, "\n...\n"); end >= 0 {
 		block = block[:end]
 	} else {

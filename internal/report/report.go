@@ -50,15 +50,17 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
 	fmt.Fprintln(w, s.paint(bold, res.Repo)+"  "+s.paint(dim, header+")"))
+	// A repository that failed part way still shows the writes made and
+	// the warnings raised before then: they happened. Its decisions and
+	// findings come from a read the failure may have left stale.
+	var decisions []policy.Decision
 	if res.Error != "" {
-		fmt.Fprintf(w, "  %s %s\n\n", s.paint(red, "error:"), res.Error)
-		return
-	}
-	decisions := pending(res)
-	if !HasPRs(res) {
-		fmt.Fprintln(w, "  "+s.paint(dim, "no open Dependabot PRs"))
-		fmt.Fprintln(w)
-		return
+		fmt.Fprintf(w, "  %s %s\n", s.paint(red, "error:"), res.Error)
+	} else {
+		decisions = pending(res)
+		if len(res.Decisions) == 0 && len(res.Events) == 0 {
+			fmt.Fprintln(w, "  "+s.paint(dim, "no open Dependabot PRs"))
+		}
 	}
 
 	var rows [][]cell
@@ -75,7 +77,7 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		fmt.Fprintf(w, "  %s %s\n", s.paint(yellow, "warning:"), warning)
 	}
 
-	if len(res.Findings) > 0 {
+	if res.Error == "" && len(res.Findings) > 0 {
 		fmt.Fprintln(w, "  "+s.paint(bold+";"+yellow, "needs attention:"))
 		for _, f := range res.Findings {
 			fmt.Fprintf(w, "    %s %s\n", s.paint(yellow, "-"), f.Summary)
@@ -94,9 +96,11 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 }
 
 // HasPRs reports whether a repository had open Dependabot PRs to report,
-// or failed before it could tell.
+// or failed before it could tell. One with a warning counts too: the
+// warning may be the run's, such as a verdict cache found unreadable as it
+// started, and must not be hidden with the repository.
 func HasPRs(res runner.RepoResult) bool {
-	return res.Error != "" || len(res.Decisions) > 0 || len(res.Events) > 0
+	return res.Error != "" || len(res.Decisions) > 0 || len(res.Events) > 0 || len(res.Warnings) > 0
 }
 
 // Progress writes a one-line note that a repository is done, for runs whose

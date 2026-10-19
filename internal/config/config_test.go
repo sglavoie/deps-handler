@@ -11,7 +11,7 @@ func TestParseAppliesDefaultsAndOverrides(t *testing.T) {
 	cfg, err := Parse([]byte(`
 defaults:
   merge_method: merge
-  merge_without_checks_after: 10m
+  merge_without_checks_after: 45m
 repos:
   - acme/Billing
   - repo: acme/auth-worker
@@ -24,7 +24,7 @@ repos:
 		t.Fatal(err)
 	}
 	a, b := cfg.Repos[0].Policy, cfg.Repos[1].Policy
-	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, MergeWithoutChecksAfter: 10 * time.Minute}) {
+	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, MergeWithoutChecksAfter: 45 * time.Minute}) {
 		t.Errorf("Billing policy = %+v", a)
 	}
 	if b != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMajor, RequireChecks: false, AgentReview: false}) {
@@ -60,6 +60,11 @@ func TestParseRejectsBadInput(t *testing.T) {
 		"no-checks unused here":        "repos: [{repo: a/b, require_checks: false, merge_without_checks_after: 10m}]",
 		"no-checks unused in defaults": "defaults: {require_checks: false, merge_without_checks_after: 10m}\nrepos: [a/b]",
 		"no-checks unused by default":  "defaults: {require_checks: false}\nrepos: [{repo: a/b, merge_without_checks_after: 10m}]",
+		"second document":              "repos: [a/b]\n---\nrepos: [c/d]\n",
+		"null repo":                    "repos: [a/b, ~]",
+		"empty repo item":              "repos:\n  - a/b\n  -\n",
+		"nan budget":                   "agent: {claude: {max_budget_usd: .nan}}\nrepos: [a/b]",
+		"inf budget":                   "agent: {claude: {max_budget_usd: .inf}}\nrepos: [a/b]",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected error", name)
@@ -207,9 +212,36 @@ func TestParseNoChecksErrorSaysWhy(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "a/b: merge_without_checks_after \"10m\" has no effect with require_checks: false") {
 		t.Fatalf("err = %v", err)
 	}
-	// A default meant for the other repos does not stop one turning checks off.
-	if _, err := Parse([]byte("defaults: {merge_without_checks_after: 10m}\nrepos: [a/b, {repo: a/c, require_checks: false}]")); err != nil {
+	// A default meant for the other repos does not stop one turning checks
+	// off, and that repo's policy does not show it.
+	cfg, err := Parse([]byte("defaults: {merge_without_checks_after: 45m}\nrepos: [a/b, {repo: a/c, require_checks: false}]"))
+	if err != nil {
 		t.Fatalf("inherited default: %v", err)
+	}
+	if got := cfg.Repos[1].Policy.MergeWithoutChecksAfter; got != 0 {
+		t.Errorf("a/c merge_without_checks_after = %s, want 0 with checks off", got)
+	}
+	if got := cfg.Repos[0].Policy.MergeWithoutChecksAfter; got != 45*time.Minute {
+		t.Errorf("a/b merge_without_checks_after = %s, want 45m", got)
+	}
+}
+
+func TestParseNoChecksWaitsAtLeastChecksGrace(t *testing.T) {
+	cfg, err := Parse([]byte("defaults: {merge_without_checks_after: 10m}\nrepos: [a/b, {repo: a/c, merge_without_checks_after: 1h}, {repo: a/d, merge_without_checks_after: \"0\"}]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []time.Duration{ChecksGrace, time.Hour, 0} {
+		if got := cfg.Repos[i].Policy.MergeWithoutChecksAfter; got != want {
+			t.Errorf("%s: merge_without_checks_after = %s, want %s", cfg.Repos[i].FullName(), got, want)
+		}
+	}
+}
+
+func TestParseRejectsSecondDocument(t *testing.T) {
+	_, err := Parse([]byte("repos: [a/b]\n---\nrepos: [c/d]\n"))
+	if err == nil || !strings.Contains(err.Error(), "more than one YAML document") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

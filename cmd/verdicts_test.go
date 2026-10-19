@@ -66,12 +66,16 @@ func TestVerdictsShowHeadOfRejection(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "HEAD") || !strings.Contains(out, "rejected  claude  0123456") || !strings.Contains(out, "approved  codex   any") {
 		t.Fatalf("code %d:\n%s", code, out)
 	}
-	code, out, _ = run("verdicts", "--json", "o/a#1")
+	code, out, _ = run("verdicts", "--json")
 	var got []struct {
 		HeadOID string `json:"head_oid"`
 	}
-	if err := json.Unmarshal([]byte(out), &got); code != 0 || err != nil || len(got) != 1 || got[0].HeadOID != "0123456789abcdef" {
+	if err := json.Unmarshal([]byte(out), &got); code != 0 || err != nil || len(got) != 2 {
 		t.Fatalf("json: code %d, %v:\n%s", code, err, out)
+	}
+	// An approval survives a rebase: it holds for any head.
+	if got[0].HeadOID != "0123456789abcdef" || got[1].HeadOID != "any" {
+		t.Fatalf("head_oid = %q, %q; want the rejected commit, then any", got[0].HeadOID, got[1].HeadOID)
 	}
 }
 
