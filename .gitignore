@@ -1,2 +1,4 @@
 /deps-merger
 coverage.out
+/.demo/
+/dist/

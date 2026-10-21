@@ -51,14 +51,26 @@ lint:
 vuln:
     go tool govulncheck ./...
 
-# Remove build and coverage output
+# Remove build, coverage, demo and release output
 clean:
-    rm -f {{ binary_name }} coverage.out
+    rm -rf {{ binary_name }} coverage.out .demo dist
 
 # Everything CI should check
 ci: vet lint vuln test
+    go vet -tags demo ./...
+    go tool staticcheck -tags demo ./...
+    go test -tags demo -run TestDemo ./cmd
     @test -z "$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
     go mod tidy -diff
+
+# Record docs/demo.gif with VHS against fake repositories (nothing real is touched)
+demo:
+    go build -tags demo -o .demo/bin/{{ binary_name }} .
+    vhs demo/demo.tape
+
+# Try the CLI against fake repositories, e.g. `just try run --review --apply`
+try *args:
+    go run -tags demo . {{ args }}
 
 # Dry run against the configured repos
 dry-run *args:

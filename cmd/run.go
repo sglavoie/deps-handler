@@ -173,8 +173,9 @@ wrong, and 130 when interrupted.`,
 	return c
 }
 
-// newAgent builds the agent named by --agent, or the configured one.
-func newAgent(cfg config.Agent, name string) (review.Agent, error) {
+// newAgent builds the agent named by --agent, or the configured one; the
+// demo build replaces it.
+var newAgent = func(cfg config.Agent, name string) (review.Agent, error) {
 	if name == "" {
 		name = cfg.Use
 	}
@@ -193,7 +194,7 @@ func newAgent(cfg config.Agent, name string) (review.Agent, error) {
 	return agent, nil
 }
 
-// newClient builds the GitHub client; tests replace it.
+// newClient builds the GitHub client; tests and the demo build replace it.
 var newClient = github.New
 
 // setupReviews gives r an agent reviewer with its checkouts and verdict
@@ -228,14 +229,15 @@ func setupReviews(r *runner.Runner, cfg *config.Config, agent review.Agent, clie
 	if err := ws.Prune(keep); err != nil {
 		r.Warn("prune checkouts: " + err.Error())
 	}
-	r.Reviewer = &review.AgentReviewer{
-		Agent:     agent,
-		Details:   client,
-		Workspace: ws,
-		Timeout:   cfg.Agent.Timeout,
-	}
+	r.Reviewer = newReviewer(agent, client, ws, cfg.Agent.Timeout)
 	r.AgentName, r.Verdicts, r.MaxReviews = agent.Name(), verdicts, maxReviews
 	return release, nil
+}
+
+// newReviewer has agent review PRs in checkouts under ws; the demo build
+// replaces it.
+var newReviewer = func(agent review.Agent, client github.Client, ws *review.Workspace, timeout time.Duration) review.Reviewer {
+	return &review.AgentReviewer{Agent: agent, Details: client, Workspace: ws, Timeout: timeout}
 }
 
 // verdictsPath is where agent verdicts are kept between runs.
