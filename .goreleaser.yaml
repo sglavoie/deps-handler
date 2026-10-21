@@ -1,0 +1,60 @@
+# Builds release binaries when a v* tag is pushed (.github/workflows/release.yml).
+# Check locally with `goreleaser check` and `goreleaser release --snapshot --clean`.
+version: 2
+
+before:
+  hooks:
+    - go mod tidy -diff
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/sglavoie/deps-merger/cmd.Version={{ .Version }}
+      - -X github.com/sglavoie/deps-merger/cmd.GitCommit={{ .ShortCommit }}
+      - -X github.com/sglavoie/deps-merger/cmd.BuildTime={{ .Date }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - config.example.yaml
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+homebrew_casks:
+  - repository:
+      owner: sglavoie
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/sglavoie/deps-merger
+    description: Merge safe Dependabot pull requests across your repositories
+    license: MIT
+    dependencies:
+      - formula: gh
+    hooks:
+      post:
+        # The binaries are not notarized: let macOS run them.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/deps-merger"]
+          end

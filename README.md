@@ -1,12 +1,42 @@
 # deps-merger
 
+[![CI](https://github.com/sglavoie/deps-merger/actions/workflows/ci.yml/badge.svg)](https://github.com/sglavoie/deps-merger/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/sglavoie/deps-merger)](https://github.com/sglavoie/deps-merger/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Merges safe Dependabot pull requests across a list of repositories and
 reports what needs fixing in each one. It uses your `gh` login.
 
+It is deliberately conservative. A PR merges only when Dependabot alone
+wrote it, its checks are green and its update is within your policy. With
+`--review`, an AI agent (Claude Code or Codex) reads a read-only checkout
+to judge the bigger updates. Anything it can't merge is reported with the
+fix: a check broken on the base branch, an update to ignore, a review
+branch protection wants.
+
+![deps-merger merging, rebasing and reviewing Dependabot PRs across fictional repositories](docs/demo.gif)
+
+<sub>Recorded with the `demo` build against make-believe repositories: no
+real PR was harmed. See [Try it without your repositories](#try-it-without-your-repositories).</sub>
+
+## Install
+
 ```bash
-just install                      # builds into ~/.local/bin
+brew install --cask sglavoie/tap/deps-merger           # macOS, Linux
+go install github.com/sglavoie/deps-merger@latest      # Go 1.27+
+```
+
+Or download a binary from the [releases](https://github.com/sglavoie/deps-merger/releases).
+deps-merger needs [`gh`](https://cli.github.com) logged in (`gh auth login`)
+or `GH_TOKEN` set. Agent review also needs
+[Claude Code](https://docs.claude.com/en/docs/claude-code) or
+[Codex](https://github.com/openai/codex) on `PATH`, on Linux or macOS.
+
+## Usage
+
+```bash
 mkdir -p ~/.config/deps-merger
-cp config.example.yaml ~/.config/deps-merger/config.yaml
+cp config.example.yaml ~/.config/deps-merger/config.yaml   # then list your repos
 deps-merger repos                 # effective policy per repo (--json too)
 deps-merger run                   # dry run: report only
 deps-merger run --apply           # merge safe PRs
@@ -15,6 +45,19 @@ deps-merger run -r Storefront --json  # one repo, machine-readable
 deps-merger run --review --apply  # let an AI agent judge bigger updates too
 deps-merger verdicts              # the agent's cached verdicts
 deps-merger verdicts acme/Storefront --json  # one repo's, with concerns
+```
+
+### Try it without your repositories
+
+The `demo` build replaces GitHub and the agent with fictional `acme`
+repositories held in memory. It never reaches the network or reads your
+config, token or verdicts, so `--apply` is safe to try:
+
+```bash
+git clone https://github.com/sglavoie/deps-merger && cd deps-merger
+go run -tags demo . run                    # dry run
+go run -tags demo . run --review --apply   # merge, rebase, agent verdicts
+go run -tags demo . verdicts
 ```
 
 ## What counts as safe
@@ -339,3 +382,12 @@ repos:
   - &strict {repo: acme/Billing, max_update_type: patch}
   - {<<: *strict, repo: acme/Payments}
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) to
+report a vulnerability.
+
+## License
+
+[MIT](LICENSE)
