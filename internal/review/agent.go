@@ -44,7 +44,9 @@ const Schema = `{
 }`
 
 // Claude runs `claude -p` with only the read-only file tools, no MCP
-// servers and no user or project settings.
+// servers, no user or project settings and, with --safe-mode, none of the
+// user's customizations: no CLAUDE.md (the user's, or one in the checkout
+// or its vendored code), skills, plugins or hooks. The login is kept.
 type Claude struct {
 	Model string
 	// ConfigDir, when set, is passed as CLAUDE_CONFIG_DIR.
@@ -58,7 +60,7 @@ func (c Claude) Name() string { return "claude" }
 
 func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	args := []string{
-		"-p", "--restricted", "--strict-mcp-config", "--no-session-persistence",
+		"-p", "--restricted", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
 		"--output-format", "json", "--tools", "Read,Grep,Glob", "--json-schema", Schema,
 	}
 	if c.Model != "" {
@@ -159,12 +161,30 @@ func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 // read a token from. An agent has no use for one, so it does not get it.
 var githubTokens = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
 
-// agentEnv is this process's environment without the GitHub tokens.
+// gitRepoEnv are the environment variables that point git at another
+// repository than the one in its working directory, or give it settings
+// from outside the config files: those `git rev-parse --local-env-vars`
+// lists, and the ones that change how it looks for the repository.
+// Inherited from a dotfiles setup, GIT_DIR would have git work on $HOME
+// instead of the checkout. GIT_CONFIG_KEY_<n> and GIT_CONFIG_VALUE_<n> go
+// with GIT_CONFIG_COUNT.
+var gitRepoEnv = []string{
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+	"GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
+	"GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE",
+	"GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+}
+
+// agentEnv is this process's environment without the GitHub tokens, so
+// that neither an agent nor what the checkout's git runs gets one, and
+// without what would point git at another repository than the checkout.
 func agentEnv() []string {
 	env := os.Environ()
 	return slices.DeleteFunc(env, func(kv string) bool {
 		name, _, _ := strings.Cut(kv, "=")
-		return slices.ContainsFunc(githubTokens, func(t string) bool { return strings.EqualFold(name, t) })
+		return slices.ContainsFunc(githubTokens, func(t string) bool { return strings.EqualFold(name, t) }) ||
+			slices.Contains(gitRepoEnv, name) ||
+			strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_")
 	})
 }
 

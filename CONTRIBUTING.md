@@ -10,7 +10,7 @@ You need Go (the version in [`go.mod`](go.mod)) and
 
 ```bash
 just test    # go test -race ./...
-just ci      # everything CI checks: vet, staticcheck, govulncheck, tests, gofmt, go mod tidy
+just ci      # everything CI checks: vet (also for Windows), staticcheck, govulncheck, tests, gofmt, go mod tidy
 ```
 
 ## Trying changes without touching real repositories
@@ -18,7 +18,8 @@ just ci      # everything CI checks: vet, staticcheck, govulncheck, tests, gofmt
 The `demo` build tag swaps GitHub and the AI agent for a make-believe
 version with fictional `acme` repositories ([`internal/demo`](internal/demo/demo.go)).
 It never reaches the network, and keeps its config, verdicts and checkouts
-in a directory of its own under the system temp dir:
+in a directory of its own, `deps-merger-demo` in your user cache directory
+(`~/Library/Caches` on macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux):
 
 ```bash
 just try run                    # dry run

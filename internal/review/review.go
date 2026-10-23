@@ -61,7 +61,8 @@ func NewRequest(rc config.Repo, d policy.Decision) Request {
 // Key identifies the update under review: the PR and the versions it moves
 // to. A rebase changes the head commit but not the update, so an approval
 // still holds (the cache drops a rejection then); when Dependabot does not
-// record versions, the head commit stands in for them. The repository is
+// record versions, the head commit stands in for them, so not even an
+// approval survives a rebase (see Entry.PinsHead). The repository is
 // lower-cased, as GitHub ignores its case, and the agent is left out: a
 // verdict from one agent is reused by another.
 func (r Request) Key() string {
@@ -169,8 +170,10 @@ func Verdict(a Answer) (policy.Verdict, error) {
 }
 
 // githubToken matches the GitHub token formats: classic and fine-grained
-// personal, OAuth, app user, app installation and refresh tokens.
-var githubToken = regexp.MustCompile(`\b(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})`)
+// personal, OAuth, app user, app installation and refresh tokens. A
+// token is matched wherever it starts, even glued to a word, as an agent
+// could quote it ("xghp_…") to slip past a match at a word boundary.
+var githubToken = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}`)
 
 // redact hides GitHub tokens in an agent's reasons, which are cached,
 // printed and sent to CI logs: an agent can read files holding one, such

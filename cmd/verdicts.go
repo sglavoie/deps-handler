@@ -29,7 +29,9 @@ until Dependabot rebases the PR. Use "verdicts forget" to have an update
 reviewed again.
 
 HEAD is the commit a rejection was given for: it holds for that commit
-only. An approval holds for any head.
+only. An approval holds for any head, unless Dependabot records no
+versions for the update (a Docker digest, an action pinned by commit):
+its key then holds the commit reviewed, which HEAD shows.
 
 A target narrows the list to a repository (owner/name) or a pull request
 (owner/name#7). Exits 1 if a target matched nothing.`,
@@ -118,7 +120,9 @@ func printVerdicts(cmd *cobra.Command, entries []review.Entry, asJSON bool) erro
 	tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "UPDATE\tVERDICT\tAGENT\tHEAD\tREVIEWED\tEXPIRES\tSUMMARY")
 	for _, e := range entries {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.Key, verdictWord(e), e.Agent, heldFor(e), e.ReviewedAt.Local().Format("2006-01-02 15:04"), e.Expires.Local().Format("2006-01-02"), clipSummary(e.Verdict.Summary))
+		// The cache file may have been edited: nothing in it reaches the
+		// terminal as escape sequences.
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", report.Plain(e.Key), verdictWord(e), report.Plain(e.Agent), report.Plain(heldFor(e)), e.ReviewedAt.Local().Format("2006-01-02 15:04"), e.Expires.Local().Format("2006-01-02"), clipSummary(e.Verdict.Summary))
 	}
 	return tw.Flush()
 }
@@ -128,9 +132,10 @@ func printVerdicts(cmd *cobra.Command, entries []review.Entry, asJSON bool) erro
 func heldFor(e review.Entry) string { return fmt.Sprintf("%.7s", heldForOID(e)) }
 
 // heldForOID is the head a verdict holds for: the commit a rejection was
-// given for, or "any" for an approval, which survives a rebase.
+// given for, or "any" for an approval, which survives a rebase unless the
+// update has no versions and its key holds the head.
 func heldForOID(e review.Entry) string {
-	if e.Verdict.Approved || e.HeadOID == "" {
+	if e.Verdict.Approved && !e.PinsHead() || e.HeadOID == "" {
 		return "any"
 	}
 	return e.HeadOID

@@ -12,9 +12,9 @@ import (
 // Dependency is one entry of a commit's "updated-dependencies" block.
 type Dependency struct {
 	Name       string            `json:"name"`
-	Version    string            `json:"version,omitempty"`
-	Type       string            `json:"type,omitempty"`
-	Group      string            `json:"group,omitempty"`
+	Version    string            `json:"version"`
+	Type       string            `json:"type"`
+	Group      string            `json:"group"`
 	UpdateType config.UpdateType `json:"update_type"`
 }
 

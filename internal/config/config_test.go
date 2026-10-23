@@ -156,7 +156,7 @@ func TestFilterDeduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.Filter([]string{"Storefront", "acme/storefront", "billing"})
+	got, err := cfg.Filter([]string{"Storefront", "acme/storefront", " billing "})
 	if err != nil || len(got) != 2 || got[0].Name != "Billing" || got[1].Name != "Storefront" {
 		t.Fatalf("Filter = %v, %v", got, err)
 	}

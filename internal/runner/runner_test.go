@@ -5,15 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/sglavoie/deps-merger/internal/config"
+	"github.com/sglavoie/deps-merger/internal/dependabot"
 	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/policy"
 	"github.com/sglavoie/deps-merger/internal/review"
@@ -53,11 +58,14 @@ type fakeClient struct {
 	unknownAfterMerge int
 	// stateErrs are returned by the next PR state reads, in order.
 	stateErrs []error
+	// fetches counts the reads of the repository.
+	fetches int
 }
 
 func (f *fakeClient) Viewer(context.Context) (string, error) { return "me", nil }
 
 func (f *fakeClient) FetchRepo(ctx context.Context, _, _ string) (*github.Repo, error) {
+	f.fetches++
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("Post \"https://api.github.com/graphql\": %w", err)
 	}
@@ -823,31 +831,56 @@ func TestLongRateLimitStopsLaterWrites(t *testing.T) {
 	limited := &api.HTTPError{StatusCode: 403, Message: "secondary rate limit", Headers: map[string][]string{"Retry-After": {"600"}}}
 	behind := testutil.PR(3)
 	behind.MergeState = "BEHIND"
-	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2), behind), mergeErrs: map[int][]error{1: {limited}}}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2), behind, testutil.PR(4)), mergeErrs: map[int][]error{1: {limited}}}
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
 	if len(fc.merges) != 0 || len(fc.comments) != 0 {
 		t.Fatalf("merges %v, comments %v; nothing may be sent through a rate limit", fc.merges, fc.comments)
 	}
-	if len(res.Events) != 2 || !strings.Contains(res.Events[0].Detail, "not waiting up to 10m0s") || !strings.Contains(res.Events[1].Detail, "not sent") {
+	if len(res.Events) != 3 || !strings.Contains(res.Events[0].Detail, "not waiting up to 10m0s") {
 		t.Fatalf("events %+v", res.Events)
+	}
+	for _, ev := range res.Events[1:] {
+		if ev.Kind != EventMergeFailed || !strings.HasPrefix(ev.Detail, "not sent") {
+			t.Fatalf("events %+v", res.Events)
+		}
+	}
+	if fc.fetches != 1 {
+		t.Fatalf("%d fetches; merges that cannot be sent need no fresh read", fc.fetches)
 	}
 }
 
-// cancellingClient cancels the run while a merge is in flight.
+func TestRateLimitThatRefusesAgainStopsLaterWrites(t *testing.T) {
+	limited := &api.HTTPError{StatusCode: 403, Message: "secondary rate limit", Headers: map[string][]string{"Retry-After": {"20"}}}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2)), mergeErrs: map[int][]error{1: {limited, limited}}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 0 || len(res.Events) != 2 || !strings.Contains(res.Events[0].Detail, "rate-limited again after waiting 20s") || !strings.HasPrefix(res.Events[1].Detail, "not sent") {
+		t.Fatalf("merges %v, events %+v", fc.merges, res.Events)
+	}
+	if strings.Contains(res.Events[0].Detail, "not waiting") {
+		t.Fatalf("detail %q; it did wait", res.Events[0].Detail)
+	}
+}
+
+// cancellingClient cancels the run while a merge is in flight, which then
+// fails with err, or with the cancellation when err is nil.
 type cancellingClient struct {
 	*fakeClient
 	cancel context.CancelFunc
+	err    error
 }
 
 func (c *cancellingClient) Merge(context.Context, string, string, int, string, string) error {
 	c.cancel()
+	if c.err != nil {
+		return c.err
+	}
 	return fmt.Errorf("Put \"https://api.github.com/repos/o/r/pulls/1/merge\": %w", context.Canceled)
 }
 
 func TestMergeInterruptedInFlightMayHaveMerged(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	c := &cancellingClient{&fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2))}, cancel}
+	c := &cancellingClient{fakeClient: &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2))}, cancel: cancel}
 	res := newRunner(c, true).RunRepo(ctx, repoCfg)
 	if len(res.Events) == 0 || res.Events[0].Detail != "interrupted; may have merged" {
 		t.Fatalf("events %+v", res.Events)
@@ -856,6 +889,124 @@ func TestMergeInterruptedInFlightMayHaveMerged(t *testing.T) {
 		if strings.Contains(ev.Detail, "may have merged") {
 			t.Errorf("event %+v: a merge never sent cannot have merged", ev)
 		}
+	}
+}
+
+func TestMergeAnsweredAsTheRunIsInterrupted(t *testing.T) {
+	for err, want := range map[error]string{
+		// GitHub refused it: it did not merge.
+		&api.HTTPError{StatusCode: 422, Message: "Head branch was modified"}:      "interrupted",
+		&api.HTTPError{StatusCode: 405, Message: "Pull Request is not mergeable"}: "interrupted",
+		// GitHub gave up on it, which may have merged it all the same.
+		&api.HTTPError{StatusCode: 502}: "interrupted; may have merged",
+	} {
+		ctx, cancel := context.WithCancel(context.Background())
+		c := &cancellingClient{fakeClient: &fakeClient{repo: testutil.Repo(testutil.PR(1))}, cancel: cancel, err: err}
+		res := newRunner(c, true).RunRepo(ctx, repoCfg)
+		cancel()
+		if len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed || res.Events[0].Detail != want {
+			t.Errorf("%v: events %+v, want detail %q", err, res.Events, want)
+		}
+	}
+}
+
+// interruptingClient cancels the run as the repository is read for the
+// cancelAt-th time, once the read itself has succeeded.
+type interruptingClient struct {
+	*fakeClient
+	cancel   context.CancelFunc
+	cancelAt int
+}
+
+func (c *interruptingClient) FetchRepo(ctx context.Context, owner, name string) (*github.Repo, error) {
+	repo, err := c.fakeClient.FetchRepo(ctx, owner, name)
+	if c.fetches == c.cancelAt {
+		c.cancel()
+	}
+	return repo, err
+}
+
+func TestTimedOutMergeInterruptedBeforeItsRetryMayHaveMerged(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {&api.HTTPError{StatusCode: 504}}}, mergedAnyway: map[int]bool{1: true}, lag: 5}
+	res := newRunner(&interruptingClient{fc, cancel, 2}, true).RunRepo(ctx, repoCfg)
+	if len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed || !strings.HasPrefix(res.Events[0].Detail, "interrupted; may have merged after HTTP 504") {
+		t.Fatalf("events %+v", res.Events)
+	}
+}
+
+func TestRefusedMergeIsAPlainFailureWhenGitHubCannotSay(t *testing.T) {
+	bad := &api.HTTPError{StatusCode: 502}
+	notMergeable := &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {notMergeable}}, unknownAfterMerge: 20, stateErrs: []error{bad, bad}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed || !res.Failed() {
+		t.Fatalf("events %+v", res.Events)
+	}
+	if d := res.Events[0].Detail; strings.Contains(d, "may have merged") || !strings.Contains(d, "HTTP 405") {
+		t.Fatalf("detail %q; a refused merge did not go through", d)
+	}
+}
+
+func TestConnectionResetMergeMayHaveGoneThrough(t *testing.T) {
+	reset := &url.Error{Op: "Put", URL: "https://api.github.com/repos/o/r/pulls/1/merge", Err: &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}}
+	for _, err := range []error{reset, &url.Error{Op: "Put", URL: "u", Err: io.EOF}} {
+		fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {err}}, mergedAnyway: map[int]bool{1: true}}
+		res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+		if fmt.Sprint(fc.merges) != "[1]" || len(res.Events) != 1 || res.Events[0].Kind != EventMerged || res.Failed() {
+			t.Fatalf("%v: merges %v, events %+v", err, fc.merges, res.Events)
+		}
+	}
+}
+
+func TestRunnerWithoutNewDoesNotPanic(t *testing.T) {
+	notMergeable := &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {notMergeable}}}
+	r := &Runner{Client: fc, Viewer: "me", Apply: true, PollAttempts: 1}
+	if res := r.RunRepo(context.Background(), repoCfg); fmt.Sprint(fc.merges) != "[1]" || res.Failed() {
+		t.Fatalf("merges %v, result %+v", fc.merges, res)
+	}
+}
+
+func TestResultJSONShape(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.Commits[0].Message = "bump"
+	res := newRunner(&fakeClient{repo: testutil.Repo(pr)}, false).RunRepo(context.Background(), repoCfg)
+	for _, r := range []RepoResult{res, {Repo: "o/gone", Error: "not found", Decisions: []policy.Decision{{Number: 2}}}} {
+		b, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"permission", "merge_method"} {
+			if _, ok := got[key].(string); !ok {
+				t.Errorf("%s: %s = %v, want a string", b, key, got[key])
+			}
+		}
+		for _, key := range []string{"decisions", "findings", "events", "warnings"} {
+			if _, ok := got[key].([]any); !ok {
+				t.Errorf("%s: %s = %v, want a list", b, key, got[key])
+			}
+		}
+		d := got["decisions"].([]any)[0].(map[string]any)
+		for _, key := range []string{"dependencies", "failed_checks"} {
+			if _, ok := d[key].([]any); !ok {
+				t.Errorf("%s: decision %s = %v, want a list", b, key, d[key])
+			}
+		}
+	}
+
+	dep := policy.Decision{Dependencies: []dependabot.Dependency{{Name: "lib"}}}
+	b, err := json.Marshal(RepoResult{Decisions: []policy.Decision{dep}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"dependencies":[{"name":"lib","version":"","type":"","group":"","update_type":"unknown"}]`) {
+		t.Fatalf("json = %s", b)
 	}
 }
 

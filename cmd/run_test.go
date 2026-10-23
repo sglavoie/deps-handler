@@ -98,7 +98,7 @@ func TestRunDryRun(t *testing.T) {
 
 func TestRunApply(t *testing.T) {
 	fc, cfg := runFixture(t)
-	code, out, _ := run("run", "-c", cfg, "--apply", "-r", "busy")
+	code, out, _ := run("run", "-c", cfg, "--apply", "-r", " busy ")
 	if code != 0 || len(fc.merges) != 1 || fc.merges[0] != 1 || !strings.Contains(out, "1 repos: 1 merged, 1 skip") {
 		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
 	}

@@ -95,11 +95,12 @@ func TestVerdictRedactsTokens(t *testing.T) {
 	classic := "ghp_" + strings.Repeat("A1b2", 9)
 	pat := "github_pat_" + strings.Repeat("x_Y9", 20)
 	v, err := Verdict(Answer{Decision: "reject", Summary: "token " + classic + " found",
-		BreakingChanges: []string{"gho_" + strings.Repeat("z", 36)}, Concerns: []string{"hosts.yml has " + pat + ".", "ghp_short stays"}})
+		BreakingChanges: []string{"gho_" + strings.Repeat("z", 36)}, Concerns: []string{"hosts.yml has " + pat + ".", "ghp_short stays", "glued x" + classic + " and 9" + pat}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Summary != "token [redacted token] found" || v.Concerns[0] != "[redacted token]" || v.Concerns[1] != "hosts.yml has [redacted token]." || v.Concerns[2] != "ghp_short stays" {
+	if v.Summary != "token [redacted token] found" || v.Concerns[0] != "[redacted token]" || v.Concerns[1] != "hosts.yml has [redacted token]." || v.Concerns[2] != "ghp_short stays" ||
+		v.Concerns[3] != "glued x[redacted token] and 9[redacted token]" {
 		t.Fatalf("verdict = %+v", v)
 	}
 }
@@ -234,7 +235,7 @@ func TestClaude(t *testing.T) {
 		t.Fatalf("answer %+v, %v", a, err)
 	}
 	args := read(t, dir+"/args")
-	for _, want := range []string{"-p\n", "--restricted\n", "--strict-mcp-config\n", "--tools\nRead,Grep,Glob\n", "--json-schema\n",
+	for _, want := range []string{"-p\n", "--restricted\n", "--safe-mode\n", "--strict-mcp-config\n", "--tools\nRead,Grep,Glob\n", "--json-schema\n",
 		"--model\nopus\n", "--max-budget-usd\n1.5\n"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("args lack %q:\n%s", want, args)
@@ -317,6 +318,10 @@ func TestAgentEnvLacksGitHubTokens(t *testing.T) {
 		t.Setenv(k, "secret")
 	}
 	t.Setenv("DEPS_MERGER_KEEP", "kept")
+	// Codex's git must read the checkout, not the repository these name.
+	for _, k := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_PARAMETERS"} {
+		t.Setenv(k, "secret")
+	}
 	for _, agent := range []Agent{
 		Claude{ConfigDir: "/cfg/claude"},
 		Codex{Home: "/cfg/codex"},
@@ -759,6 +764,22 @@ func TestCacheForget(t *testing.T) {
 	reopened, _ := OpenCache(path)
 	if got := reopened.Entries(); len(got) != 1 || got[0].Key != "o/rx#1 a@1" {
 		t.Fatalf("left = %+v", got)
+	}
+	// What Entries no longer lists is not there to forget.
+	reopened.now = func() time.Time { return time.Now().Add(CacheTTL + time.Hour) }
+	if n, err := reopened.Forget("o/rx"); err != nil || n != 0 {
+		t.Fatalf("Forget of an expired verdict = %d, %v; want 0", n, err)
+	}
+}
+
+func TestEntryPinsHead(t *testing.T) {
+	req := request()
+	req.HeadOID = "0123456789abcdef"
+	versioned := Entry{Key: req.Key(), HeadOID: req.HeadOID}
+	req.Dependencies = []dependabot.Dependency{{Name: "actions/checkout"}}
+	unversioned := Entry{Key: req.Key(), HeadOID: req.HeadOID}
+	if versioned.PinsHead() || !unversioned.PinsHead() || (Entry{Key: "o/r#1 x@1"}).PinsHead() {
+		t.Fatalf("PinsHead = %t, %t; only a key without versions holds the head", versioned.PinsHead(), unversioned.PinsHead())
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 // state of a real install.
 func init() {
 	Version += "+demo"
-	dir := filepath.Join(os.TempDir(), "deps-merger-demo")
+	dir := demoDir()
 	for _, v := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
 		os.Setenv(v, dir)
 	}
@@ -34,4 +34,22 @@ func init() {
 	newReviewer = func(review.Agent, github.Client, *review.Workspace, time.Duration) review.Reviewer {
 		return demo.Reviewer{}
 	}
+}
+
+// demoDir is deps-merger-demo in the user's own cache directory, which no
+// other user can create first, as they could one in a shared temp dir. A
+// fresh temp dir stands in when there is no cache directory, so the demo
+// still runs, though it then forgets its verdicts between runs.
+func demoDir() string {
+	if cache, err := os.UserCacheDir(); err == nil {
+		dir := filepath.Join(cache, "deps-merger-demo")
+		if os.MkdirAll(dir, 0o700) == nil {
+			return dir
+		}
+	}
+	dir, err := os.MkdirTemp("", "deps-merger-demo-")
+	if err != nil {
+		panic("demo: no directory to keep its config in: " + err.Error())
+	}
+	return dir
 }

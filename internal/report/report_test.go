@@ -295,6 +295,15 @@ func TestReportDropsControlCharacters(t *testing.T) {
 	}
 }
 
+func TestPlainDropsFormatCharacters(t *testing.T) {
+	// Bidirectional overrides and isolates, and zero-width characters,
+	// would let an agent's answer reorder or hide what the report shows.
+	in := "safe\u202e,detacerped\u202c \u2066x\u2069 a\u200bb\u200dc\ufeffd\u00ade \u00e9"
+	if got, want := Plain(in), "safe,detacerped x abcde \u00e9"; got != want {
+		t.Errorf("Plain(%q) = %q, want %q", in, got, want)
+	}
+}
+
 func TestNoColorWinsOverForce(t *testing.T) {
 	var b bytes.Buffer
 	t.Setenv("NO_COLOR", "")

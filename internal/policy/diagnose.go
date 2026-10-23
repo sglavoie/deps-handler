@@ -84,7 +84,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	if repo.OpenPRCount > repo.SearchCount {
 		out = append(out, Finding{
 			Kind:    FindingTruncated,
-			Summary: fmt.Sprintf("only %d of %d open Dependabot PRs were evaluated; the rest wait for a later run", repo.SearchCount, repo.OpenPRCount),
+			Summary: fmt.Sprintf("only the oldest %d of %d open Dependabot PRs were evaluated; newer ones wait until older ones close", repo.SearchCount, repo.OpenPRCount),
 		})
 	}
 	if len(decisions) == 0 {
@@ -166,8 +166,10 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		// A PR still waiting may yet get checks, and one that is a draft,
 		// someone else's work or in an archived repository was never
 		// judged on its checks at all. Checks that were all skipped
-		// tested nothing either.
-		if d.assessed && !anyRan(LatestChecks(d.PR.Checks)) && d.Action != ActionWait {
+		// tested nothing either. A PR skipped for its size is not left to
+		// wait, so its age says whether CI has had time to start.
+		young := repo.FetchedAt.Sub(pushedAt(d.PR)) < checksGrace
+		if d.assessed && !anyRan(LatestChecks(d.PR.Checks)) && d.Action != ActionWait && !young {
 			noChecks = append(noChecks, d.Number)
 		}
 		if d.needsReview {

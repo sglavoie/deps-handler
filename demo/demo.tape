@@ -13,7 +13,7 @@ Set Theme "Catppuccin Mocha"
 Set TypingSpeed 45ms
 
 Hide
-Type "export PATH=$PWD/.demo/bin:$PATH PS1='$ ' && rm -rf ${TMPDIR:-/tmp}/deps-merger-demo && clear"
+Type "export PATH=$PWD/.demo/bin:$PATH PS1='$ ' && rm -rf $HOME/Library/Caches/deps-merger-demo ${XDG_CACHE_HOME:-$HOME/.cache}/deps-merger-demo && clear"
 Enter
 Show
 

@@ -135,9 +135,14 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		"missing config":  {[]string{"run", "-c", missing}, 1, "config not found"},
-		"all skipped":     {[]string{"run", "-c", cfg}, 1, "every configured repo has skip: true"},
-		"unknown repo":    {[]string{"run", "-c", cfg, "-r", "zzz"}, 1, `repo "zzz" is not in the config`},
+		"missing config": {[]string{"run", "-c", missing}, 1, "config not found"},
+		"all skipped":    {[]string{"run", "-c", cfg}, 1, "every configured repo has skip: true"},
+		"unknown repo":   {[]string{"run", "-c", cfg, "-r", "zzz"}, 2, `repo "zzz" is not in the config`},
+		"ambiguous repo": {[]string{"run", "-c", writeConfig(t, "repos: [a/x, b/x]\n"), "-r", "x"}, 2, "ambiguous: x matches a/x, b/x"},
+		// An unset variable in `-r "$REPO"` must not select every repo.
+		"empty repo":      {[]string{"run", "-c", active, "-r", ""}, 2, "--repo needs a repo name"},
+		"blank repo":      {[]string{"run", "-c", active, "-r", "a, "}, 2, "--repo has an empty repo name"},
+		"blank --repo":    {[]string{"run", "-c", active, "--repo", " "}, 2, "--repo has an empty repo name"},
 		"bad repo name":   {[]string{"run", "-c", writeConfig(t, "repos: [acme/x.git]\n")}, 1, "drop the .git suffix"},
 		"unexpected arg":  {[]string{"run", "extra"}, 2, "unknown command"},
 		"unknown command": {[]string{"nope"}, 2, "unknown command"},
@@ -149,6 +154,7 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"limit alone":     {[]string{"run", "-c", active, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
 		// The command line is checked before the config is read.
 		"limit before config": {[]string{"run", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
+		"repo before config":  {[]string{"run", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, _, stderr := run(c.args...)

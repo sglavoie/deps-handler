@@ -86,6 +86,34 @@ func TestVerdictsShowHeadOfRejection(t *testing.T) {
 	}
 }
 
+func TestVerdictsShowHeadOfApprovalWithoutVersions(t *testing.T) {
+	cache, _ := verdictsState(t)
+	// The key of an update without versions, as review.Request.Key makes
+	// it: the head stands in for them, so the approval is for that head.
+	if err := cache.Put("o/a#3 actions/checkout@ 0123456789abcdef", "0123456789abcdef", "claude", policy.Verdict{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ := run("verdicts")
+	if code != 0 || !strings.Contains(out, "approved  claude  0123456") {
+		t.Fatalf("code %d:\n%s", code, out)
+	}
+	code, out, _ = run("verdicts", "--json")
+	if code != 0 || !strings.Contains(out, `"head_oid": "0123456789abcdef"`) {
+		t.Fatalf("json: code %d:\n%s", code, out)
+	}
+}
+
+func TestVerdictsPrintNoControlCharacters(t *testing.T) {
+	cache, _ := verdictsState(t)
+	if err := cache.Put("o/a#1 lib\x1b]8;;https://evil\x07@2.0.0", "sha", "cla\x1b[2Jude", policy.Verdict{Approved: true, Summary: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ := run("verdicts")
+	if code != 0 || strings.ContainsAny(out, "\x1b\x07") || !strings.Contains(out, "o/a#1 lib]8;;https://evil@2.0.0") || !strings.Contains(out, "cla[2Jude") {
+		t.Fatalf("code %d:\n%q", code, out)
+	}
+}
+
 func TestVerdictsWarnOnCorruptCache(t *testing.T) {
 	_, path := verdictsState(t)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

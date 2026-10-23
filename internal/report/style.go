@@ -55,14 +55,15 @@ func (s style) link(url, text string) string {
 
 // Plain makes text safe to print on a terminal as one line: control
 // characters, such as the escape sequences an agent's answer or a reason
-// quoting it could carry, are dropped, and line breaks and tabs become
-// spaces.
+// quoting it could carry, are dropped, as are invisible format characters,
+// such as the bidirectional overrides that would reorder the text around
+// them, and line breaks and tabs become spaces.
 func Plain(text string) string {
 	return strings.Map(func(r rune) rune {
 		switch {
 		case r == '\n' || r == '\t':
 			return ' '
-		case unicode.IsControl(r):
+		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
 			return -1
 		}
 		return r

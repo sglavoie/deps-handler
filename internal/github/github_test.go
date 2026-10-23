@@ -7,8 +7,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -70,9 +73,28 @@ func TestTransient(t *testing.T) {
 		&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Message: "Could not resolve to a Repository"}}}:                false,
 		&net.DNSError{IsTimeout: true}: true,
 		errors.New("502"):              false,
+		// The connection broke before the whole answer came back.
+		&url.Error{Op: "Put", URL: "u", Err: io.EOF}: true,
+		&url.Error{Op: "Put", URL: "u", Err: &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}}: true,
+		io.ErrUnexpectedEOF: true,
+		&url.Error{Op: "Put", URL: "u", Err: context.Canceled}: false,
 	} {
 		if got := Transient(err); got != want {
 			t.Errorf("Transient(%v) = %t, want %t", err, got, want)
+		}
+	}
+}
+
+func TestRefused(t *testing.T) {
+	for err, want := range map[error]bool{
+		&api.HTTPError{StatusCode: 422}:                         true,
+		fmt.Errorf("wrap: %w", &api.HTTPError{StatusCode: 403}): true,
+		&api.HTTPError{StatusCode: 504}:                         false,
+		&url.Error{Op: "Put", URL: "u", Err: io.EOF}:            false,
+		context.Canceled:                                        false,
+	} {
+		if got := Refused(err); got != want {
+			t.Errorf("Refused(%v) = %t, want %t", err, got, want)
 		}
 	}
 }
@@ -509,6 +531,17 @@ func TestFetchRepoWithoutChecksOrRepository(t *testing.T) {
 	if _, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "gone"); err == nil || !strings.Contains(err.Error(), "not found or not accessible") {
 		t.Fatalf("err = %v", err)
 	}
+
+	// What GitHub actually answers for a repository it cannot find.
+	notFound := `{"data": {"repository": null, "search": {"issueCount": 0, "nodes": []}}, "errors": [{"type": "NOT_FOUND", "path": ["repository"],
+	  "message": "Could not resolve to a Repository with the name 'o/gone'."}]}`
+	gql, err = api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(notFound)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "gone"); err == nil || err.Error() != "o/gone: repository not found or not accessible" {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 const rateLimitedResponse = `{"data": null, "errors": [{"type": "RATE_LIMITED", "message": "API rate limit exceeded for user ID 1."}]}`
@@ -531,6 +564,10 @@ func TestFetchRepoRateLimitedSaysWhenItLifts(t *testing.T) {
 	_, err := limited(time.Now().Add(30*time.Second)).FetchRepo(ctx, "o", "r")
 	if d, ok := RateLimited(err); !ok || d <= 0 || d > 30*time.Second {
 		t.Fatalf("RateLimited = %s, %t for %v", d, ok, err)
+	}
+	_, verr := limited(time.Now().Add(30 * time.Second)).Viewer(ctx)
+	if d, ok := RateLimited(verr); !ok || d <= 0 || d > 30*time.Second {
+		t.Fatalf("Viewer: RateLimited = %s, %t for %v", d, ok, verr)
 	}
 	if !strings.HasPrefix(err.Error(), "o/r: ") || !strings.Contains(err.Error(), "resets at") {
 		t.Fatalf("err = %v", err)

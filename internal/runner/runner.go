@@ -4,6 +4,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -42,17 +43,40 @@ type Event struct {
 type RepoResult struct {
 	Repo       string        `json:"repo"`
 	Policy     config.Policy `json:"policy"`
-	Permission string        `json:"permission,omitempty"`
+	Permission string        `json:"permission"`
 	// MergeMethod is the method merges use: the policy's, or the first one
 	// the repository allows when it does not allow that.
-	MergeMethod string            `json:"merge_method,omitempty"`
+	MergeMethod string            `json:"merge_method"`
 	Decisions   []policy.Decision `json:"decisions"`
 	Findings    []policy.Finding  `json:"findings"`
 	Events      []Event           `json:"events"`
 	// Warnings are problems that did not stop the run, such as a verdict
 	// that could not be cached.
-	Warnings []string `json:"warnings,omitempty"`
+	Warnings []string `json:"warnings"`
 	Error    string   `json:"error,omitempty"`
+}
+
+// MarshalJSON writes every list, empty ones as [] rather than null, those
+// of its decisions included, so a script can read them without checking
+// for them first.
+func (r RepoResult) MarshalJSON() ([]byte, error) {
+	type plain RepoResult
+	r.Decisions = slices.Clone(nonNil(r.Decisions))
+	for i := range r.Decisions {
+		r.Decisions[i].Dependencies = nonNil(r.Decisions[i].Dependencies)
+		r.Decisions[i].FailedChecks = nonNil(r.Decisions[i].FailedChecks)
+	}
+	r.Findings = nonNil(r.Findings)
+	r.Events = nonNil(r.Events)
+	r.Warnings = nonNil(r.Warnings)
+	return json.Marshal(plain(r))
+}
+
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 // Failed reports whether the repository could not be processed, a write
@@ -80,7 +104,8 @@ type Runner struct {
 	Apply  bool
 
 	// PollAttempts and PollInterval bound how long to wait for GitHub to
-	// recompute mergeability after a merge.
+	// recompute mergeability after a merge. Sleep waits for a duration
+	// unless the context ends first; nil uses a timer.
 	PollAttempts int
 	PollInterval time.Duration
 	Sleep        func(context.Context, time.Duration) error
@@ -90,9 +115,10 @@ type Runner struct {
 	// writes serialises merges and comments across repositories: GitHub
 	// asks clients not to make concurrent writes for one user.
 	writes sync.Mutex
-	// writesBlocked is the rate limit that refused a write and was not
-	// waited out; later writes in the run are not sent. Guarded by writes.
-	writesBlocked error
+	// writesBlocked is set once a rate limit refused a write and was not
+	// waited out, or refused it again after it was; later writes in the
+	// run are not sent.
+	writesBlocked atomic.Bool
 
 	// Reviewer, when set, has an agent judge PRs the policy alone would
 	// not merge because of their size.
@@ -101,6 +127,10 @@ type Runner struct {
 	AgentName string
 	// Verdicts keeps verdicts between runs; nil keeps them for this run.
 	Verdicts *review.Cache
+	// verdictsMu keeps storing a verdict and asking Verdicts whether that
+	// found the cache file unreadable together, so the warning goes to the
+	// repository whose verdict found it.
+	verdictsMu sync.Mutex
 	// MaxReviews caps agent reviews across the whole run; 0 is no cap.
 	MaxReviews int
 	// ReviewParallel is how many agent reviews run at once.
@@ -185,12 +215,16 @@ func (r *Runner) comment(ctx context.Context, rc config.Repo, number int, body s
 // gone through.
 var errNotSent = errors.New("not sent")
 
+// errWritesBlocked is a write not sent because an earlier one hit a rate
+// limit.
+var errWritesBlocked = fmt.Errorf("%w: an earlier write hit GitHub's rate limit; a later run tries again", errNotSent)
+
 // interruptedInFlight reports whether the run was interrupted while the
 // write that failed with err was on its way, so it may have gone through:
-// it was sent, and GitHub did not refuse it for a rate limit.
+// it was sent, and GitHub did not answer that it refused it. A 502, 503 or
+// 504 is no such answer: the write may have gone through all the same.
 func interruptedInFlight(ctx context.Context, err error) bool {
-	_, limited := github.RateLimited(err)
-	return ctx.Err() != nil && !errors.Is(err, errNotSent) && !limited
+	return ctx.Err() != nil && !errors.Is(err, errNotSent) && !github.Refused(err)
 }
 
 // write makes one write at a time across repositories, once more after
@@ -202,8 +236,8 @@ func interruptedInFlight(ctx context.Context, err error) bool {
 func (r *Runner) write(ctx context.Context, f func() error) error {
 	r.writes.Lock()
 	defer r.writes.Unlock()
-	if r.writesBlocked != nil {
-		return fmt.Errorf("%w: an earlier write hit GitHub's rate limit; a later run tries again", errNotSent)
+	if r.writesBlocked.Load() {
+		return errWritesBlocked
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("%w: %w", errNotSent, err)
@@ -213,19 +247,30 @@ func (r *Runner) write(ctx context.Context, f func() error) error {
 	if !ok || ctx.Err() != nil {
 		return err
 	}
-	if d <= github.MaxRateLimitWait {
-		if err := r.Sleep(ctx, d); err != nil {
-			return fmt.Errorf("%w: %w", errNotSent, err)
-		}
-		if err = f(); err == nil {
-			return nil
-		}
-		if _, ok := github.RateLimited(err); !ok {
-			return err
-		}
+	if d > github.MaxRateLimitWait {
+		r.writesBlocked.Store(true)
+		return github.NotWaiting(err)
 	}
-	r.writesBlocked = err
-	return github.NotWaiting(err)
+	if err := r.sleep(ctx, d); err != nil {
+		return fmt.Errorf("%w: %w", errNotSent, err)
+	}
+	if err = f(); err == nil {
+		return nil
+	}
+	if _, ok := github.RateLimited(err); !ok {
+		return err
+	}
+	r.writesBlocked.Store(true)
+	return fmt.Errorf("%w; rate-limited again after waiting %s; later writes not sent", err, d.Round(time.Second))
+}
+
+// sleep waits for d with Sleep, or with a timer when Sleep is not set, as
+// in a Runner not made by New, unless ctx ends first.
+func (r *Runner) sleep(ctx context.Context, d time.Duration) error {
+	if r.Sleep == nil {
+		return github.Sleep(ctx, d)
+	}
+	return r.Sleep(ctx, d)
 }
 
 func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
@@ -283,8 +328,11 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		for _, n := range slices.Sorted(maps.Keys(unsure)) {
 			p := unsure[n]
 			switch state, err := r.prState(ctx, rc, n); {
-			case err != nil:
+			case err != nil && p.uncertain:
 				resolve(n, p.failed(fmt.Sprintf("may have merged after %s, but GitHub could not say: %s", p.cause, errText(ctx, err))))
+			case err != nil:
+				// GitHub refused the merge: it did not go through.
+				resolve(n, p.failed(p.cause))
 			case state != github.PROpen:
 				resolve(n, p.outcome(state))
 			case p.failure != "":
@@ -294,6 +342,11 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			}
 		}
 		return res
+	}
+	// fail ends the pass with err as the reason it could not go on.
+	fail := func(err error) RepoResult {
+		res.Error = errText(ctx, err)
+		return finish()
 	}
 	polls := 0
 	rv := &repoReviews{verdicts: map[string]runVerdict{}, moved: map[int]int{}, res: &res}
@@ -316,8 +369,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	for {
 		repo, err := r.fetch(ctx, rc)
 		if err != nil {
-			res.Error = errText(ctx, err)
-			return finish()
+			return fail(err)
 		}
 		settle(repo)
 		res.Permission = repo.Permission
@@ -326,130 +378,127 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		decisions := policy.Evaluate(repo, rc.Policy, r.Viewer, judge)
 		res.Decisions = decisions
 		res.Findings = policy.Diagnose(repo, rc.Policy, decisions)
-		// GitHub computes mergeability lazily: the first query after a push
-		// or a merge often says UNKNOWN, and asking again resolves it.
-		poll := func() (bool, error) {
-			if !recomputing(decisions) || polls >= r.PollAttempts {
-				return false, nil
-			}
-			polls++
-			return true, r.Sleep(ctx, r.PollInterval)
-		}
-		if !r.Apply {
-			if r.reviewNext(ctx, rc, decisions, rv) {
-				continue
-			}
-			again, err := poll()
-			if err != nil {
-				res.Error = errText(ctx, err)
-			}
-			if again && err == nil {
-				continue
-			}
-			return finish()
-		}
-
-		for _, d := range decisions {
-			if d.Action != policy.ActionRebase || rebased[d.Number] {
-				continue
-			}
-			rebased[d.Number] = true
-			ev := Event{Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventRebaseRequested, Detail: r.approval(d)}
-			switch err := r.comment(ctx, rc, d.Number, policy.RebaseCommand); {
-			case err == nil:
-			case github.Transient(err) && ctx.Err() == nil:
-				// A comment that timed out or met a 5xx may well have been
-				// posted, and asking twice is harmless while failing the
-				// run over it is not: report it requested, with a warning.
-				// If it was not posted, the next run asks again.
-				ev.Detail = joinDetail(ev.Detail, "may not have been posted: "+err.Error())
-				res.Warnings = append(res.Warnings, fmt.Sprintf("#%d: the rebase request may not have been posted: %v", d.Number, err))
-			case interruptedInFlight(ctx, err):
-				// It may have been posted, as above.
-				ev.Detail = joinDetail(ev.Detail, "may not have been posted: interrupted")
-				res.Warnings = append(res.Warnings, fmt.Sprintf("#%d: the rebase request may not have been posted: interrupted", d.Number))
-			default:
-				ev.Kind, ev.Detail = EventRebaseFailed, errText(ctx, err)
-			}
-			res.Events = append(res.Events, ev)
-		}
 
 		var next *policy.Decision
-		for i := range decisions {
-			if decisions[i].Action == policy.ActionMerge && !attempted[decisions[i].Number] {
-				next = &decisions[i]
-				break
+		if r.Apply {
+			for _, d := range decisions {
+				if d.Action != policy.ActionRebase || rebased[d.Number] {
+					continue
+				}
+				rebased[d.Number] = true
+				ev := Event{Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventRebaseRequested, Detail: r.approval(d)}
+				switch err := r.comment(ctx, rc, d.Number, policy.RebaseCommand); {
+				case err == nil:
+				case github.Transient(err) && ctx.Err() == nil:
+					// A comment that timed out or met a 5xx may well have been
+					// posted, and asking twice is harmless while failing the
+					// run over it is not: report it requested, with a warning.
+					// If it was not posted, the next run asks again.
+					ev.Detail = joinDetail(ev.Detail, "may not have been posted: "+err.Error())
+					res.Warnings = append(res.Warnings, fmt.Sprintf("#%d: the rebase request may not have been posted: %v", d.Number, err))
+				case interruptedInFlight(ctx, err):
+					// It may have been posted, as above.
+					ev.Detail = joinDetail(ev.Detail, "may not have been posted: interrupted")
+					res.Warnings = append(res.Warnings, fmt.Sprintf("#%d: the rebase request may not have been posted: interrupted", d.Number))
+				default:
+					ev.Kind, ev.Detail = EventRebaseFailed, errText(ctx, err)
+				}
+				res.Events = append(res.Events, ev)
 			}
-		}
-		if next == nil {
-			// Reviews come after merges: they take minutes, and the PRs
-			// that need none should not wait on them.
-			if r.reviewNext(ctx, rc, decisions, rv) {
-				continue
+
+			for i := range decisions {
+				if decisions[i].Action == policy.ActionMerge && !attempted[decisions[i].Number] {
+					next = &decisions[i]
+					break
+				}
 			}
-			again, err := poll()
-			if err != nil {
-				res.Error = errText(ctx, err)
-			}
-			if again && err == nil {
-				continue
-			}
-			return finish()
 		}
 
-		attempted[next.Number] = true
-		// This try supersedes an earlier one that may have gone through:
-		// it merges, or fails in a way that tells whether that one did.
-		delete(unsure, next.Number)
-		ev := Event{Number: next.Number, Title: next.Title, URL: next.URL, Grade: next.Grade, Kind: EventMerged}
-		err = methodErr
-		if err == nil {
-			err = r.merge(ctx, rc, next.Number, method, next.PR.HeadOID)
-		}
-		uncertain := err != nil && github.Transient(err)
-		if uncertain && doubted[next.Number] == "" {
-			doubted[next.Number] = err.Error()
-		}
-		if err != nil && (github.Retryable(err) || uncertain) && !retried[next.Number] {
-			// GitHub may not have caught up with the previous merge yet:
-			// wait, refetch, and try this PR once more. A merge that timed
-			// out may have gone through: if the PR is gone, it did.
-			retried[next.Number] = true
-			delete(attempted, next.Number)
-			// Kept pending until it is tried again, so that a PR GitHub
-			// shows unmergeable from now on is still reported failed.
-			ev.Detail = joinDetail(method, r.approval(*next), "after "+err.Error())
-			unsure[next.Number] = pendingMerge{merged: ev, cause: err.Error()}
-			if err := r.Sleep(ctx, r.PollInterval); err != nil {
-				res.Error = errText(ctx, err)
-				return finish()
+		if next != nil {
+			attempted[next.Number] = true
+			// This try supersedes an earlier one that may have gone through:
+			// it merges, or fails in a way that tells whether that one did.
+			delete(unsure, next.Number)
+			ev := Event{Number: next.Number, Title: next.Title, URL: next.URL, Grade: next.Grade, Kind: EventMerged}
+			err = methodErr
+			if err == nil {
+				err = r.merge(ctx, rc, next.Number, method, next.PR.HeadOID)
 			}
+			// A merge the interruption cut short is reported below.
+			uncertain := err != nil && github.Transient(err) && ctx.Err() == nil
+			if uncertain && doubted[next.Number] == "" {
+				doubted[next.Number] = err.Error()
+			}
+			if err != nil && (github.Retryable(err) || uncertain) && !retried[next.Number] && ctx.Err() == nil {
+				// GitHub may not have caught up with the previous merge yet:
+				// wait, refetch, and try this PR once more. A merge that timed
+				// out may have gone through: if the PR is gone, it did.
+				retried[next.Number] = true
+				delete(attempted, next.Number)
+				// Kept pending until it is tried again, so that a PR GitHub
+				// shows unmergeable from now on is still reported failed.
+				ev.Detail = joinDetail(method, r.approval(*next), "after "+err.Error())
+				unsure[next.Number] = pendingMerge{merged: ev, cause: err.Error(), uncertain: uncertain}
+				if err := r.sleep(ctx, r.PollInterval); err != nil {
+					return fail(err)
+				}
+				continue
+			}
+			if cause := doubted[next.Number]; err != nil && cause != "" && ctx.Err() == nil {
+				// One of the attempts may have merged the PR, and GitHub can
+				// still show it open a moment later, so the retry's 405 or 409
+				// may only mean it is already merged: read it again before
+				// calling the merge failed.
+				ev.Detail = joinDetail(method, r.approval(*next), "after "+cause)
+				unsure[next.Number] = pendingMerge{merged: ev, cause: cause, failure: errText(ctx, err), uncertain: true}
+				if err := r.sleep(ctx, r.PollInterval); err != nil {
+					return fail(err)
+				}
+				continue
+			}
+			switch cause := doubted[next.Number]; {
+			case err != nil && ctx.Err() != nil && cause != "":
+				// An earlier attempt may have made it, and there is no
+				// asking now.
+				ev.Kind, ev.Detail = EventMergeFailed, "interrupted; may have merged after "+cause
+			case err != nil && methodErr == nil && interruptedInFlight(ctx, err):
+				// GitHub may have made it, and there is no asking now.
+				ev.Kind, ev.Detail = EventMergeFailed, "interrupted; may have merged"
+			case err != nil:
+				ev.Kind, ev.Detail = EventMergeFailed, errText(ctx, err)
+			default:
+				ev.Detail = joinDetail(method, r.approval(*next))
+				polls = 0
+			}
+			res.Events = append(res.Events, ev)
+			if !r.writesBlocked.Load() {
+				continue
+			}
+			// No write can be sent for the rest of the run: report this
+			// pass's other merges as not sent, rather than read the
+			// repository again for each, and go on to the reviews.
+			for _, d := range decisions {
+				if d.Action == policy.ActionMerge && !attempted[d.Number] {
+					attempted[d.Number] = true
+					res.Events = append(res.Events, Event{Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventMergeFailed, Detail: errWritesBlocked.Error()})
+				}
+			}
+		}
+
+		// Reviews come after merges: they take minutes, and the PRs that
+		// need none should not wait on them.
+		if r.reviewNext(ctx, rc, decisions, rv) {
 			continue
 		}
-		if cause := doubted[next.Number]; err != nil && cause != "" && ctx.Err() == nil {
-			// One of the attempts may have merged the PR, and GitHub can
-			// still show it open a moment later, so the retry's 405 or 409
-			// may only mean it is already merged: read it again before
-			// calling the merge failed.
-			ev.Detail = joinDetail(method, r.approval(*next), "after "+cause)
-			unsure[next.Number] = pendingMerge{merged: ev, cause: cause, failure: errText(ctx, err)}
-			if err := r.Sleep(ctx, r.PollInterval); err != nil {
-				res.Error = errText(ctx, err)
-				return finish()
-			}
-			continue
+		// GitHub computes mergeability lazily: the first query after a push
+		// or a merge often says UNKNOWN, and asking again resolves it.
+		if !recomputing(decisions) || polls >= r.PollAttempts {
+			return finish()
 		}
-		switch {
-		case err != nil && methodErr == nil && interruptedInFlight(ctx, err):
-			// GitHub may have made it, and there is no asking now.
-			ev.Kind, ev.Detail = EventMergeFailed, "interrupted; may have merged"
-		case err != nil:
-			ev.Kind, ev.Detail = EventMergeFailed, errText(ctx, err)
-		default:
-			ev.Detail = joinDetail(method, r.approval(*next))
-			polls = 0
+		polls++
+		if err := r.sleep(ctx, r.PollInterval); err != nil {
+			return fail(err)
 		}
-		res.Events = append(res.Events, ev)
 	}
 }
 
@@ -459,6 +508,9 @@ type pendingMerge struct {
 	merged Event
 	// cause is the failure that may hide a success.
 	cause string
+	// uncertain says cause leaves in doubt whether the merge went through,
+	// as a 504 does; a 405 or 409 says it did not.
+	uncertain bool
 	// failure is reported if the PR is still open and was already tried
 	// twice; when empty, it is tried once more instead.
 	failure string
@@ -483,7 +535,7 @@ func (p pendingMerge) failed(detail string) Event {
 // prState asks GitHub whether PR number is open, merged or closed, once
 // more when it fails in a way that may pass.
 func (r *Runner) prState(ctx context.Context, rc config.Repo, number int) (github.PRState, error) {
-	return github.Again(ctx, r.PollInterval, r.Sleep, func() (github.PRState, error) {
+	return github.Again(ctx, r.PollInterval, r.sleep, func() (github.PRState, error) {
 		return r.Client.PullRequestState(ctx, rc.Owner, rc.Name, number)
 	})
 }
@@ -491,7 +543,7 @@ func (r *Runner) prState(ctx context.Context, rc config.Repo, number int) (githu
 // fetch reads the repository, once more when GitHub fails in a way that
 // may pass.
 func (r *Runner) fetch(ctx context.Context, rc config.Repo) (*github.Repo, error) {
-	return github.Again(ctx, r.PollInterval, r.Sleep, func() (*github.Repo, error) {
+	return github.Again(ctx, r.PollInterval, r.sleep, func() (*github.Repo, error) {
 		return r.Client.FetchRepo(ctx, rc.Owner, rc.Name)
 	})
 }
@@ -569,11 +621,15 @@ func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []pol
 		if err != nil {
 			v = policy.Verdict{Concerns: []string{}, Error: errText(ctx, err)}
 		} else if r.Verdicts != nil {
-			if err := r.Verdicts.Put(key, req.HeadOID, r.AgentName, v); err != nil {
+			r.verdictsMu.Lock()
+			err := r.Verdicts.Put(key, req.HeadOID, r.AgentName, v)
+			recovered := r.Verdicts.TakeRecovered()
+			r.verdictsMu.Unlock()
+			if err != nil {
 				rv.res.Warnings = append(rv.res.Warnings, fmt.Sprintf("#%d: verdict not cached: %v", d.Number, err))
 			}
-			if msg := r.Verdicts.TakeRecovered(); msg != "" {
-				rv.res.Warnings = append(rv.res.Warnings, msg)
+			if recovered != "" {
+				rv.res.Warnings = append(rv.res.Warnings, recovered)
 			}
 		}
 		rv.verdicts[key] = runVerdict{&v, req.HeadOID}

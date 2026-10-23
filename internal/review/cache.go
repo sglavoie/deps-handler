@@ -55,6 +55,14 @@ type Entry struct {
 	Verdict policy.Verdict
 }
 
+// PinsHead reports whether the key of e holds the head commit reviewed, as
+// for an update without versions, such as a Docker digest or an action
+// pinned by commit: its verdict, even an approval, then holds for that
+// head only, since a rebase changes the key.
+func (e Entry) PinsHead() bool {
+	return e.HeadOID != "" && strings.HasSuffix(e.Key, " "+e.HeadOID)
+}
+
 // OpenCache reads the cache at path; a missing or empty file is an empty
 // cache. A file that cannot be read as one is moved aside, and
 // TakeRecovered says so.
@@ -192,14 +200,15 @@ func (c *Cache) Put(key, head, agent string, v policy.Verdict) error {
 
 // Forget drops the verdicts of a repository ("owner/name"), of one PR
 // ("owner/name#7") or under one full key, ignoring case, and returns how
-// many it dropped.
+// many it dropped. Expired verdicts, which Entries leaves out, are not
+// counted: they are dropped on any write anyway.
 func (c *Cache) Forget(target string) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	n := 0
 	err := c.update(func(entries map[string]cacheEntry) {
 		for k := range entries {
-			if Matches(k, target) {
+			if Matches(k, target) && !c.expired(entries[k]) {
 				delete(entries, k)
 				n++
 			}

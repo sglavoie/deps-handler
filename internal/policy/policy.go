@@ -42,7 +42,7 @@ type Decision struct {
 	Dependencies []dependabot.Dependency `json:"dependencies"`
 	Action       Action                  `json:"action"`
 	Reason       string                  `json:"reason"`
-	FailedChecks []string                `json:"failed_checks,omitempty"`
+	FailedChecks []string                `json:"failed_checks"`
 	// Verdict is the agent's review, for a PR the policy alone would not
 	// merge because of its size.
 	Verdict *Verdict `json:"verdict,omitempty"`
@@ -57,7 +57,8 @@ type Decision struct {
 	// needsReview is true when branch protection wants an approval.
 	needsReview bool
 	// heldForSize is true for a PR skipped for its size alone: it would
-	// merge or rebase if the policy allowed updates that size.
+	// merge, rebase or wait (for its checks, say) if the policy allowed
+	// updates that size.
 	heldForSize bool
 }
 
@@ -286,7 +287,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 			reviewed := p
 			reviewed.AgentReview = true
 			switch evaluate(repo, pr, reviewed, viewer, approveAll).Action {
-			case ActionMerge, ActionRebase:
+			case ActionMerge, ActionRebase, ActionWait:
 				d.heldForSize = true
 			}
 			return skip("%s", oversized)

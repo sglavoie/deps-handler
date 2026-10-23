@@ -135,6 +135,21 @@ func TestDiagnoseNoChecksIgnoresWaitingPRs(t *testing.T) {
 	}
 }
 
+// A PR skipped for its size never reaches the wait for CI to start, but
+// its CI may not have started yet all the same.
+func TestDiagnoseNoChecksIgnoresNewOversizedPRs(t *testing.T) {
+	fresh := testutil.PR(1, "lib:major")
+	fresh.Checks = nil
+	fresh.Commits[0].CommittedDate = testutil.Fetched.Add(-2 * time.Minute)
+	f := findings(testutil.Repo(fresh))
+	if held := f[FindingHeldMajor]; len(held) != 1 || held[0].PRs[0] != 1 {
+		t.Errorf("held-major = %+v", held)
+	}
+	if len(f[FindingNoChecks]) != 0 {
+		t.Errorf("no-checks = %+v; CI may not have started yet", f[FindingNoChecks])
+	}
+}
+
 func TestDiagnoseNoChecksIgnoresUnassessedPRs(t *testing.T) {
 	noCI := func(pr github.PullRequest) github.PullRequest {
 		pr.Checks = nil

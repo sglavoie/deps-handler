@@ -21,7 +21,9 @@ var ErrHeadMoved = errors.New("head moved")
 type Workspace struct {
 	Root string
 	// Token authenticates fetches from github.com; it is passed to git
-	// through the environment, never on the command line.
+	// through the environment, never on the command line. On Linux, a
+	// process of the user's, such as Codex reading what its sandbox
+	// allows, can read it there while git runs.
 	Token string
 	// URL returns the remote of a repository; github.com over HTTPS when
 	// nil.
@@ -90,7 +92,8 @@ func (w *Workspace) checkout(ctx context.Context, dir, owner, name string, numbe
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		if err := w.git(ctx, dir, "init", "-q"); err != nil {
+		// No template: the user's would put their hooks in the checkout.
+		if err := w.git(ctx, dir, "init", "-q", "--template="); err != nil {
 			return err
 		}
 	}
@@ -198,12 +201,28 @@ func (w *Workspace) git(ctx context.Context, dir string, args ...string) error {
 	return err
 }
 
+// output runs git in the checkout in dir and returns what it printed.
+// The checkout holds untrusted code and git has the token, so the user's
+// hooks and fsmonitor do not run there, and git is told which repository
+// to work on rather than read it from an inherited GIT_DIR.
 func (w *Workspace) output(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	opts := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}
+	if args[0] != "init" {
+		// git init would record the work tree in the config.
+		opts = append(opts, "--git-dir=.git", "--work-tree=.")
+	}
+	cmd := exec.CommandContext(ctx, "git", append(opts, args...)...)
 	cmd.Dir = dir
 	// Git LFS would download every large file at checkout, for an agent
 	// that reads code; the pointer files say what changed.
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1")
+	cmd.Env = append(agentEnv(), "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1")
+	// A remote the user's config rewrites to SSH must not wait on a
+	// question no one can answer. An ssh command of the user's own is
+	// kept; noTerminal stops it asking all the same.
+	if os.Getenv("GIT_SSH_COMMAND") == "" && os.Getenv("GIT_SSH") == "" {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
+	noTerminal(cmd)
 	if w.Token != "" {
 		auth := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + w.Token))
 		cmd.Env = append(cmd.Env,

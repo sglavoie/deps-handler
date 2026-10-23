@@ -252,6 +252,10 @@ const ChecksGrace = 30 * time.Minute
 // Builtin is the policy used when neither defaults nor a repo override it.
 var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true}
 
+// exampleURL is the annotated example config, which a `go install` leaves
+// no copy of.
+const exampleURL = "https://github.com/sglavoie/deps-merger/blob/main/config.example.yaml"
+
 // DefaultPath returns $XDG_CONFIG_HOME/deps-merger/config.yaml, falling back
 // to ~/.config/deps-merger/config.yaml.
 func DefaultPath() (string, error) {
@@ -296,7 +300,7 @@ func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("config not found at %s (see config.example.yaml)", path)
+			return nil, fmt.Errorf("config not found at %s (see %s)", path, exampleURL)
 		}
 		return nil, err
 	}
@@ -309,7 +313,7 @@ func Parse(data []byte) (*Config, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&f); errors.Is(err, io.EOF) {
-		return nil, errors.New("config is empty (see config.example.yaml)")
+		return nil, errors.New("config is empty (see " + exampleURL + ")")
 	} else if err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
@@ -489,7 +493,7 @@ func expandHome(field, path string) (string, error) {
 }
 
 // Filter keeps only the repos named in only (case-insensitive owner/name or
-// bare name), including skipped ones, each once and in config order. An
+// bare name, around which spaces are ignored), including skipped ones, each once and in config order. An
 // empty filter keeps every repo not marked skip. A bare name shared by
 // repos of several owners is an error rather than a pick of them all.
 func (c *Config) Filter(only []string) ([]Repo, error) {
@@ -504,7 +508,7 @@ func (c *Config) Filter(only []string) ([]Repo, error) {
 	}
 	picked := make([]bool, len(c.Repos))
 	for _, want := range only {
-		w := strings.ToLower(want)
+		w := strings.ToLower(strings.TrimSpace(want))
 		var matches []int
 		for i, r := range c.Repos {
 			if strings.ToLower(r.FullName()) == w || strings.ToLower(r.Name) == w {

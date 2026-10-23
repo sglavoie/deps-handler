@@ -13,6 +13,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
@@ -223,7 +224,7 @@ func (c *client) Viewer(ctx context.Context) (string, error) {
 		Viewer struct{ Login string }
 	}
 	if err := c.gql.DoWithContext(ctx, `query{viewer{login}}`, nil, &resp); err != nil {
-		return "", err
+		return "", c.withReset(ctx, err)
 	}
 	return resp.Viewer.Login, nil
 }
@@ -360,10 +361,13 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		"search": fmt.Sprintf("repo:%s/%s is:pr is:open author:app/dependabot sort:created-asc", owner, name),
 	}
 	var resp gqlRepo
-	if err := c.gql.DoWithContext(ctx, repoQuery, vars, &resp); err != nil {
+	err := c.gql.DoWithContext(ctx, repoQuery, vars, &resp)
+	if err != nil && !repoNotFound(err) {
 		return nil, fmt.Errorf("%s/%s: %w", owner, name, c.withReset(ctx, err))
 	}
-	if resp.Repository == nil {
+	// GitHub answers for a repository that does not exist, or that the
+	// token cannot see, with a NOT_FOUND error rather than a null one.
+	if err != nil || resp.Repository == nil {
 		return nil, fmt.Errorf("%s/%s: repository not found or not accessible", owner, name)
 	}
 	r := &Repo{
@@ -558,7 +562,7 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 		// connection can be reused when that is all there is; a huge
 		// remainder costs more to read than a new connection.
 		_, _ = io.CopyN(io.Discard, resp.Body, 64<<10)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxDiffBytes+1))
 	if err != nil {
@@ -602,14 +606,36 @@ func (c *client) PullRequestState(ctx context.Context, owner, name string, numbe
 	return PRClosed, nil
 }
 
+// repoNotFound reports whether err is GitHub saying the repository a
+// query asked for does not exist or cannot be seen.
+func repoNotFound(err error) bool {
+	var ge *api.GraphQLError
+	if errors.As(err, &ge) {
+		for _, e := range ge.Errors {
+			if e.Type == "NOT_FOUND" && len(e.Path) > 0 && e.Path[0] == "repository" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Transient reports whether a failed call may succeed if made again:
 // GitHub answers a heavy query it could not finish in time with a 502 or
-// 504, or with a GraphQL error saying something went wrong. For a merge or
-// comment, it means the write may have gone through all the same.
+// 504, or with a GraphQL error saying something went wrong, and a
+// connection can time out, or be closed or reset, on the way. For a merge
+// or comment, it means the write may have gone through all the same. A
+// call cut short by the run being cancelled can fail in these ways too:
+// callers rule that out first.
 func Transient(err error) bool {
 	var he *api.HTTPError
 	if errors.As(err, &he) {
 		return he.StatusCode == 502 || he.StatusCode == 503 || he.StatusCode == 504
+	}
+	// The connection was closed or reset before the whole response came
+	// back: the request may have reached GitHub, and nothing says it failed.
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) {
+		return true
 	}
 	var ge *api.GraphQLError
 	if errors.As(err, &ge) {
@@ -764,6 +790,14 @@ func Sleep(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+// Refused reports whether GitHub answered a call with an error status that
+// says it was not carried out: any but the 502, 503 and 504 Transient
+// counts, after which a write may have gone through all the same.
+func Refused(err error) bool {
+	var he *api.HTTPError
+	return errors.As(err, &he) && !Transient(err)
 }
 
 // Retryable reports whether a failed merge may succeed once GitHub catches

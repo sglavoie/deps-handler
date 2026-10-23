@@ -57,7 +57,8 @@ report; ones that could not be processed are still shown.
 
 Exits 1 if a repository could not be processed or a merge or rebase request
 failed or an agent review could not be done, 2 when the command line is
-wrong, and 130 when interrupted.`,
+wrong (including a --repo the config does not list), and 130 when
+interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Flags first: a mistake in the command line is reported
@@ -72,13 +73,27 @@ wrong, and 130 when interrupted.`,
 			if agentName != "" && !config.ValidAgent(strings.ToLower(agentName)) {
 				return usageError{fmt.Errorf("unknown agent %q (want %s)", agentName, strings.Join(config.Agents, " or "))}
 			}
+			// An empty --repo, as an unset variable in a script gives,
+			// must not mean every repo, as no --repo at all does.
+			if cmd.Flags().Changed("repo") {
+				if len(repos) == 0 {
+					return usageError{errors.New("--repo needs a repo name")}
+				}
+				for i := range repos {
+					if repos[i] = strings.TrimSpace(repos[i]); repos[i] == "" {
+						return usageError{errors.New("--repo has an empty repo name")}
+					}
+				}
+			}
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
 			}
 			selected, err := cfg.Filter(repos)
 			if err != nil {
-				return err
+				// A repo the config lacks is a mistake of the command
+				// line, not of the config.
+				return usageError{err}
 			}
 			if len(selected) == 0 {
 				return errors.New("every configured repo has skip: true; name one with --repo to run it")
