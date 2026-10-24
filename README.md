@@ -141,8 +141,9 @@ after waiting 20s`), no further merge or comment is sent in that run, as
 writing on through a rate limit is what GitHub penalises: each is reported
 failed (`not sent`), and the next run tries again. The merges left in a
 repository's pass are then all reported so at once, without reading the
-repository again for each. Up to four repositories are
-processed at once, but merges and comments are never sent concurrently.
+repository again for each. Up to ten repositories are
+processed at once (`--parallel`), but merges and comments are never sent
+concurrently.
 
 PRs not opened by Dependabot are never fetched: the query asks GitHub only
 for `author:app/dependabot`, and the author is checked again locally.
@@ -189,7 +190,7 @@ holds it) or SSH keys, and whatever an agent reads goes to its model
 provider. On Linux that includes the environment of your other processes
 under `/proc`: deps-merger's own, with `GH_TOKEN` or `GITHUB_TOKEN` if
 you set one, and that of a git fetching another PR's checkout meanwhile
-(reviews run two at a time), which holds the token deps-merger fetches
+(reviews run four at a time by default), which holds the token deps-merger fetches
 with. Something that looks like a GitHub token (`ghp_`, `gho_`,
 `ghu_`, `ghs_`, `ghr_`, `github_pat_`) in the agent's summary or
 concerns is replaced by `[redacted token]` before it is cached or
@@ -248,8 +249,10 @@ token, so they cannot fake their own end. It says the same of files in the
 checkout that come from the dependency, such as vendored code and
 lockfiles.
 
-Reviews run after the run's other merges, two at a time, at most
-`--max-reviews` (default 10) per run. Verdicts are kept for 14 days in
+Reviews run after the run's other merges, four at a time
+(`--review-parallel`), at most `--max-reviews` (default 10) per run. A
+repository reviews its PRs one after another, so more reviews than
+`--parallel` never run at once. Verdicts are kept for 14 days in
 `~/.local/state/deps-merger/verdicts.json`, keyed by the PR (ignoring the
 case of `owner/name`) and the versions it moves to: a new version is
 always reviewed again. The key leaves out the agent, so a verdict one
@@ -287,7 +290,8 @@ settings to use; `codex.home` is passed as `CODEX_HOME`. Set
 `agent_review: false` on a repo to keep the agent out of it; its report
 header then says `no agent review`. When every repo a run selects sets it,
 `--review` says so and runs without the agent, which need not be
-installed. `--max-reviews` without `--review` or `--agent` is an error.
+installed. `--max-reviews` or `--review-parallel` without `--review` or
+`--agent` is an error.
 
 ## What needs attention
 
@@ -337,7 +341,8 @@ run's review approved without asking the agent again. For
   GitHub's GraphQL limit, deps-merger asks GitHub when it resets, and does
   not wait when it cannot tell);
 - `2`: the command line is wrong (an unknown command or flag, a missing
-  argument, `--max-reviews` without `--review`, an empty `--repo`, or one
+  argument, `--max-reviews` or `--review-parallel` without `--review`, a
+  `--parallel` or `--review-parallel` below 1, an empty `--repo`, or one
   the config does not list or lists under several owners, an empty
   `--owner`, one written `owner/name`, or one no configured repo has), and
   nothing runs; all but the repo and owner names are checked before the

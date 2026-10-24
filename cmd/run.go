@@ -34,6 +34,8 @@ func newRunCmd() *cobra.Command {
 		agentName  string
 		maxReviews int
 		open       bool
+		parallel   int
+		reviewPar  int
 	)
 	c := &cobra.Command{
 		Use:   "run",
@@ -43,8 +45,8 @@ func newRunCmd() *cobra.Command {
 Without --apply this is a dry run: it reports what would be merged or
 rebased and what needs fixing, and changes nothing. With --apply it merges
 safe PRs one at a time per repository and comments "@dependabot rebase" on
-safe PRs that are behind their base branch. Up to four repositories are
-processed at once; the report keeps the config order.
+safe PRs that are behind their base branch. Up to --parallel repositories
+are processed at once; the report keeps the config order.
 
 With --review (or --agent), an AI agent judges the PRs the policy alone
 would not merge because of their size: updates over max_update_type and
@@ -52,7 +54,8 @@ updates of unknown size, once everything else about them is safe. The
 agent only reads a checkout of the PR; an update it approves is merged
 like any other, after every check has been made again. Verdicts are
 cached, so a scheduled run does not pay twice for the same update. A dry
-run reviews too, and shows what would be merged.
+run reviews too, and shows what would be merged. Up to --review-parallel
+agents run at once.
 
 With --repo and --owner, only the named repositories and the repositories
 of the named owners run; --owner leaves out repositories set to skip: true,
@@ -77,6 +80,15 @@ interrupted.`,
 			}
 			if maxReviews < 0 {
 				return usageError{errors.New("--max-reviews must not be negative")}
+			}
+			if cmd.Flags().Changed("review-parallel") && !wantReviews {
+				return usageError{errors.New("--review-parallel needs --review or --agent")}
+			}
+			if parallel < 1 {
+				return usageError{errors.New("--parallel must be at least 1")}
+			}
+			if reviewPar < 1 {
+				return usageError{errors.New("--review-parallel must be at least 1")}
 			}
 			if agentName != "" && !config.ValidAgent(strings.ToLower(agentName)) {
 				return usageError{fmt.Errorf("unknown agent %q (want %s)", agentName, strings.Join(config.Agents, " or "))}
@@ -169,6 +181,7 @@ interrupted.`,
 				progress = func(r runner.RepoResult) { report.Progress(errOut, r) }
 			}
 			r := runner.New(client, viewer, apply)
+			r.Parallel, r.ReviewParallel = parallel, reviewPar
 			if agent != nil {
 				release, err := setupReviews(r, cfg, agent, client, maxReviews)
 				if err != nil {
@@ -211,6 +224,8 @@ interrupted.`,
 	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+strings.Join(config.Agents, " or ")+" (default from config; implies --review)")
 	c.Flags().BoolVar(&open, "open", false, "only report repos with open Dependabot PRs")
 	c.Flags().IntVar(&maxReviews, "max-reviews", 10, "most agent reviews in one run (0 for no limit)")
+	c.Flags().IntVar(&parallel, "parallel", runner.DefaultParallel, "most repositories processed at once")
+	c.Flags().IntVar(&reviewPar, "review-parallel", runner.DefaultReviewParallel, "most agent reviews run at once")
 	return c
 }
 

@@ -151,8 +151,17 @@ func (r *Runner) Warn(msg string) {
 	r.warnings = append(r.warnings, msg)
 }
 
+// DefaultParallel and DefaultReviewParallel are New's Parallel and
+// ReviewParallel. Repositories are cheap to process at once, mostly reads
+// with writes serialised anyway; each review is an agent process with a
+// checkout of its own, spending tokens for minutes.
+const (
+	DefaultParallel       = 10
+	DefaultReviewParallel = 4
+)
+
 func New(c github.Client, viewer string, apply bool) *Runner {
-	return &Runner{Client: c, Viewer: viewer, Apply: apply, PollAttempts: 5, PollInterval: 3 * time.Second, Sleep: github.Sleep, Parallel: 4, ReviewParallel: 2}
+	return &Runner{Client: c, Viewer: viewer, Apply: apply, PollAttempts: 5, PollInterval: 3 * time.Second, Sleep: github.Sleep, Parallel: DefaultParallel, ReviewParallel: DefaultReviewParallel}
 }
 
 // Run processes up to Parallel repos at a time and returns their results in
