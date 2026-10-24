@@ -15,7 +15,8 @@
 #   agent_review:    true = with --review, the agent may approve updates over
 #                    max_update_type or of unknown size (default true)
 # A repo entry can also set skip: true to leave it out of runs; naming it
-# with --repo still runs it. Write repos as owner/name, without .git.
+# with --repo still runs it, while --owner leaves it out. Write repos as
+# owner/name, without .git.
 defaults:
   merge_method: squash
   max_update_type: minor

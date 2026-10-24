@@ -492,12 +492,14 @@ func expandHome(field, path string) (string, error) {
 	return filepath.Join(home, path[1:]), nil
 }
 
-// Filter keeps only the repos named in only (case-insensitive owner/name or
-// bare name, around which spaces are ignored), including skipped ones, each once and in config order. An
-// empty filter keeps every repo not marked skip. A bare name shared by
-// repos of several owners is an error rather than a pick of them all.
-func (c *Config) Filter(only []string) ([]Repo, error) {
-	if len(only) == 0 {
+// Filter keeps the repos named in only (case-insensitive owner/name or
+// bare name, around which spaces are ignored), including skipped ones, and
+// the repos of the owners in owners (case-insensitive) not marked skip,
+// each once and in config order. With neither, it keeps every repo not
+// marked skip. A bare name shared by repos of several owners is an error
+// rather than a pick of them all, as is an owner no repo has.
+func (c *Config) Filter(only, owners []string) ([]Repo, error) {
+	if len(only) == 0 && len(owners) == 0 {
 		var out []Repo
 		for _, r := range c.Repos {
 			if !r.Skip {
@@ -528,6 +530,19 @@ func (c *Config) Filter(only []string) ([]Repo, error) {
 			return nil, fmt.Errorf("ambiguous: %s matches %s; use owner/name", want, strings.Join(names, ", "))
 		}
 		picked[matches[0]] = true
+	}
+	for _, owner := range owners {
+		o := strings.TrimSpace(owner)
+		found := false
+		for i, r := range c.Repos {
+			if strings.EqualFold(r.Owner, o) {
+				found = true
+				picked[i] = picked[i] || !r.Skip
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("owner %q has no repo in the config", owner)
+		}
 	}
 	var out []Repo
 	for i, r := range c.Repos {

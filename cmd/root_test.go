@@ -143,6 +143,11 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"empty repo":      {[]string{"run", "-c", active, "-r", ""}, 2, "--repo needs a repo name"},
 		"blank repo":      {[]string{"run", "-c", active, "-r", "a, "}, 2, "--repo has an empty repo name"},
 		"blank --repo":    {[]string{"run", "-c", active, "--repo", " "}, 2, "--repo has an empty repo name"},
+		"unknown owner":   {[]string{"run", "-c", cfg, "--owner", "zzz"}, 2, `owner "zzz" has no repo in the config`},
+		"owner skipped":   {[]string{"run", "-c", cfg, "--owner", "o"}, 1, "every repo of the named owners has skip: true"},
+		"empty owner":     {[]string{"run", "-c", active, "--owner", ""}, 2, "--owner needs an owner name"},
+		"blank owner":     {[]string{"run", "-c", active, "--owner", "o, "}, 2, "--owner has an empty owner name"},
+		"owner/name":      {[]string{"run", "-c", active, "--owner", "o/a"}, 2, `--owner takes an owner, not "o/a"; use --repo for one repo`},
 		"bad repo name":   {[]string{"run", "-c", writeConfig(t, "repos: [acme/x.git]\n")}, 1, "drop the .git suffix"},
 		"unexpected arg":  {[]string{"run", "extra"}, 2, "unknown command"},
 		"unknown command": {[]string{"nope"}, 2, "unknown command"},
@@ -155,6 +160,7 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		// The command line is checked before the config is read.
 		"limit before config": {[]string{"run", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
 		"repo before config":  {[]string{"run", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},
+		"owner before config": {[]string{"run", "-c", missing, "--owner", ""}, 2, "--owner needs an owner name"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, _, stderr := run(c.args...)

@@ -121,11 +121,11 @@ func TestFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.Filter([]string{"storefront"})
+	got, err := cfg.Filter([]string{"storefront"}, nil)
 	if err != nil || len(got) != 1 || got[0].Name != "Storefront" {
 		t.Fatalf("Filter(storefront) = %v, %v", got, err)
 	}
-	if _, err := cfg.Filter([]string{"nope"}); err == nil || !strings.Contains(err.Error(), "nope") {
+	if _, err := cfg.Filter([]string{"nope"}, nil); err == nil || !strings.Contains(err.Error(), "nope") {
 		t.Fatalf("Filter(nope) err = %v", err)
 	}
 }
@@ -135,13 +135,41 @@ func TestFilterSkip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := cfg.Filter(nil)
+	got, _ := cfg.Filter(nil, nil)
 	if len(got) != 1 || got[0].Name != "one" {
 		t.Fatalf("Filter(nil) = %v", got)
 	}
-	got, _ = cfg.Filter([]string{"two"})
+	got, _ = cfg.Filter([]string{"two"}, nil)
 	if len(got) != 1 || !got[0].Skip {
 		t.Fatalf("naming a skipped repo should still select it: %v", got)
+	}
+}
+
+func TestFilterOwner(t *testing.T) {
+	cfg, err := Parse([]byte("repos: [acme/one, other/two, {repo: acme/three, skip: true}, Acme/four]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := cfg.Filter(nil, []string{" ACME "})
+	if err != nil || len(got) != 2 || got[0].Name != "one" || got[1].Name != "four" {
+		t.Fatalf("Filter(owner acme) = %v, %v; want acme/one and Acme/four, skipping acme/three", got, err)
+	}
+	// Repos and owners add up, in config order; a skipped repo named by
+	// --repo still runs.
+	got, err = cfg.Filter([]string{"three", "acme/one"}, []string{"other"})
+	if err != nil || len(got) != 3 || got[0].Name != "one" || got[1].Name != "two" || got[2].Name != "three" {
+		t.Fatalf("Filter(three, acme/one; other) = %v, %v", got, err)
+	}
+	if _, err := cfg.Filter(nil, []string{"nobody"}); err == nil || err.Error() != `owner "nobody" has no repo in the config` {
+		t.Fatalf("Filter(owner nobody) err = %v", err)
+	}
+	// An owner whose every repo is skipped selects nothing, without error.
+	cfg, err = Parse([]byte("repos: [a/one, {repo: b/two, skip: true}]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := cfg.Filter(nil, []string{"b"}); err != nil || len(got) != 0 {
+		t.Fatalf("Filter(owner b) = %v, %v", got, err)
 	}
 }
 
@@ -156,7 +184,7 @@ func TestFilterDeduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.Filter([]string{"Storefront", "acme/storefront", " billing "})
+	got, err := cfg.Filter([]string{"Storefront", "acme/storefront", " billing "}, nil)
 	if err != nil || len(got) != 2 || got[0].Name != "Billing" || got[1].Name != "Storefront" {
 		t.Fatalf("Filter = %v, %v", got, err)
 	}
@@ -279,10 +307,10 @@ func TestFilterAmbiguousName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cfg.Filter([]string{"docs"}); err == nil || err.Error() != "ambiguous: docs matches acme/docs, other/docs; use owner/name" {
+	if _, err := cfg.Filter([]string{"docs"}, nil); err == nil || err.Error() != "ambiguous: docs matches acme/docs, other/docs; use owner/name" {
 		t.Fatalf("Filter(docs) err = %v", err)
 	}
-	got, err := cfg.Filter([]string{"other/docs", "api"})
+	got, err := cfg.Filter([]string{"other/docs", "api"}, nil)
 	if err != nil || len(got) != 2 || got[0].FullName() != "other/docs" || got[1].FullName() != "acme/api" {
 		t.Fatalf("Filter = %v, %v", got, err)
 	}

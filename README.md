@@ -338,8 +338,10 @@ run's review approved without asking the agent again. For
   not wait when it cannot tell);
 - `2`: the command line is wrong (an unknown command or flag, a missing
   argument, `--max-reviews` without `--review`, an empty `--repo`, or one
-  the config does not list or lists under several owners), and nothing
-  runs; all but the repo names are checked before the config is read, so
+  the config does not list or lists under several owners, an empty
+  `--owner`, one written `owner/name`, or one no configured repo has), and
+  nothing runs; all but the repo and owner names are checked before the
+  config is read, so
   a mistake there is reported even when the config is missing;
 - `130`: interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`). A second Ctrl-C
   kills deps-merger at once, should the first not stop it.
@@ -410,6 +412,14 @@ So is an empty name (`-r ""`, `-r "Billing,"`), which a script's unset
 variable would otherwise turn into a run of every repo; spaces around a
 name are ignored. A run that would select no repos at all fails instead
 of reporting nothing.
+
+`deps-merger run --owner acme` runs every configured repo of `acme` (the
+owner is matched regardless of case; repeat the flag or separate owners
+with commas for more). It leaves out the owner's repos set to `skip: true`,
+as a run without filters does; add `-r Mirror` to run one of them too.
+`--owner` and `--repo` add up: `--owner acme -r other/docs` runs both. An
+owner no configured repo has is an error, as is an empty one or one
+written `owner/name`.
 
 Repos are written `owner/name`, as GitHub allows them: letters, digits and
 hyphens in the owner; letters, digits, `-`, `_` and `.` in the name, with no

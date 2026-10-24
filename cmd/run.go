@@ -28,6 +28,7 @@ func newRunCmd() *cobra.Command {
 		apply      bool
 		asJSON     bool
 		repos      []string
+		owners     []string
 		reviews    bool
 		agentName  string
 		maxReviews int
@@ -52,12 +53,17 @@ like any other, after every check has been made again. Verdicts are
 cached, so a scheduled run does not pay twice for the same update. A dry
 run reviews too, and shows what would be merged.
 
+With --repo and --owner, only the named repositories and the repositories
+of the named owners run; --owner leaves out repositories set to skip: true,
+which --repo runs when named.
+
 With --open, repositories without open Dependabot PRs are left out of the
 report; ones that could not be processed are still shown.
 
 Exits 1 if a repository could not be processed or a merge or rebase request
 failed or an agent review could not be done, 2 when the command line is
-wrong (including a --repo the config does not list), and 130 when
+wrong (including a --repo the config does not list or an --owner it has
+no repository of), and 130 when
 interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -85,17 +91,33 @@ interrupted.`,
 					}
 				}
 			}
+			if cmd.Flags().Changed("owner") {
+				if len(owners) == 0 {
+					return usageError{errors.New("--owner needs an owner name")}
+				}
+				for i := range owners {
+					switch owners[i] = strings.TrimSpace(owners[i]); {
+					case owners[i] == "":
+						return usageError{errors.New("--owner has an empty owner name")}
+					case strings.Contains(owners[i], "/"):
+						return usageError{fmt.Errorf("--owner takes an owner, not %q; use --repo for one repo", owners[i])}
+					}
+				}
+			}
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
 			}
-			selected, err := cfg.Filter(repos)
+			selected, err := cfg.Filter(repos, owners)
 			if err != nil {
 				// A repo the config lacks is a mistake of the command
 				// line, not of the config.
 				return usageError{err}
 			}
 			if len(selected) == 0 {
+				if len(owners) > 0 {
+					return errors.New("every repo of the named owners has skip: true; name one with --repo to run it")
+				}
 				return errors.New("every configured repo has skip: true; name one with --repo to run it")
 			}
 			var agent review.Agent
@@ -181,6 +203,7 @@ interrupted.`,
 	c.Flags().BoolVar(&apply, "apply", false, "merge safe PRs and request rebases (default is a dry run)")
 	c.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
+	c.Flags().StringSliceVar(&owners, "owner", nil, "only handle the configured repos of these owners (repeatable)")
 	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge updates over max_update_type and of unknown size")
 	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+strings.Join(config.Agents, " or ")+" (default from config; implies --review)")
 	c.Flags().BoolVar(&open, "open", false, "only report repos with open Dependabot PRs")
