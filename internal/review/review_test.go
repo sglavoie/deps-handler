@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -365,14 +366,49 @@ func (slowAgent) Run(ctx context.Context, _, _ string) (Answer, error) {
 	return Answer{}, ctx.Err()
 }
 
+// expiringContext reaches its deadline when expire is called, however long
+// the checkout before it took.
+type expiringContext struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func newExpiringContext() *expiringContext {
+	return &expiringContext{Context: context.Background(), done: make(chan struct{})}
+}
+
+func (c *expiringContext) expire()               { c.once.Do(func() { close(c.done) }) }
+func (c *expiringContext) Done() <-chan struct{} { return c.done }
+func (c *expiringContext) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+// expiringAgent runs out the review's time once it starts.
+type expiringAgent struct{ ctx *expiringContext }
+
+func (expiringAgent) Name() string { return "claude" }
+func (a expiringAgent) Run(ctx context.Context, _, _ string) (Answer, error) {
+	a.ctx.expire()
+	<-ctx.Done()
+	return Answer{}, ctx.Err()
+}
+
 func TestAgentReviewerTimesOut(t *testing.T) {
 	origin, head := gitOrigin(t)
 	req := request()
 	req.HeadOID = head
-	// Long enough for the checkout to finish, so that the agent times out.
-	r := &AgentReviewer{Agent: slowAgent{}, Details: fakeDetails{}, Timeout: 2 * time.Second,
+	// The deadline passes only once the agent runs, so a slow checkout
+	// cannot take the timeout for itself.
+	ctx := newExpiringContext()
+	r := &AgentReviewer{Agent: expiringAgent{ctx}, Details: fakeDetails{}, Timeout: time.Minute,
 		Workspace: &Workspace{Root: t.TempDir(), URL: func(string, string) string { return origin }}}
-	if _, err := r.Review(context.Background(), req); err == nil || err.Error() != "claude timed out after 2s" {
+	if _, err := r.Review(ctx, req); err == nil || err.Error() != "claude timed out after 1m0s" {
 		t.Fatalf("err = %v", err)
 	}
 }
