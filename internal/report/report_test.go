@@ -142,7 +142,7 @@ func TestSummaryAfterApply(t *testing.T) {
 	rebase := runner.RepoResult{Repo: "o/y", Events: []runner.Event{{Number: 9, Kind: runner.EventRebaseFailed}}}
 	var b bytes.Buffer
 	Summary(&b, true, []runner.RepoResult{applied, failed, rebase}, 0)
-	want := "3 repos: 1 merged, 1 merge-failed, 1 rebase-failed, 1 wait; 1 need attention; 3 repos failed\n"
+	want := "3 repos: 1 merged, 1 merge failed, 1 rebase failed, 1 waiting; 1 needs attention; 3 repos failed\n"
 	if b.String() != want {
 		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
@@ -154,7 +154,7 @@ func TestSummaryDryRun(t *testing.T) {
 	}}
 	var b bytes.Buffer
 	Summary(&b, false, []runner.RepoResult{res}, 0)
-	want := "1 repos: 1 would merge, 1 would rebase, 1 skip\ndry run: nothing was changed; rerun with --apply to merge\n"
+	want := "1 repo: 1 would merge, 1 would rebase, 1 skipped\ndry run: nothing was changed; rerun with --apply to merge and rebase\n"
 	if b.String() != want {
 		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
@@ -163,7 +163,7 @@ func TestSummaryDryRun(t *testing.T) {
 func TestSummaryNothingToDo(t *testing.T) {
 	var b bytes.Buffer
 	Summary(&b, false, []runner.RepoResult{{Repo: "o/r"}}, 0)
-	if want := "1 repos: nothing to do\n"; b.String() != want {
+	if want := "1 repo: nothing to do\n"; b.String() != want {
 		t.Fatalf("got %q", b.String())
 	}
 }
@@ -219,7 +219,7 @@ func TestRepoShowsAgentVerdict(t *testing.T) {
 	}
 	b.Reset()
 	Summary(&b, true, []runner.RepoResult{res}, 0)
-	if got := b.String(); got != "1 repos: 1 review, 1 skip; 1 need attention\n" {
+	if got := b.String(); got != "1 repo: 1 awaiting review, 1 skipped; 1 needs attention\n" {
 		t.Errorf("summary = %q", got)
 	}
 }
@@ -243,7 +243,7 @@ func TestRepoColorsKeepColumnsAligned(t *testing.T) {
 func TestSummaryColors(t *testing.T) {
 	var b bytes.Buffer
 	summary(&b, true, []runner.RepoResult{applied, {Repo: "o/x", Error: "boom"}}, 0, style{color: true})
-	want := "\x1b[1m2 repos:\x1b[0m \x1b[32m1 merged\x1b[0m, \x1b[1;31m1 merge-failed\x1b[0m, \x1b[33m1 wait\x1b[0m; \x1b[33m1 need attention\x1b[0m; \x1b[31m2 repos failed\x1b[0m\n"
+	want := "\x1b[1m2 repos:\x1b[0m \x1b[32m1 merged\x1b[0m, \x1b[1;31m1 merge failed\x1b[0m, \x1b[33m1 waiting\x1b[0m; \x1b[33m1 needs attention\x1b[0m; \x1b[31m2 repos failed\x1b[0m\n"
 	if b.String() != want {
 		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
@@ -273,7 +273,7 @@ func TestProgressSingular(t *testing.T) {
 func TestSummaryCountsHiddenRepos(t *testing.T) {
 	var b bytes.Buffer
 	Summary(&b, true, []runner.RepoResult{applied}, 10)
-	if want := "1 repos (10 without open PRs hidden): 1 merged, 1 merge-failed, 1 wait; 1 need attention; 1 repo failed\n"; b.String() != want {
+	if want := "1 repo (10 without open PRs hidden): 1 merged, 1 merge failed, 1 waiting; 1 needs attention; 1 repo failed\n"; b.String() != want {
 		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
 }
@@ -314,5 +314,23 @@ func TestNoColorWinsOverForce(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	if styleFor(&b).color {
 		t.Error("NO_COLOR must win over CLICOLOR_FORCE")
+	}
+}
+
+func TestSummaryDryRunRebaseOnly(t *testing.T) {
+	res := runner.RepoResult{Repo: "o/r", Decisions: []policy.Decision{decision(1, policy.ActionRebase, "")}}
+	var b bytes.Buffer
+	Summary(&b, false, []runner.RepoResult{res, res}, 0)
+	want := "2 repos: 2 would rebase\ndry run: nothing was changed; rerun with --apply to rebase\n"
+	if b.String() != want {
+		t.Fatalf("got %q\nwant %q", b.String(), want)
+	}
+}
+
+func TestSummaryAllHidden(t *testing.T) {
+	var b bytes.Buffer
+	Summary(&b, false, nil, 1)
+	if want := "no open Dependabot PRs in 1 repo\n"; b.String() != want {
+		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
 }

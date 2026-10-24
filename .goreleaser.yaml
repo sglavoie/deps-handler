@@ -5,6 +5,8 @@ version: 2
 before:
   hooks:
     - go mod tidy -diff
+    # Shell completions, shipped in the archives and installed by the cask.
+    - sh -c 'rm -rf completions && mkdir completions && for sh in bash zsh fish; do go run . completion "$sh" > "completions/deps-merger.$sh"; done'
 
 builds:
   - env:
@@ -28,6 +30,7 @@ archives:
       - LICENSE
       - README.md
       - config.example.yaml
+      - completions/*
 
 checksum:
   name_template: checksums.txt
@@ -52,6 +55,10 @@ homebrew_casks:
     license: MIT
     dependencies:
       - formula: gh
+    completions:
+      bash: completions/deps-merger.bash
+      zsh: completions/deps-merger.zsh
+      fish: completions/deps-merger.fish
     hooks:
       post:
         # The binaries are not notarized: let macOS run them.

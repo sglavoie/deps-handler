@@ -1,26 +1,29 @@
-# deps-merger config. Copy to ~/.config/deps-merger/config.yaml
-# ($XDG_CONFIG_HOME/deps-merger/config.yaml when that is set).
-#
-# defaults apply to every repo; any repo entry can override them.
-#   merge_method:    squash | merge | rebase (falls back to what the repo allows)
-#   max_update_type: patch | minor | major   (largest semver bump merged)
-#   require_checks:  true = a PR with no CI checks is never merged...
-#                    Skipped or neutral checks do not count as having run.
-#   merge_without_checks_after: ...unless its latest commit has gone this
-#                    long (e.g. 1h) without any check, as on a repo whose CI
-#                    only runs for some paths (default 0: never; at least
-#                    30m, the time CI is given to start, so 10m acts as 30m;
-#                    an error alongside require_checks: false, where it does
-#                    nothing)
-#   agent_review:    true = with --review, the agent may approve updates over
-#                    max_update_type or of unknown size (default true)
-# A repo entry can also set skip: true to leave it out of runs; naming it
-# with --repo or adding --include-skipped still runs it, while --owner
-# alone leaves it out. Write repos as owner/name, without .git.
+# deps-merger config. `deps-merger init` writes this file to
+# ~/.config/deps-merger/config.yaml ($XDG_CONFIG_HOME/deps-merger/config.yaml
+# when that is set); `deps-merger repos` then shows the policy each repo gets.
+
+# defaults apply to every repo; any repo entry can override any of them.
 defaults:
+  # squash | merge | rebase. A repo that does not allow it uses the first
+  # one it does allow.
   merge_method: squash
+
+  # patch | minor | major: the largest semver bump merged.
   max_update_type: minor
+
+  # true: a PR with no CI checks is never merged. Skipped or neutral checks
+  # do not count as having run.
   require_checks: true
+
+  # Merge a PR whose latest commit has gone this long without any check
+  # anyway, as on a repo whose CI only runs for some paths. Default 0:
+  # never. At least 30m, the time CI is given to start, so 10m acts as 30m.
+  # An error alongside require_checks: false, where it would do nothing.
+  # merge_without_checks_after: 1h
+
+  # true: with --review, the agent may approve updates over max_update_type
+  # or of unknown size.
+  # agent_review: true
 
 # The AI agent `deps-merger run --review` uses to judge updates over
 # max_update_type and of unknown size. --agent claude|codex overrides `use`.
@@ -35,6 +38,10 @@ agent:
     model: ""               # empty: Codex's default
     home: ""                # passed as CODEX_HOME when set; absolute or ~/
 
+# Repos are written owner/name, without .git. An entry is a bare name, or a
+# mapping with repo: and any of the defaults above to override. skip: true
+# leaves a repo out of runs; naming it with --repo or adding
+# --include-skipped still runs it, while --owner alone leaves it out.
 repos:
   - acme/Billing
   - acme/docs

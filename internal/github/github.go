@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -501,8 +503,8 @@ func coAuthors(msg string) []Author {
 // Dependabot embeds higher up names no author of the commit.
 func trailers(msg string) []string {
 	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(msg, "\r\n", "\n")), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.TrimSpace(lines[i]) == "" {
+	for i, line := range slices.Backward(lines) {
+		if strings.TrimSpace(line) == "" {
 			return lines[i+1:]
 		}
 	}
@@ -538,8 +540,7 @@ func (c *client) Merge(ctx context.Context, owner, name string, number int, meth
 	body, _ := json.Marshal(map[string]string{"merge_method": method, "sha": headOID})
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/merge", owner, name, number)
 	err := c.rest.DoWithContext(ctx, "PUT", path, bytes.NewReader(body), nil)
-	var he *api.HTTPError
-	if errors.As(err, &he) && he.StatusCode == 403 && strings.Contains(he.Message, "without `workflow` scope") {
+	if he, ok := errors.AsType[*api.HTTPError](err); ok && he.StatusCode == http.StatusForbidden && strings.Contains(he.Message, "without `workflow` scope") {
 		return &WorkflowScopeError{Err: err}
 	}
 	return err
@@ -565,8 +566,8 @@ func (c *client) PullRequestDetails(ctx context.Context, owner, name string, num
 		// else, a 5xx or a rate limit above all, fails the call so that it
 		// is made again or the review fails: an approval given without the
 		// diff is cached as long as any other.
-		var he *api.HTTPError
-		if ctx.Err() != nil || !errors.As(err, &he) || (he.StatusCode != 406 && he.StatusCode != 422) {
+		he, ok := errors.AsType[*api.HTTPError](err)
+		if ctx.Err() != nil || !ok || (he.StatusCode != http.StatusNotAcceptable && he.StatusCode != http.StatusUnprocessableEntity) {
 			return nil, fmt.Errorf("%s/%s#%d: diff: %w", owner, name, number, err)
 		}
 		d.DiffError = err.Error()
@@ -624,8 +625,7 @@ func (c *client) PullRequestState(ctx context.Context, owner, name string, numbe
 // repoNotFound reports whether err is GitHub saying the repository a
 // query asked for does not exist or cannot be seen.
 func repoNotFound(err error) bool {
-	var ge *api.GraphQLError
-	if errors.As(err, &ge) {
+	if ge, ok := errors.AsType[*api.GraphQLError](err); ok {
 		for _, e := range ge.Errors {
 			if e.Type == "NOT_FOUND" && len(e.Path) > 0 && e.Path[0] == "repository" {
 				return true
@@ -643,17 +643,15 @@ func repoNotFound(err error) bool {
 // call cut short by the run being cancelled can fail in these ways too:
 // callers rule that out first.
 func Transient(err error) bool {
-	var he *api.HTTPError
-	if errors.As(err, &he) {
-		return he.StatusCode == 502 || he.StatusCode == 503 || he.StatusCode == 504
+	if he, ok := errors.AsType[*api.HTTPError](err); ok {
+		return he.StatusCode == http.StatusBadGateway || he.StatusCode == http.StatusServiceUnavailable || he.StatusCode == http.StatusGatewayTimeout
 	}
 	// The connection was closed or reset before the whole response came
 	// back: the request may have reached GitHub, and nothing says it failed.
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) {
 		return true
 	}
-	var ge *api.GraphQLError
-	if errors.As(err, &ge) {
+	if ge, ok := errors.AsType[*api.GraphQLError](err); ok {
 		for _, e := range ge.Errors {
 			if strings.Contains(e.Message, "Something went wrong") {
 				return true
@@ -673,9 +671,8 @@ const MaxRateLimitWait = 2 * time.Minute
 // RateLimited reports whether GitHub refused a call for exceeding a rate
 // limit and, if so, how long it asked to wait before the next one.
 func RateLimited(err error) (time.Duration, bool) {
-	var he *api.HTTPError
-	if errors.As(err, &he) {
-		if he.StatusCode != 403 && he.StatusCode != 429 {
+	if he, ok := errors.AsType[*api.HTTPError](err); ok {
+		if he.StatusCode != http.StatusForbidden && he.StatusCode != http.StatusTooManyRequests {
 			return 0, false
 		}
 		if s, err := strconv.Atoi(he.Headers.Get("Retry-After")); err == nil {
@@ -688,13 +685,12 @@ func RateLimited(err error) (time.Duration, bool) {
 		}
 		// A secondary rate limit may come without either header; GitHub
 		// then asks for at least a minute's pause.
-		if he.StatusCode == 429 || strings.Contains(strings.ToLower(he.Message), "rate limit") {
+		if he.StatusCode == http.StatusTooManyRequests || strings.Contains(strings.ToLower(he.Message), "rate limit") {
 			return time.Minute, true
 		}
 		return 0, false
 	}
-	var rl *RateLimitError
-	if errors.As(err, &rl) {
+	if rl, ok := errors.AsType[*RateLimitError](err); ok {
 		return max(0, time.Until(rl.Reset)), true
 	}
 	if graphQLRateLimited(err) {
@@ -730,8 +726,7 @@ func (e *WorkflowScopeError) Error() string {
 func (e *WorkflowScopeError) Unwrap() error { return e.Err }
 
 func graphQLRateLimited(err error) bool {
-	var ge *api.GraphQLError
-	if errors.As(err, &ge) {
+	if ge, ok := errors.AsType[*api.GraphQLError](err); ok {
 		for _, e := range ge.Errors {
 			if e.Type == "RATE_LIMITED" {
 				return true
@@ -822,14 +817,14 @@ func Sleep(ctx context.Context, d time.Duration) error {
 // says it was not carried out: any but the 502, 503 and 504 Transient
 // counts, after which a write may have gone through all the same.
 func Refused(err error) bool {
-	var he *api.HTTPError
-	return errors.As(err, &he) && !Transient(err)
+	_, ok := errors.AsType[*api.HTTPError](err)
+	return ok && !Transient(err)
 }
 
 // Retryable reports whether a failed merge may succeed once GitHub catches
 // up: 405 (not mergeable yet) and 409 (head moved) are often transient
 // right after another merge into the base branch.
 func Retryable(err error) bool {
-	var he *api.HTTPError
-	return errors.As(err, &he) && (he.StatusCode == 405 || he.StatusCode == 409)
+	he, ok := errors.AsType[*api.HTTPError](err)
+	return ok && (he.StatusCode == http.StatusMethodNotAllowed || he.StatusCode == http.StatusConflict)
 }

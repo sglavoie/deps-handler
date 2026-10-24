@@ -120,7 +120,7 @@ func (c *Cache) readEntries(locked bool) (map[string]cacheEntry, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return entries, nil // moved aside by a process that took no lock
 		} else if err != nil {
-			return nil, fmt.Errorf("%s: %w (and could not move it aside: %v)", c.path, perr, err)
+			return nil, fmt.Errorf("%s: %w (and could not move it aside: %w)", c.path, perr, err)
 		}
 		c.recovered = fmt.Sprintf("verdict cache %s was unreadable (%v); moved it to %s and started with no cached verdicts", c.path, perr, aside)
 		return entries, nil

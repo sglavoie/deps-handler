@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -40,12 +41,7 @@ func (f *fakeClient) FetchRepo(_ context.Context, owner, name string) (*github.R
 }
 
 func contains(ns []int, n int) bool {
-	for _, m := range ns {
-		if m == n {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ns, n)
 }
 
 func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) error {
@@ -89,7 +85,7 @@ func TestRunDryRun(t *testing.T) {
 	if code != 0 || len(fc.merges) != 0 {
 		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
 	}
-	for _, want := range []string{"would merge", "no open Dependabot PRs", "2 repos: 1 would merge, 1 skip", "dry run: nothing was changed"} {
+	for _, want := range []string{"would merge", "no open Dependabot PRs", "2 repos: 1 would merge, 1 skipped", "dry run: nothing was changed"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
@@ -99,7 +95,7 @@ func TestRunDryRun(t *testing.T) {
 func TestRunApply(t *testing.T) {
 	fc, cfg := runFixture(t)
 	code, out, _ := run("run", "-c", cfg, "--apply", "-r", " busy ")
-	if code != 0 || len(fc.merges) != 1 || fc.merges[0] != 1 || !strings.Contains(out, "1 repos: 1 merged, 1 skip") {
+	if code != 0 || len(fc.merges) != 1 || fc.merges[0] != 1 || !strings.Contains(out, "1 repo: 1 merged, 1 skipped") {
 		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
 	}
 }
@@ -139,7 +135,7 @@ func TestRunOpenLeavesOutQuietRepos(t *testing.T) {
 
 func TestRunOpenSummaryCountsHiddenRepos(t *testing.T) {
 	_, cfg := runFixture(t)
-	if _, out, _ := run("run", "-c", cfg, "--open"); !strings.Contains(out, "1 repos (1 without open PRs hidden): 1 would merge, 1 skip") {
+	if _, out, _ := run("run", "-c", cfg, "--open"); !strings.Contains(out, "1 repo (1 without open PRs hidden): 1 would merge, 1 skipped") {
 		t.Fatalf("output:\n%s", out)
 	}
 }

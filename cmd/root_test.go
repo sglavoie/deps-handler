@@ -54,11 +54,28 @@ func TestReposListsPolicy(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "o/a   squash  minor") || !strings.Contains(out, "o/b") {
 		t.Fatalf("code %d, output:\n%s", code, out)
 	}
-	if !strings.Contains(out, "false           -  ") {
+	if !strings.Contains(out, "no              -  ") {
 		t.Errorf("no-checks merge should not apply where checks are optional:\n%s", out)
 	}
 	if !strings.Contains(out, "agent for --review: claude (default model, 15m timeout, up to $2 per review)") {
 		t.Errorf("agent line missing:\n%s", out)
+	}
+}
+
+func TestReposFilters(t *testing.T) {
+	cfg := writeConfig(t, "repos:\n  - o/a\n  - repo: o/b\n    skip: true\n  - p/c\n")
+	code, out, _ := run("repos", "-c", cfg, "--owner", "o")
+	if code != 0 || !strings.Contains(out, "o/a") || !strings.Contains(out, "o/b") || strings.Contains(out, "p/c") {
+		t.Fatalf("--owner: code %d, output:\n%s", code, out)
+	}
+	if code, out, _ := run("repos", "-c", cfg, "-r", "c"); code != 0 || strings.Contains(out, "o/a") || !strings.Contains(out, "p/c") {
+		t.Fatalf("-r: code %d, output:\n%s", code, out)
+	}
+	if code, _, stderr := run("repos", "-c", cfg, "-r", "nope"); code != 2 || !strings.Contains(stderr, `repo "nope" is not in the config`) {
+		t.Fatalf("unknown repo: code %d, %q", code, stderr)
+	}
+	if code, _, stderr := run("repos", "-c", cfg, "--owner", "o/a"); code != 2 || !strings.Contains(stderr, "use --repo") {
+		t.Fatalf("owner/name: code %d, %q", code, stderr)
 	}
 }
 
@@ -206,7 +223,54 @@ func TestFormatVersion(t *testing.T) {
 	if got, want := formatVersion(info, "v9", "abc1234", "today"), "v9 (abc1234, built today)"; got != want {
 		t.Errorf("ldflags: got %q, want %q", got, want)
 	}
+	pseudo := &debug.BuildInfo{Main: debug.Module{Version: "v0.2.1-0.20261024141842-3b9316762033+dirty"}, Settings: []debug.BuildSetting{
+		{Key: "vcs.revision", Value: "3b9316762033aaaa"},
+		{Key: "vcs.time", Value: "2026-10-24T14:18:42Z"},
+		{Key: "vcs.modified", Value: "true"},
+	}}
+	if got, want := formatVersion(pseudo, "dev", "unknown", "unknown"), "v0.2.1-0.20261024141842-3b9316762033+dirty (built 2026-10-24T14:18:42Z)"; got != want {
+		t.Errorf("pseudo-version: got %q, want %q", got, want)
+	}
 	if got, want := formatVersion(nil, "dev", "unknown", "unknown"), "dev (unknown, built unknown)"; got != want {
 		t.Errorf("no build info: got %q, want %q", got, want)
+	}
+}
+
+func TestInitWritesExampleOnce(t *testing.T) {
+	old := ExampleConfig
+	t.Cleanup(func() { ExampleConfig = old })
+	ExampleConfig = []byte("repos:\n  - o/a\n")
+	path := filepath.Join(t.TempDir(), "sub", "config.yaml")
+	if code, out, stderr := run("init", "-c", path); code != 0 || !strings.Contains(out, "wrote "+path) {
+		t.Fatalf("init: code %d, %q, %q", code, out, stderr)
+	}
+	if code, out, _ := run("repos", "-c", path); code != 0 || !strings.Contains(out, "o/a") {
+		t.Fatalf("repos after init: code %d:\n%s", code, out)
+	}
+	if err := os.WriteFile(path, []byte("repos: [o/mine]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := run("init", "-c", path); code != 1 || !strings.Contains(stderr, "already exists") {
+		t.Fatalf("second init: code %d, %q", code, stderr)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "repos: [o/mine]\n" {
+		t.Fatalf("init overwrote the config: %q", data)
+	}
+}
+
+func TestMissingConfigSuggestsInit(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "nope.yaml")
+	if _, _, stderr := run("repos", "-c", missing); !strings.Contains(stderr, "create one with `deps-merger init -c "+missing+"`") {
+		t.Fatalf("stderr = %q", stderr)
+	}
+}
+
+func TestCompletesRepoAndOwner(t *testing.T) {
+	cfg := writeConfig(t, "repos:\n  - o/a\n  - o/b\n  - p/c\n")
+	if _, out, _ := run("__complete", "-c", cfg, "run", "-r", ""); !strings.HasPrefix(out, "o/a\no/b\np/c\n:4\n") {
+		t.Errorf("--repo: %q", out)
+	}
+	if _, out, _ := run("__complete", "-c", cfg, "repos", "--owner", ""); !strings.HasPrefix(out, "o\np\n:4\n") {
+		t.Errorf("--owner: %q", out)
 	}
 }

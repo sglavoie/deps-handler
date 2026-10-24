@@ -53,7 +53,7 @@ vuln:
 
 # Remove build, coverage, demo and release output
 clean:
-    rm -rf {{ binary_name }} coverage.out .demo dist
+    rm -rf {{ binary_name }} coverage.out .demo dist completions
 
 # Everything CI should check
 ci: vet lint vuln test

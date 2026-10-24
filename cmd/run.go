@@ -93,30 +93,8 @@ interrupted.`,
 			if agentName != "" && !config.ValidAgent(strings.ToLower(agentName)) {
 				return usageError{fmt.Errorf("unknown agent %q (want %s)", agentName, strings.Join(config.Agents, " or "))}
 			}
-			// An empty --repo, as an unset variable in a script gives,
-			// must not mean every repo, as no --repo at all does.
-			if cmd.Flags().Changed("repo") {
-				if len(repos) == 0 {
-					return usageError{errors.New("--repo needs a repo name")}
-				}
-				for i := range repos {
-					if repos[i] = strings.TrimSpace(repos[i]); repos[i] == "" {
-						return usageError{errors.New("--repo has an empty repo name")}
-					}
-				}
-			}
-			if cmd.Flags().Changed("owner") {
-				if len(owners) == 0 {
-					return usageError{errors.New("--owner needs an owner name")}
-				}
-				for i := range owners {
-					switch owners[i] = strings.TrimSpace(owners[i]); {
-					case owners[i] == "":
-						return usageError{errors.New("--owner has an empty owner name")}
-					case strings.Contains(owners[i], "/"):
-						return usageError{fmt.Errorf("--owner takes an owner, not %q; use --repo for one repo", owners[i])}
-					}
-				}
+			if err := checkSelection(cmd, repos, owners); err != nil {
+				return err
 			}
 			cfg, err := loadConfig()
 			if err != nil {
@@ -226,7 +204,39 @@ interrupted.`,
 	c.Flags().IntVar(&maxReviews, "max-reviews", 10, "most agent reviews in one run (0 for no limit)")
 	c.Flags().IntVar(&parallel, "parallel", runner.DefaultParallel, "most repositories processed at once")
 	c.Flags().IntVar(&reviewPar, "review-parallel", runner.DefaultReviewParallel, "most agent reviews run at once")
+	completeSelection(c)
 	return c
+}
+
+// checkSelection trims the names given to --repo and --owner in place and
+// rejects empty ones, and owners written owner/name, as usage errors.
+func checkSelection(cmd *cobra.Command, repos, owners []string) error {
+	// An empty --repo, as an unset variable in a script gives, must not
+	// mean every repo, as no --repo at all does.
+	if cmd.Flags().Changed("repo") {
+		if len(repos) == 0 {
+			return usageError{errors.New("--repo needs a repo name")}
+		}
+		for i := range repos {
+			if repos[i] = strings.TrimSpace(repos[i]); repos[i] == "" {
+				return usageError{errors.New("--repo has an empty repo name")}
+			}
+		}
+	}
+	if cmd.Flags().Changed("owner") {
+		if len(owners) == 0 {
+			return usageError{errors.New("--owner needs an owner name")}
+		}
+		for i := range owners {
+			switch owners[i] = strings.TrimSpace(owners[i]); {
+			case owners[i] == "":
+				return usageError{errors.New("--owner has an empty owner name")}
+			case strings.Contains(owners[i], "/"):
+				return usageError{fmt.Errorf("--owner takes an owner, not %q; use --repo for one repo", owners[i])}
+			}
+		}
+	}
+	return nil
 }
 
 // newAgent builds the agent named by --agent, or the configured one; the
@@ -300,3 +310,32 @@ var newReviewer = func(agent review.Agent, client github.Client, ws *review.Work
 func verdictsPath(stateDir string) string { return filepath.Join(stateDir, "verdicts.json") }
 
 var errInterrupted = errors.New("interrupted")
+
+// completeSelection completes --repo and --owner from the config, so a
+// shell can offer the configured repositories and their owners.
+func completeSelection(c *cobra.Command) {
+	_ = c.RegisterFlagCompletionFunc("repo", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		cfg, err := loadConfig()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var out []cobra.Completion
+		for _, r := range cfg.Repos {
+			out = append(out, r.FullName())
+		}
+		return out, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = c.RegisterFlagCompletionFunc("owner", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		cfg, err := loadConfig()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var out []cobra.Completion
+		for _, r := range cfg.Repos {
+			if !slices.Contains(out, r.Owner) {
+				out = append(out, r.Owner)
+			}
+		}
+		return out, cobra.ShellCompDirectiveNoFileComp
+	})
+}

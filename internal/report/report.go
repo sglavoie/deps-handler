@@ -149,27 +149,70 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 	var parts []string
 	for _, k := range []string{"merged", "merge-failed", "merge", "would merge", "rebase-requested", "rebase-failed", "rebase", "would rebase", "review", "wait", "skip"} {
 		if counts[k] > 0 {
-			parts = append(parts, s.paint(labelColor(k), fmt.Sprintf("%d %s", counts[k], k)))
+			parts = append(parts, s.paint(labelColor(k), fmt.Sprintf("%d %s", counts[k], summaryLabel(k))))
 		}
+	}
+	if len(results) == 0 && hidden > 0 {
+		// --open left nothing to show: say why, rather than count none.
+		fmt.Fprintln(w, s.paint(dim, "no open Dependabot PRs in "+plural(hidden, "repo")))
+		return
 	}
 	if len(parts) == 0 {
 		parts = append(parts, s.paint(dim, "nothing to do"))
 	}
-	head := fmt.Sprintf("%d repos", len(results))
+	head := plural(len(results), "repo")
 	if hidden > 0 {
 		head += fmt.Sprintf(" (%d without open PRs hidden)", hidden)
 	}
 	line := s.paint(bold, head+":") + " " + strings.Join(parts, ", ")
 	if findings > 0 {
-		line += "; " + s.paint(yellow, fmt.Sprintf("%d need attention", findings))
+		verb := "need"
+		if findings == 1 {
+			verb = "needs"
+		}
+		line += "; " + s.paint(yellow, fmt.Sprintf("%d %s attention", findings, verb))
 	}
 	if failed > 0 {
 		line += "; " + s.paint(red, plural(failed, "repo")+" failed")
 	}
 	fmt.Fprintln(w, line)
-	if !apply && (counts["would merge"] > 0 || counts["would rebase"] > 0) {
-		fmt.Fprintln(w, s.paint(dim, "dry run: nothing was changed; rerun with --apply to merge"))
+	if !apply {
+		var todo []string
+		if counts["would merge"] > 0 {
+			todo = append(todo, "merge")
+		}
+		if counts["would rebase"] > 0 {
+			todo = append(todo, "rebase")
+		}
+		if len(todo) > 0 {
+			fmt.Fprintln(w, s.paint(dim, "dry run: nothing was changed; rerun with --apply to "+strings.Join(todo, " and ")))
+		}
 	}
+}
+
+// summaryLabel words an action or event for the totals line, where the
+// event kinds JSON uses ("rebase-requested") and the bare actions ("skip")
+// would read as code.
+func summaryLabel(k string) string {
+	switch k {
+	case "merge-failed":
+		return "merge failed"
+	case "merge":
+		return "left to merge"
+	case "rebase-requested":
+		return "rebase requested"
+	case "rebase-failed":
+		return "rebase failed"
+	case "rebase":
+		return "left to rebase"
+	case "review":
+		return "awaiting review"
+	case "wait":
+		return "waiting"
+	case "skip":
+		return "skipped"
+	}
+	return k
 }
 
 // pending returns the decisions for PRs this run did not act on. A PR with

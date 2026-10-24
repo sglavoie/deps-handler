@@ -227,10 +227,11 @@ func checkEntryKeys(n *yaml.Node) error {
 
 type file struct {
 	Defaults overrides `yaml:"defaults"`
-	// Repos holds pointers so that an empty entry ("- " or "~"), which
-	// the decoder would otherwise drop without a word, can be reported.
-	Repos []*repoEntry `yaml:"repos"`
-	Agent agentEntry   `yaml:"agent"`
+	// Repos holds nodes, decoded one by one, so that each error can give
+	// its line and an empty entry ("- " or "~"), which the decoder would
+	// otherwise drop without a word, can be reported.
+	Repos []yaml.Node `yaml:"repos"`
+	Agent agentEntry  `yaml:"agent"`
 }
 
 type agentEntry struct {
@@ -295,12 +296,21 @@ func CacheDir() (string, error) {
 	return filepath.Join(home, ".cache", "deps-merger"), nil
 }
 
+// NotFoundError is a config file that does not exist.
+type NotFoundError struct{ Path string }
+
+func (e *NotFoundError) Error() string {
+	return fmt.Sprintf("config not found at %s (see %s)", e.Path, exampleURL)
+}
+
+func (e *NotFoundError) Unwrap() error { return os.ErrNotExist }
+
 // Load reads and resolves the config file at path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("config not found at %s (see %s)", path, exampleURL)
+			return nil, &NotFoundError{Path: path}
 		}
 		return nil, err
 	}
@@ -334,28 +344,32 @@ func Parse(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("agent: %w", err)
 	}
 	cfg := &Config{Agent: agent}
-	seen := map[string]bool{}
-	for i, e := range f.Repos {
-		if e == nil {
-			return nil, fmt.Errorf("repos[%d]: empty entry", i)
+	seen := map[string]int{}
+	for _, n := range f.Repos {
+		if n.Kind == yaml.ScalarNode && n.Tag == "!!null" {
+			return nil, fmt.Errorf("repos: line %d: empty entry", n.Line)
+		}
+		var e repoEntry
+		if err := n.Decode(&e); err != nil {
+			return nil, fmt.Errorf("parse config: %w", err)
 		}
 		owner, name, err := parseRepoName(e.Repo)
 		if err != nil {
-			return nil, fmt.Errorf("repos[%d]: %w", i, err)
+			return nil, fmt.Errorf("repos: line %d: %w", n.Line, err)
 		}
 		key := strings.ToLower(owner + "/" + name)
-		if seen[key] {
-			return nil, fmt.Errorf("repos[%d]: %s listed twice", i, e.Repo)
+		if first, ok := seen[key]; ok {
+			return nil, fmt.Errorf("repos: line %d: %s listed twice (first on line %d)", n.Line, e.Repo, first)
 		}
-		seen[key] = true
+		seen[key] = n.Line
 		p, err := apply(defaults, e.overrides)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", e.Repo, err)
+			return nil, fmt.Errorf("repos: line %d: %s: %w", n.Line, e.Repo, err)
 		}
 		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: p, Skip: e.Skip})
 	}
 	if len(cfg.Repos) == 0 {
-		return nil, errors.New("config lists no repos")
+		return nil, errors.New("config lists no repos (see " + exampleURL + ")")
 	}
 	return cfg, nil
 }

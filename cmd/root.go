@@ -35,7 +35,7 @@ by anyone else, are never changed.`,
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-merger/config.yaml, or ~/.config/deps-merger/config.yaml when XDG_CONFIG_HOME is unset)")
-	root.AddCommand(newRunCmd(), newReposCmd(), newVerdictsCmd())
+	root.AddCommand(newInitCmd(), newRunCmd(), newReposCmd(), newVerdictsCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	usageArgs(root)
 	return root
@@ -130,10 +130,29 @@ func formatVersion(info *debug.BuildInfo, version, commit, built string) string 
 			}
 		}
 	}
+	if pseudoVersionOf(version, commit) {
+		// The version names the commit already, as v0.2.1-0.20261024141842-3b9316762033 does.
+		if dirty && !strings.Contains(version, "+dirty") {
+			version += "+dirty"
+		}
+		return fmt.Sprintf("%s (built %s)", version, built)
+	}
 	if dirty {
 		commit += "-dirty"
 	}
 	return fmt.Sprintf("%s (%s, built %s)", version, commit, built)
+}
+
+// pseudoVersionOf reports whether version is a Go pseudo-version, which
+// ends in the first 12 hex digits of the commit it was built from.
+func pseudoVersionOf(version, commit string) bool {
+	version, _, _ = strings.Cut(version, "+")
+	i := strings.LastIndex(version, "-")
+	if i < 0 || len(commit) < 7 || commit == "unknown" {
+		return false
+	}
+	rev := version[i+1:]
+	return len(rev) == 12 && strings.HasPrefix(rev, commit)
 }
 
 func loadConfig() (*config.Config, error) {
@@ -145,5 +164,13 @@ func loadConfig() (*config.Config, error) {
 		}
 		path = p
 	}
-	return config.Load(path)
+	cfg, err := config.Load(path)
+	if nf, ok := errors.AsType[*config.NotFoundError](err); ok {
+		create := "deps-merger init"
+		if configPath != "" {
+			create += " -c " + configPath
+		}
+		return nil, fmt.Errorf("config not found at %s; create one with `%s`", nf.Path, create)
+	}
+	return cfg, err
 }

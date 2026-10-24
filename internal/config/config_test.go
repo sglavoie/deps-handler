@@ -334,3 +334,17 @@ func TestFilterAmbiguousName(t *testing.T) {
 		t.Fatalf("Filter = %v, %v", got, err)
 	}
 }
+
+func TestRepoErrorsGiveLines(t *testing.T) {
+	for in, want := range map[string]string{
+		"repos:\n  - o/a\n  -\n":                                      "repos: line 3: empty entry",
+		"repos:\n  - o/a\n  - o/a.git\n":                              "repos: line 3: \"o/a.git\": drop the .git suffix",
+		"repos:\n  - o/a\n  - O/A\n":                                  "repos: line 3: O/A listed twice (first on line 2)",
+		"repos:\n  - o/a\n  - repo: o/b\n    merge_method: rebased\n": "repos: line 3: o/b: invalid merge_method",
+		"repos:\n  - o/a\n  - repo: o/b\n    color: blue\n":           "line 4: unknown field \"color\"",
+	} {
+		if _, err := Parse([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: err = %v, want %q", in, err, want)
+		}
+	}
+}

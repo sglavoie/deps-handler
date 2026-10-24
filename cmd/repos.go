@@ -11,15 +11,31 @@ import (
 )
 
 func newReposCmd() *cobra.Command {
-	var asJSON bool
+	var (
+		asJSON bool
+		repos  []string
+		owners []string
+	)
 	c := &cobra.Command{
 		Use:   "repos",
 		Short: "List configured repositories and their effective policy",
-		Args:  cobra.NoArgs,
+		Long: `List the configured repositories, skipped ones included, with the policy
+each one runs under, and the agent --review uses.
+
+With --repo and --owner, only the named repositories and the repositories
+of the named owners are listed, as run selects them.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := checkSelection(cmd, repos, owners); err != nil {
+				return err
+			}
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
+			}
+			// Skipped repos are listed: the SKIP column says so.
+			if cfg.Repos, err = cfg.Filter(repos, owners, true); err != nil {
+				return usageError{err}
 			}
 			if asJSON {
 				return reposJSON(cmd.OutOrStdout(), cfg)
@@ -34,7 +50,7 @@ func newReposCmd() *cobra.Command {
 				case d > 0:
 					noChecks = "after " + config.ShortDuration(d)
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%t\t%s\t%t\t%t\n", r.FullName(), r.Policy.MergeMethod, r.Policy.MaxUpdateType, r.Policy.RequireChecks, noChecks, r.Policy.AgentReview, r.Skip)
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.FullName(), r.Policy.MergeMethod, r.Policy.MaxUpdateType, yesNo(r.Policy.RequireChecks), noChecks, yesNo(r.Policy.AgentReview), yesNo(r.Skip))
 			}
 			if err := tw.Flush(); err != nil {
 				return err
@@ -44,6 +60,9 @@ func newReposCmd() *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "print the repositories and the agent as JSON")
+	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only list these repos (owner/name or name; repeatable)")
+	c.Flags().StringSliceVar(&owners, "owner", nil, "only list the configured repos of these owners (repeatable)")
+	completeSelection(c)
 	return c
 }
 
@@ -82,6 +101,13 @@ func reposJSON(w io.Writer, cfg *config.Config) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(doc)
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // agentSummary describes the configured agent and its limits.
