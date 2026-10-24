@@ -36,9 +36,10 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
+      # With or without a scope, as in chore(deps): from Dependabot.
+      - "^docs(\\(.*\\))?:"
+      - "^test(\\(.*\\))?:"
+      - "^chore(\\(.*\\))?:"
 
 homebrew_casks:
   - repository:
