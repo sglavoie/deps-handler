@@ -496,13 +496,14 @@ func expandHome(field, path string) (string, error) {
 // bare name, around which spaces are ignored), including skipped ones, and
 // the repos of the owners in owners (case-insensitive) not marked skip,
 // each once and in config order. With neither, it keeps every repo not
-// marked skip. A bare name shared by repos of several owners is an error
+// marked skip. With includeSkipped, repos marked skip are kept as the
+// others are. A bare name shared by repos of several owners is an error
 // rather than a pick of them all, as is an owner no repo has.
-func (c *Config) Filter(only, owners []string) ([]Repo, error) {
+func (c *Config) Filter(only, owners []string, includeSkipped bool) ([]Repo, error) {
 	if len(only) == 0 && len(owners) == 0 {
 		var out []Repo
 		for _, r := range c.Repos {
-			if !r.Skip {
+			if includeSkipped || !r.Skip {
 				out = append(out, r)
 			}
 		}
@@ -537,7 +538,7 @@ func (c *Config) Filter(only, owners []string) ([]Repo, error) {
 		for i, r := range c.Repos {
 			if strings.EqualFold(r.Owner, o) {
 				found = true
-				picked[i] = picked[i] || !r.Skip
+				picked[i] = picked[i] || includeSkipped || !r.Skip
 			}
 		}
 		if !found {

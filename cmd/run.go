@@ -29,6 +29,7 @@ func newRunCmd() *cobra.Command {
 		asJSON     bool
 		repos      []string
 		owners     []string
+		allRepos   bool
 		reviews    bool
 		agentName  string
 		maxReviews int
@@ -55,7 +56,8 @@ run reviews too, and shows what would be merged.
 
 With --repo and --owner, only the named repositories and the repositories
 of the named owners run; --owner leaves out repositories set to skip: true,
-which --repo runs when named.
+which --repo runs when named. --include-skipped runs those as well, alone
+or with --owner.
 
 With --open, repositories without open Dependabot PRs are left out of the
 report; ones that could not be processed are still shown.
@@ -108,7 +110,7 @@ interrupted.`,
 			if err != nil {
 				return err
 			}
-			selected, err := cfg.Filter(repos, owners)
+			selected, err := cfg.Filter(repos, owners, allRepos)
 			if err != nil {
 				// A repo the config lacks is a mistake of the command
 				// line, not of the config.
@@ -116,9 +118,9 @@ interrupted.`,
 			}
 			if len(selected) == 0 {
 				if len(owners) > 0 {
-					return errors.New("every repo of the named owners has skip: true; name one with --repo to run it")
+					return errors.New("every repo of the named owners has skip: true; name one with --repo or add --include-skipped to run them")
 				}
-				return errors.New("every configured repo has skip: true; name one with --repo to run it")
+				return errors.New("every configured repo has skip: true; name one with --repo or add --include-skipped to run them")
 			}
 			var agent review.Agent
 			switch {
@@ -204,6 +206,7 @@ interrupted.`,
 	c.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
 	c.Flags().StringSliceVar(&owners, "owner", nil, "only handle the configured repos of these owners (repeatable)")
+	c.Flags().BoolVar(&allRepos, "include-skipped", false, "also handle repos set to skip: true")
 	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge updates over max_update_type and of unknown size")
 	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+strings.Join(config.Agents, " or ")+" (default from config; implies --review)")
 	c.Flags().BoolVar(&open, "open", false, "only report repos with open Dependabot PRs")

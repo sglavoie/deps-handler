@@ -406,7 +406,8 @@ repos:
 ```
 
 `deps-merger run -r Mirror` still runs a skipped repo when you ask for it
-by name. A bare name that more than one owner's repo shares (`-r docs` with
+by name, and `deps-merger run --include-skipped` runs every repo, skipped
+or not (with `--owner`, every repo of those owners). A bare name that more than one owner's repo shares (`-r docs` with
 both `acme/docs` and `other/docs` listed) is an error; give `owner/name`.
 So is an empty name (`-r ""`, `-r "Billing,"`), which a script's unset
 variable would otherwise turn into a run of every repo; spaces around a
@@ -416,7 +417,8 @@ of reporting nothing.
 `deps-merger run --owner acme` runs every configured repo of `acme` (the
 owner is matched regardless of case; repeat the flag or separate owners
 with commas for more). It leaves out the owner's repos set to `skip: true`,
-as a run without filters does; add `-r Mirror` to run one of them too.
+as a run without filters does; add `-r Mirror` to run one of them too,
+or `--include-skipped` to run them all.
 `--owner` and `--repo` add up: `--owner acme -r other/docs` runs both. An
 owner no configured repo has is an error, as is an empty one or one
 written `owner/name`.

@@ -104,6 +104,18 @@ func TestRunApply(t *testing.T) {
 	}
 }
 
+func TestRunIncludeSkipped(t *testing.T) {
+	fc, _ := runFixture(t)
+	cfg := writeConfig(t, "repos:\n  - o/quiet\n  - repo: o/busy\n    skip: true\n")
+	if _, out, _ := run("run", "-c", cfg, "--owner", "o"); strings.Contains(out, "o/busy") {
+		t.Fatalf("--owner ran a skipped repo:\n%s", out)
+	}
+	code, out, _ := run("run", "-c", cfg, "--owner", "o", "--include-skipped")
+	if code != 0 || len(fc.merges) != 0 || !strings.Contains(out, "o/busy") || !strings.Contains(out, "2 repos:") {
+		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
+	}
+}
+
 func TestRunOpenLeavesOutQuietRepos(t *testing.T) {
 	_, cfg := runFixture(t)
 	if _, out, _ := run("run", "-c", cfg, "--open"); strings.Contains(out, "o/quiet") || !strings.Contains(out, "o/busy") {
