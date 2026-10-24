@@ -60,6 +60,9 @@ type fakeClient struct {
 	stateErrs []error
 	// fetches counts the reads of the repository.
 	fetches int
+	// conflictOnMerge puts the open PRs in conflict with the base each
+	// merge moves, as a sibling bumping the same lockfile does.
+	conflictOnMerge bool
 }
 
 func (f *fakeClient) Viewer(context.Context) (string, error) { return "me", nil }
@@ -128,6 +131,14 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 	}
 	f.drop(n)
 	f.unknownFor = 2
+	if f.conflictOnMerge {
+		f.repo.FetchedAt = f.repo.FetchedAt.Add(time.Second)
+		for i := range f.repo.PullRequests {
+			f.repo.PullRequests[i].Mergeable = "CONFLICTING"
+			f.repo.PullRequests[i].MergeState = "DIRTY"
+			f.repo.PullRequests[i].BaseMovedAt = f.repo.FetchedAt
+		}
+	}
 	return err
 }
 
@@ -208,6 +219,20 @@ func TestApplyMergesSequentiallyAndWaitsForRecompute(t *testing.T) {
 	}
 	if res.Error != "" {
 		t.Fatal(res.Error)
+	}
+}
+
+func TestConflictFromOurOwnMergeWaitsForDependabot(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2)), conflictOnMerge: true}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(fc.merges) != 1 || fc.merges[0] != 1 {
+		t.Fatalf("merges = %v", fc.merges)
+	}
+	if len(res.Decisions) != 1 || res.Decisions[0].Action != policy.ActionWait || !strings.Contains(res.Decisions[0].Reason, "waiting for Dependabot to rebase") {
+		t.Fatalf("decisions = %+v", res.Decisions)
+	}
+	if len(res.Findings) != 0 || res.Failed() {
+		t.Fatalf("a conflict Dependabot is about to fix needs no attention: findings %+v", res.Findings)
 	}
 }
 

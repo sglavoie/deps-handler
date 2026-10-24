@@ -180,6 +180,27 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.IsDraft = true }},
 		{name: "conflicting", action: ActionSkip, reason: "conflicts",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Mergeable = "CONFLICTING" }},
+		{name: "conflicting after the base moved waits for Dependabot", action: ActionWait, reason: "merge conflicts since the base branch moved 2m ago; waiting for Dependabot to rebase",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Mergeable = "CONFLICTING"
+				pr.BaseMovedAt = testutil.Fetched.Add(-2 * time.Minute)
+			}},
+		{name: "dirty after the base moved waits for Dependabot", action: ActionWait, reason: "waiting for Dependabot to rebase",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "DIRTY"
+				pr.BaseMovedAt = testutil.Fetched.Add(-2 * time.Minute)
+			}},
+		{name: "conflicting long after the base moved is left for a human", action: ActionSkip, reason: "merge conflicts (Dependabot normally rebases",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Mergeable = "CONFLICTING"
+				pr.BaseMovedAt = testutil.Fetched.Add(-31 * time.Minute)
+			}},
+		{name: "conflicting with a base older than the PR is left for a human", action: ActionSkip, reason: "merge conflicts",
+			mutate: func(r *github.Repo, pr *github.PullRequest) {
+				pr.Mergeable = "CONFLICTING"
+				pr.BaseMovedAt = testutil.T0.Add(-time.Minute)
+				r.FetchedAt = testutil.T0.Add(time.Minute)
+			}},
 		{name: "mergeability unknown", action: ActionWait, reason: "mergeability",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Mergeable = "UNKNOWN" }},
 		{name: "behind asks rebase", action: ActionRebase,

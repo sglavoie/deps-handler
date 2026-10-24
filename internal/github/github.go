@@ -114,6 +114,9 @@ type PullRequest struct {
 	// CheckCount is the total number of checks, which can exceed the number
 	// fetched into Checks.
 	CheckCount int `json:"check_count"`
+	// BaseMovedAt is when the latest commit on the base branch was made, as
+	// a merge into it does; zero when GitHub cannot say.
+	BaseMovedAt time.Time `json:"base_moved_at"`
 	// Comments are the latest comments, oldest first; CommentCount is how
 	// many the PR has, which can exceed the number fetched.
 	Comments     []Comment `json:"-"`
@@ -245,6 +248,7 @@ query($owner: String!, $name: String!, $search: String!) {
       ... on PullRequest {
         number state title url isDraft createdAt headRefOid baseRefName
         mergeable mergeStateStatus reviewDecision
+        baseRef { target { ... on Commit { committedDate } } }
         author { login }
         commits(first: 100) {
           totalCount
@@ -350,6 +354,9 @@ type gqlRepo struct {
 					Author    *struct{ Login string }
 				}
 			}
+			BaseRef *struct {
+				Target *struct{ CommittedDate time.Time }
+			}
 		}
 	}
 }
@@ -401,6 +408,9 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		}
 		if n.Author != nil {
 			pr.Author = n.Author.Login
+		}
+		if n.BaseRef != nil && n.BaseRef.Target != nil {
+			pr.BaseMovedAt = n.BaseRef.Target.CommittedDate
 		}
 		for _, cn := range n.Commits.Nodes {
 			cm := Commit{

@@ -70,6 +70,10 @@ const (
 	// rebaseTimeout is how long a rebase request may go unanswered before
 	// the PR stops holding the rebase queue.
 	rebaseTimeout = 24 * time.Hour
+	// conflictGrace is how long after the base branch moves a PR it put in
+	// conflict waits for Dependabot, which rebases such PRs on its own,
+	// before it is left for a human.
+	conflictGrace = 30 * time.Minute
 )
 
 // Verdict is what the AI agent concluded about one update.
@@ -229,6 +233,17 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return d
 	}
 	upToDate := pr.MergeState != "BEHIND"
+	// conflicts skips a PR that cannot merge cleanly, unless the base
+	// branch moved since its latest commit, as when a sibling PR touching
+	// the same lockfile just merged: Dependabot rebases it shortly.
+	conflicts := func(hint string) Decision {
+		if moved := pr.BaseMovedAt; moved.After(pushedAt(pr)) {
+			if age := repo.FetchedAt.Sub(moved); age < conflictGrace {
+				return wait(false, "merge conflicts since the base branch moved %s ago; waiting for Dependabot to rebase", config.ShortDuration(age.Truncate(time.Second)))
+			}
+		}
+		return skip("merge conflicts%s", hint)
+	}
 
 	if repo.Archived {
 		return skip("repository is archived")
@@ -342,7 +357,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 
 	switch pr.Mergeable {
 	case "CONFLICTING":
-		return skip("merge conflicts (Dependabot normally rebases; try @dependabot recreate)")
+		return conflicts(" (Dependabot normally rebases; try @dependabot recreate)")
 	case "UNKNOWN", "":
 		return wait(upToDate, "GitHub is still computing mergeability")
 	}
@@ -379,7 +394,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		}
 		return skip("blocked by branch protection")
 	case "DIRTY":
-		return skip("merge conflicts")
+		return conflicts("")
 	case "UNKNOWN", "":
 		return wait(true, "GitHub is still computing merge state")
 	default:
