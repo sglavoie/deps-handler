@@ -402,6 +402,12 @@ func TestMergePinsHeadAndMethod(t *testing.T) {
 	if err := restClient(t, rt).Merge(context.Background(), "o", "r", 5, "squash", "abc"); !Retryable(err) {
 		t.Fatalf("err = %v; a 405 should come back retryable", err)
 	}
+	rt.answers["PUT /repos/o/r/pulls/5/merge"] = reply(403, `{"message": "refusing to allow an OAuth App to create or update workflow `+"`.github/workflows/ci.yml` without `workflow` scope"+`"}`)
+	err := restClient(t, rt).Merge(context.Background(), "o", "r", 5, "squash", "abc")
+	var we *WorkflowScopeError
+	if !errors.As(err, &we) || !Refused(err) || !strings.Contains(err.Error(), "gh auth refresh") {
+		t.Fatalf("err = %v; a missing workflow scope should come back refused, with how to fix it", err)
+	}
 }
 
 func TestCommentPostsBody(t *testing.T) {

@@ -537,7 +537,12 @@ func statusState(state string) CheckState {
 func (c *client) Merge(ctx context.Context, owner, name string, number int, method, headOID string) error {
 	body, _ := json.Marshal(map[string]string{"merge_method": method, "sha": headOID})
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/merge", owner, name, number)
-	return c.rest.DoWithContext(ctx, "PUT", path, bytes.NewReader(body), nil)
+	err := c.rest.DoWithContext(ctx, "PUT", path, bytes.NewReader(body), nil)
+	var he *api.HTTPError
+	if errors.As(err, &he) && he.StatusCode == 403 && strings.Contains(he.Message, "without `workflow` scope") {
+		return &WorkflowScopeError{Err: err}
+	}
+	return err
 }
 
 func (c *client) Comment(ctx context.Context, owner, name string, number int, text string) error {
@@ -712,6 +717,17 @@ func (e *RateLimitError) Error() string {
 }
 
 func (e *RateLimitError) Unwrap() error { return e.Err }
+
+// WorkflowScopeError is a merge refused because the PR changes a file under
+// .github/workflows and the token lacks the workflow scope GitHub asks for
+// to write one, as gh's default login does.
+type WorkflowScopeError struct{ Err error }
+
+func (e *WorkflowScopeError) Error() string {
+	return "token lacks the `workflow` scope needed to merge changes to workflow files: run `gh auth refresh -h github.com -s workflow`, or give GH_TOKEN that scope"
+}
+
+func (e *WorkflowScopeError) Unwrap() error { return e.Err }
 
 func graphQLRateLimited(err error) bool {
 	var ge *api.GraphQLError
