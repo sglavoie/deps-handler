@@ -296,6 +296,10 @@ func CacheDir() (string, error) {
 	return filepath.Join(home, ".cache", "deps-merger"), nil
 }
 
+// ErrNoRepos is a config that lists no repository, as the example init
+// writes does until its repos are filled in.
+var ErrNoRepos = errors.New("config lists no repos (see " + exampleURL + ")")
+
 // NotFoundError is a config file that does not exist.
 type NotFoundError struct{ Path string }
 
@@ -369,7 +373,7 @@ func Parse(data []byte) (*Config, error) {
 		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: p, Skip: e.Skip})
 	}
 	if len(cfg.Repos) == 0 {
-		return nil, errors.New("config lists no repos (see " + exampleURL + ")")
+		return nil, ErrNoRepos
 	}
 	return cfg, nil
 }

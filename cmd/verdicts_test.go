@@ -39,6 +39,38 @@ func TestVerdictsRejectsUnknownWords(t *testing.T) {
 	}
 }
 
+func TestForgetRejectsWhatIsNoTarget(t *testing.T) {
+	cache, _ := verdictsState(t)
+	if err := cache.Put("o/a#1 lib@2.0.0", "sha", "claude", policy.Verdict{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"Storefront#1", "o/a#seven", "o/a lib@2.0.0", "o/a#1 "} {
+		code, out, stderr := run("verdicts", "forget", target)
+		if code != 2 || out != "" || !strings.Contains(stderr, "is not a target") {
+			t.Errorf("%q: code %d, out %q, stderr %q", target, code, out, stderr)
+		}
+	}
+	if code, out, stderr := run("verdicts", "forget", "o/a#1 lib@2.0.0"); code != 0 || !strings.Contains(out, "forgot 1 verdict") {
+		t.Fatalf("update key: code %d, out %q, stderr %q", code, out, stderr)
+	}
+}
+
+func TestVerdictsCompleteTargets(t *testing.T) {
+	cache, _ := verdictsState(t)
+	for _, key := range []string{"o/a#1 lib@2.0.0", "o/a#2 x@1.1.0", "p/b#7 y@3.0.0"} {
+		if err := cache.Put(key, "sha", "claude", policy.Verdict{Approved: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The forget subcommand comes first, with its description.
+	if _, out, _ := run("__complete", "verdicts", ""); !strings.HasPrefix(out, "forget\t") || !strings.HasSuffix(out, "\no/a\no/a#1\no/a#2\np/b\np/b#7\n:4\n") {
+		t.Errorf("verdicts: %q", out)
+	}
+	if _, out, _ := run("__complete", "verdicts", "forget", "o/a", ""); !strings.HasPrefix(out, "o/a#1\no/a#2\np/b\np/b#7\n:4\n") {
+		t.Errorf("forget, o/a given: %q", out)
+	}
+}
+
 func TestVerdictsUnmatchedTargetExitsOne(t *testing.T) {
 	cache, _ := verdictsState(t)
 	if err := cache.Put("o/a#1 lib@2.0.0", "sha", "claude", policy.Verdict{Approved: true}); err != nil {

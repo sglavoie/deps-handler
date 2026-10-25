@@ -218,7 +218,9 @@ matches nothing), with `--json` for their concerns; its `HEAD` column
 (`head_oid` in `--json`) is the commit a rejection, or an approval of an
 update without versions, holds for, and `any` for other approvals; an
 expired verdict is neither listed nor forgotten. `deps-merger verdicts forget acme/Storefront#42` (or a whole
-`owner/name`) has those updates reviewed again on the next run. Only one
+`owner/name`, or one update as `verdicts` lists it) has those updates
+reviewed again on the next run; anything else is a usage error (exit 2).
+Both complete the repositories and PRs that have verdicts. Only one
 `--review` run works at a time: a second one, such as an overlapping cron
 job, fails at once rather than share the checkouts. Each `--review` run
 removes the checkouts of repositories not in its config that no review
@@ -231,7 +233,8 @@ verdicts` works everywhere.
 
 Configure the agent under `agent:` in the config. `claude.config_dir` is
 passed as `CLAUDE_CONFIG_DIR`, picking the Claude Code account and
-settings to use; `codex.home` is passed as `CODEX_HOME`. Set
+settings to use; `codex.home` is passed as `CODEX_HOME`. Left unset, as
+in the example, the agent gets whichever your environment sets. Set
 `agent_review: false` on a repo to keep the agent out of it; its report
 header then says `no agent review`. When every repo a run selects sets it,
 `--review` says so and runs without the agent, which need not be
@@ -309,7 +312,14 @@ asks.
 The config lives at `~/.config/deps-merger/config.yaml`, or under
 `$XDG_CONFIG_HOME` when that is set; `-c` names another file.
 `deps-merger init` writes the commented example there (or to the file
-`-c` names) and never overwrites one that exists.
+`-c` names) and never overwrites one that exists, unless `--force` moves
+it aside first, to a `.bak` file named after the time. Its repos are
+commented out, so no command runs until you list yours: until then each
+says which file lists no repos. `--discover` fills them in instead with
+every repository your `gh` login can write to that holds a Dependabot
+config (`.github/dependabot.yml` or `.yaml` on its default branch),
+leaving out archived repositories and forks; with `--owner`, only those
+of the named owners. `--stdout` prints the config rather than write it.
 See [`config.example.yaml`](../config.example.yaml). Defaults: squash,
 patch and minor only, checks required, agent review allowed (it only runs
 with `--review`), Claude as the agent. Every policy field under `defaults`

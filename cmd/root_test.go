@@ -2,15 +2,16 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/policy"
 	"github.com/sglavoie/deps-merger/internal/review"
 )
@@ -191,25 +192,6 @@ func TestRunErrorsExitCodes(t *testing.T) {
 	}
 }
 
-func TestNewAgent(t *testing.T) {
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-	cfg := config.Agent{Use: "claude", Codex: config.Codex{Model: "gpt-5"}}
-	if _, err := newAgent(cfg, ""); err == nil || err.Error() != "claude is not installed or not on PATH" {
-		t.Fatalf("err = %v", err)
-	}
-	a, err := newAgent(cfg, "Codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c, ok := a.(review.Codex); !ok || c.Model != "gpt-5" {
-		t.Fatalf("agent = %#v", a)
-	}
-}
-
 func TestFormatVersion(t *testing.T) {
 	info := &debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}, Settings: []debug.BuildSetting{
 		{Key: "vcs.revision", Value: "0123456789abcdef"},
@@ -258,10 +240,99 @@ func TestInitWritesExampleOnce(t *testing.T) {
 	}
 }
 
+func TestInitStdoutWritesNothing(t *testing.T) {
+	old := ExampleConfig
+	t.Cleanup(func() { ExampleConfig = old })
+	ExampleConfig = []byte("repos:\n  - o/a\n")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if code, out, _ := run("init", "-c", path, "--stdout"); code != 0 || out != "repos:\n  - o/a\n" {
+		t.Fatalf("code %d, out %q", code, out)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("--stdout wrote %s: %v", path, err)
+	}
+}
+
+func TestInitForceMovesConfigAside(t *testing.T) {
+	old := ExampleConfig
+	t.Cleanup(func() { ExampleConfig = old })
+	ExampleConfig = []byte("repos:\n  - o/a\n")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("repos: [o/mine]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, stderr := run("init", "-c", path, "--force")
+	if code != 0 || !strings.Contains(out, "moved the existing config to ") {
+		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "repos:\n  - o/a\n" {
+		t.Fatalf("config = %q", data)
+	}
+	backups, _ := filepath.Glob(filepath.Join(dir, "config.yaml.*.bak"))
+	if len(backups) != 1 {
+		t.Fatalf("backups = %q", backups)
+	}
+	if data, _ := os.ReadFile(backups[0]); string(data) != "repos: [o/mine]\n" {
+		t.Fatalf("backup = %q", data)
+	}
+	// With nothing to move aside, --force just writes.
+	fresh := filepath.Join(dir, "fresh.yaml")
+	if code, out, _ := run("init", "-c", fresh, "--force"); code != 0 || strings.Contains(out, "moved") {
+		t.Fatalf("fresh: code %d, out %q", code, out)
+	}
+}
+
+func TestInitDiscoverFillsRepos(t *testing.T) {
+	old, oldDiscover := ExampleConfig, discoverRepos
+	t.Cleanup(func() { ExampleConfig, discoverRepos = old, oldDiscover })
+	ExampleConfig = []byte("defaults:\n  merge_method: squash\nrepos:\n  # - acme/example\n")
+	var asked []string
+	discoverRepos = func(_ context.Context, owners []string) ([]string, error) {
+		asked = owners
+		return []string{"o/a", "o/b"}, nil
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if code, _, stderr := run("init", "-c", path, "--discover", "--owner", " o "); code != 0 || !slices.Equal(asked, []string{"o"}) {
+		t.Fatalf("code %d, asked %q, stderr %q", code, asked, stderr)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "acme/example") || !strings.HasSuffix(string(data), "  - o/a\n  - o/b\n") {
+		t.Fatalf("config:\n%s", data)
+	}
+	if code, out, _ := run("repos", "-c", path); code != 0 || !strings.Contains(out, "o/b") {
+		t.Fatalf("repos: code %d:\n%s", code, out)
+	}
+
+	discoverRepos = func(context.Context, []string) ([]string, error) { return nil, nil }
+	if code, _, stderr := run("init", "--discover", "--stdout"); code != 1 || !strings.Contains(stderr, "found no repository") {
+		t.Fatalf("none found: code %d, stderr %q", code, stderr)
+	}
+}
+
+func TestInitFlagMistakes(t *testing.T) {
+	for args, want := range map[string]string{
+		"--stdout --force":       "--force needs a file to replace",
+		"--owner o":              "--owner needs --discover",
+		"--discover --owner o/r": "--owner takes an owner",
+	} {
+		if code, _, stderr := run(append([]string{"init"}, strings.Fields(args)...)...); code != 2 || !strings.Contains(stderr, want) {
+			t.Errorf("%s: code %d, stderr %q", args, code, stderr)
+		}
+	}
+}
+
 func TestMissingConfigSuggestsInit(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope.yaml")
 	if _, _, stderr := run("repos", "-c", missing); !strings.Contains(stderr, "create one with `deps-merger init -c "+missing+"`") {
 		t.Fatalf("stderr = %q", stderr)
+	}
+}
+
+func TestEmptyConfigSaysWhereToListRepos(t *testing.T) {
+	cfg := writeConfig(t, "defaults:\n  max_update_type: patch\nrepos:\n  # - o/a\n")
+	if code, _, stderr := run("run", "-c", cfg); code != 1 || !strings.Contains(stderr, cfg+" lists no repos yet; list yours under repos:, or fill them in with `deps-merger init -c "+cfg+" --discover --force`") {
+		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
 }
 

@@ -71,13 +71,25 @@ A target narrows the list to a repository (owner/name) or a pull request
 		},
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "print verdicts as JSON, with their concerns")
+	c.ValidArgsFunction = completeTargets
 	c.AddCommand(&cobra.Command{
 		Use:   "forget TARGET...",
 		Short: "Drop cached verdicts so the next --review run judges them again",
 		Long: `Drop cached verdicts so the next --review run judges those updates again.
 A target is a repository (owner/name), a pull request (owner/name#7) or an
 update as "verdicts" lists it. Exits 1 if a target matched nothing.`,
-		Args: cobra.MinimumNArgs(1),
+		ValidArgsFunction: completeTargets,
+		Args: func(cmd *cobra.Command, targets []string) error {
+			if err := cobra.MinimumNArgs(1)(cmd, targets); err != nil {
+				return err
+			}
+			for _, t := range targets {
+				if !targetPattern.MatchString(t) && !updatePattern.MatchString(t) {
+					return fmt.Errorf("%q is not a target: want owner/name, owner/name#7 or an update as \"verdicts\" lists it", t)
+				}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, targets []string) error {
 			cache, err := openVerdicts(cmd)
 			if err != nil {
@@ -105,9 +117,38 @@ update as "verdicts" lists it. Exits 1 if a target matched nothing.`,
 	return c
 }
 
+// completeTargets completes the repositories and pull requests the cached
+// verdicts are for, as owner/name and owner/name#7, leaving out those
+// already given.
+func completeTargets(_ *cobra.Command, given []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	stateDir, err := config.StateDir()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	cache, err := review.OpenCache(verdictsPath(stateDir))
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	var out []cobra.Completion
+	for _, e := range cache.Entries() {
+		pr, _, _ := strings.Cut(e.Key, " ")
+		repo, _, _ := strings.Cut(pr, "#")
+		for _, t := range []string{repo, pr} {
+			if !slices.Contains(out, t) && !slices.Contains(given, t) {
+				out = append(out, t)
+			}
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
 // targetPattern is a repository (owner/name) or a pull request
 // (owner/name#7).
 var targetPattern = regexp.MustCompile(`^[^/#\s]+/[^/#\s]+(#[0-9]+)?$`)
+
+// updatePattern is an update as a verdict's key names it: its pull request
+// followed by the versions or the commit reviewed.
+var updatePattern = regexp.MustCompile(`^[^/#\s]+/[^/#\s]+#[0-9]+ \S`)
 
 func printVerdicts(cmd *cobra.Command, entries []review.Entry, asJSON bool) error {
 	if asJSON {

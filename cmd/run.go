@@ -65,11 +65,10 @@ or with --owner.
 With --open, repositories without open Dependabot PRs are left out of the
 report; ones that could not be processed are still shown.
 
-Exits 1 if a repository could not be processed or a merge or rebase request
-failed or an agent review could not be done, 2 when the command line is
-wrong (including a --repo the config does not list or an --owner it has
-no repository of), and 130 when
-interrupted.`,
+Exits 1 if a repository could not be processed, a merge or rebase request
+failed or an agent review could not be done; 2 when the command line is
+wrong, including a --repo the config does not list or an --owner it has
+no repository of; and 130 when interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Flags first: a mistake in the command line is reported
@@ -314,28 +313,24 @@ var errInterrupted = errors.New("interrupted")
 // completeSelection completes --repo and --owner from the config, so a
 // shell can offer the configured repositories and their owners.
 func completeSelection(c *cobra.Command) {
-	_ = c.RegisterFlagCompletionFunc("repo", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	_ = c.RegisterFlagCompletionFunc("repo", completeFromConfig(func(r config.Repo) string { return r.FullName() }))
+	_ = c.RegisterFlagCompletionFunc("owner", completeFromConfig(func(r config.Repo) string { return r.Owner }))
+}
+
+// completeFromConfig completes with what name gives for each configured
+// repository, each once and in config order.
+func completeFromConfig(name func(config.Repo) string) cobra.CompletionFunc {
+	return func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		cfg, err := loadConfig()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveError
 		}
 		var out []cobra.Completion
 		for _, r := range cfg.Repos {
-			out = append(out, r.FullName())
-		}
-		return out, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = c.RegisterFlagCompletionFunc("owner", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		cfg, err := loadConfig()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		var out []cobra.Completion
-		for _, r := range cfg.Repos {
-			if !slices.Contains(out, r.Owner) {
-				out = append(out, r.Owner)
+			if n := name(r); !slices.Contains(out, n) {
+				out = append(out, n)
 			}
 		}
 		return out, cobra.ShellCompDirectiveNoFileComp
-	})
+	}
 }

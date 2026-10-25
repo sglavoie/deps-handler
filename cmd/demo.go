@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,6 +34,17 @@ func init() {
 	newAgent = func(config.Agent, string) (review.Agent, error) { return demo.Agent{}, nil }
 	newReviewer = func(review.Agent, github.Client, *review.Workspace, time.Duration) review.Reviewer {
 		return demo.Reviewer{}
+	}
+	discoverRepos = func(context.Context, []string) ([]string, error) {
+		cfg, err := config.Parse([]byte(demo.Config))
+		if err != nil {
+			return nil, err
+		}
+		var names []string
+		for _, r := range cfg.Repos {
+			names = append(names, r.FullName())
+		}
+		return names, nil
 	}
 }
 

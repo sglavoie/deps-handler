@@ -165,12 +165,16 @@ func loadConfig() (*config.Config, error) {
 		path = p
 	}
 	cfg, err := config.Load(path)
+	initCmd := "deps-merger init"
+	if configPath != "" {
+		initCmd += " -c " + configPath
+	}
 	if nf, ok := errors.AsType[*config.NotFoundError](err); ok {
-		create := "deps-merger init"
-		if configPath != "" {
-			create += " -c " + configPath
-		}
-		return nil, fmt.Errorf("config not found at %s; create one with `%s`", nf.Path, create)
+		return nil, fmt.Errorf("config not found at %s; create one with `%s`", nf.Path, initCmd)
+	}
+	if errors.Is(err, config.ErrNoRepos) {
+		// As init leaves it: say where to fill it in.
+		return nil, fmt.Errorf("%s lists no repos yet; list yours under repos:, or fill them in with `%s --discover --force`", path, initCmd)
 	}
 	return cfg, err
 }

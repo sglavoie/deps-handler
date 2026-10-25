@@ -41,6 +41,7 @@ load `deps-merger completion bash` (or `zsh`, `fish`, `powershell`);
 
 ```bash
 deps-merger init                  # write an example config, then list your repos in it
+deps-merger init --discover       # or fill it with your repos that use Dependabot
 deps-merger repos                 # effective policy per repo (--json, -r, --owner)
 deps-merger run                   # dry run: report only
 deps-merger run --apply           # merge safe PRs

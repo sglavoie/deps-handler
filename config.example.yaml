@@ -31,28 +31,25 @@ agent:
   use: claude
   timeout: 15m              # per review
   claude:
-    model: opus             # empty: Claude Code's default
-    config_dir: ~/.claude   # passed as CLAUDE_CONFIG_DIR; absolute or ~/
+    # model: opus           # unset: Claude Code's default
+    # config_dir: ~/.claude # passed as CLAUDE_CONFIG_DIR; absolute or ~/.
+    #                       # Unset: the one in your environment, if any.
     max_budget_usd: 2       # per review; 0 or unset: no cap
   codex:
-    model: ""               # empty: Codex's default
-    home: ""                # passed as CODEX_HOME when set; absolute or ~/
+    # model: gpt-5          # unset: Codex's default
+    # home: ~/.codex        # passed as CODEX_HOME; absolute or ~/.
+    #                       # Unset: the one in your environment, if any.
 
 # Repos are written owner/name, without .git. An entry is a bare name, or a
 # mapping with repo: and any of the defaults above to override. skip: true
 # leaves a repo out of runs; naming it with --repo or adding
 # --include-skipped still runs it, while --owner alone leaves it out.
 repos:
-  - acme/Billing
-  - acme/docs
-  - acme/Storefront
-  - acme/Ingest
-  - acme/Gateway
-  - acme/Orders
-  - repo: acme/Mirror
-    skip: true              # read-only access: nothing to merge
-  - acme/Metrics
-  - acme/Search
-  - acme/Monitor
-  - repo: acme/auth-worker
-    require_checks: false   # no CI on this repo: explicit opt-in
+  # Nothing runs until you list your own repos here, as the commented
+  # examples below show (`deps-merger init --discover` can list them).
+  # - acme/Storefront
+  # - acme/Billing
+  # - repo: acme/Mirror
+  #   skip: true            # read-only access: nothing to merge
+  # - repo: acme/auth-worker
+  #   require_checks: false # no CI on this repo: explicit opt-in
