@@ -209,17 +209,36 @@ const RequestTimeout = time.Minute
 
 // New builds a client from the gh CLI's stored credentials or GH_TOKEN.
 func New() (Client, error) {
-	gql, err := api.NewGraphQLClient(api.ClientOptions{Timeout: RequestTimeout})
+	c, err := newClient(api.ClientOptions{Timeout: RequestTimeout})
 	if err != nil {
 		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
 	}
-	rest, err := api.NewRESTClient(api.ClientOptions{Timeout: RequestTimeout})
-	if err != nil {
-		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
+	return c, nil
+}
+
+// NewWithToken builds a github.com client that authenticates with token,
+// such as a GitHub App installation token, and reads nothing of the gh
+// CLI's: neither its credentials nor its config.
+func NewWithToken(token string) (Client, error) {
+	if token == "" {
+		return nil, errors.New("github auth: empty token")
 	}
-	diff, err := api.NewRESTClient(api.ClientOptions{Timeout: RequestTimeout, Headers: map[string]string{"Accept": "application/vnd.github.diff"}})
+	return newClient(api.ClientOptions{Host: "github.com", AuthToken: token, Transport: http.DefaultTransport, Timeout: RequestTimeout})
+}
+
+func newClient(opts api.ClientOptions) (*client, error) {
+	gql, err := api.NewGraphQLClient(opts)
 	if err != nil {
-		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
+		return nil, err
+	}
+	rest, err := api.NewRESTClient(opts)
+	if err != nil {
+		return nil, err
+	}
+	opts.Headers = map[string]string{"Accept": "application/vnd.github.diff"}
+	diff, err := api.NewRESTClient(opts)
+	if err != nil {
+		return nil, err
 	}
 	return &client{gql: gql, rest: rest, diff: diff}, nil
 }

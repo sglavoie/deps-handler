@@ -624,3 +624,43 @@ func TestFetchRepoCommitterNotGitHub(t *testing.T) {
 		t.Fatal("a commit someone else committed must not count as GitHub's")
 	}
 }
+
+// authRecorder answers like canned and keeps the last request's headers.
+type authRecorder struct {
+	canned
+	header http.Header
+}
+
+func (r *authRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.header = req.Header.Clone()
+	return r.canned.RoundTrip(req)
+}
+
+func TestNewWithToken(t *testing.T) {
+	// Without gh credentials or config, so the token is all it can use.
+	t.Setenv("GH_CONFIG_DIR", t.TempDir())
+	for _, v := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_HOST"} {
+		t.Setenv(v, "")
+	}
+	if _, err := NewWithToken(""); err == nil {
+		t.Error("NewWithToken(\"\") succeeded, want an error")
+	}
+	rec := &authRecorder{canned: canned(`{"data": {"viewer": {"login": "deps-merger[bot]"}}}`)}
+	orig := http.DefaultTransport
+	http.DefaultTransport = rec
+	defer func() { http.DefaultTransport = orig }()
+	c, err := NewWithToken("ghs_install")
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := c.Viewer(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if login != "deps-merger[bot]" {
+		t.Errorf("Viewer = %q, want deps-merger[bot]", login)
+	}
+	if got := rec.header.Get("Authorization"); got != "token ghs_install" {
+		t.Errorf("Authorization = %q, want token ghs_install", got)
+	}
+}
