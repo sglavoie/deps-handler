@@ -178,6 +178,7 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"no parallel":     {[]string{"run", "-c", active, "--parallel", "0"}, 2, "--parallel must be at least 1"},
 		"no review slots": {[]string{"run", "-c", active, "--review", "--review-parallel", "0"}, 2, "--review-parallel must be at least 1"},
 		"slots alone":     {[]string{"run", "-c", active, "--review-parallel", "3"}, 2, "--review-parallel needs --review or --agent"},
+		"two formats":     {[]string{"run", "-c", missing, "--json", "--markdown"}, 2, "--json and --markdown cannot be used together"},
 		// The command line is checked before the config is read.
 		"limit before config": {[]string{"run", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
 		"repo before config":  {[]string{"run", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},

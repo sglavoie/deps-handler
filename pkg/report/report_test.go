@@ -361,3 +361,72 @@ func TestRepoInReportModeDuringApply(t *testing.T) {
 		t.Fatalf("summary %q, want %q", b.String(), want)
 	}
 }
+
+func TestMarkdown(t *testing.T) {
+	p := config.Builtin
+	p.DependabotCommands = false
+	res := runner.RepoResult{
+		Repo:        "o/r",
+		Policy:      p,
+		ConfigFiles: []string{"o/.github:deps-merger.yml"},
+		Permission:  "WRITE",
+		Decisions: []policy.Decision{
+			{Number: 2, Title: "bump a|b for @octocat <b>now</b>", URL: "https://github.com/o/r/pull/2", Grade: config.UpdateMinor, Action: policy.ActionMerge, Reason: "checks green, within policy"},
+			{Number: 3, Title: "bump `x`", URL: "javascript:alert(1)", Grade: config.UpdatePatch, Action: policy.ActionSkip, Reason: "behind base branch; rebase left to a human (dependabot_commands: false)"},
+		},
+		Events: []runner.Event{{Number: 1, Title: "bump lib", URL: "https://github.com/o/r/pull/1", Grade: config.UpdatePatch, Kind: runner.EventMerged, Detail: "squash"}},
+		Findings: []policy.Finding{{
+			Kind: policy.FindingBehind, Summary: "behind the base branch", PRs: []int{3},
+			Suggestions: []string{"@dependabot rebase", "ask @team"},
+		}},
+	}
+	var b bytes.Buffer
+	Markdown(&b, true, res)
+	want := "## o/r\n\n" +
+		"Squash, up to minor, checks required, no Dependabot commands, write access\n" +
+		"Policy from `o/.github:deps-merger.yml`.\n\n" +
+		"| PR | Update | Status | Reason |\n| --- | --- | --- | --- |\n" +
+		"| [#1 bump lib](https://github.com/o/r/pull/1) | patch | merged | squash |\n" +
+		"| [#2 bump a\\|b for @\u200boctocat &lt;b&gt;now&lt;/b&gt;](https://github.com/o/r/pull/2) | minor | merge | checks green, within policy |\n" +
+		"| #3 bump \\`x\\` | patch | skip | behind base branch; rebase left to a human (dependabot\\_commands: false) |\n\n" +
+		"### Needs attention\n\n" +
+		"- behind the base branch (#3)\n" +
+		"  - Suggested: `@dependabot rebase`\n" +
+		"  - Suggested: ask @\u200bteam\n\n"
+	if b.String() != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", b.String(), want)
+	}
+}
+
+func TestMarkdownReportModeAndError(t *testing.T) {
+	p := config.Builtin
+	p.Mode = config.ModeReport
+	var b bytes.Buffer
+	Markdown(&b, true, runner.RepoResult{Repo: "o/r", Policy: p, Decisions: []policy.Decision{decision(1, policy.ActionMerge, "ok")}})
+	if !strings.Contains(b.String(), "| would merge |") || !strings.Contains(b.String(), "report only") {
+		t.Errorf("report mode:\n%s", b.String())
+	}
+	b.Reset()
+	Markdown(&b, false, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Error: "line\nbreak | pipe"})
+	if want := "**Error:** line break \\| pipe\n\n"; !strings.Contains(b.String(), want) || strings.Contains(b.String(), "| PR |") {
+		t.Errorf("error:\n%s", b.String())
+	}
+	b.Reset()
+	Markdown(&b, false, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, Decisions: []policy.Decision{}})
+	if !strings.Contains(b.String(), "No open Dependabot PRs.") {
+		t.Errorf("no PRs:\n%s", b.String())
+	}
+}
+
+func TestMdCode(t *testing.T) {
+	for in, want := range map[string]string{
+		"@dependabot rebase": "`@dependabot rebase`",
+		"a`b":                "``a`b``",
+		"`x`":                "`` `x` ``",
+		"a\nb":               "`a b`",
+	} {
+		if got := mdCode(in); got != want {
+			t.Errorf("mdCode(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

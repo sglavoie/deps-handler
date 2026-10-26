@@ -267,7 +267,7 @@ run's review approved without asking the agent again. For
   GitHub's GraphQL limit, deps-merger asks GitHub when it resets, and does
   not wait when it cannot tell);
 - `2`: the command line is wrong (an unknown command or flag, a missing
-  argument, `--max-reviews` or `--review-parallel` without `--review`, a
+  argument, `--json` with `--markdown`, `--max-reviews` or `--review-parallel` without `--review`, a
   `--parallel` or `--review-parallel` below 1, an empty `--repo`, or one
   the config does not list or lists under several owners, an empty
   `--owner`, one written `owner/name`, or one no configured repo has), and
@@ -308,6 +308,16 @@ empty `model` for the agent's default.
 `update` (its cache key), `verdict` (`approved` or `rejected`),
 `approved`, `agent`, `head_oid` (the commit a rejection, or an
 approval of an update without versions, holds for, or `any`), `reviewed_at`, `expires`, `summary` and `concerns`.
+
+`run --markdown` prints each repository's section as GitHub Markdown, as
+an issue body or a GitHub Actions job summary would hold it: a heading,
+the policy line, the files the policy came from, a table of PRs with
+their status and reason, warnings, and the findings under "Needs
+attention", with Dependabot commands as code to copy. Text that comes
+from elsewhere, such as PR titles and reasons quoting GitHub or an
+agent, is escaped: it cannot change the layout, and an `@` in it is
+followed by a zero-width space so that it mentions no one. Only
+`https://github.com/` URLs are linked. No summary line follows.
 
 On a terminal the report is colored: green for merges, cyan for rebases,
 yellow for waits and what needs attention, magenta for agent reviews, red

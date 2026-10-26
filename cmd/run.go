@@ -27,6 +27,7 @@ func newRunCmd() *cobra.Command {
 	var (
 		apply      bool
 		asJSON     bool
+		markdown   bool
 		repos      []string
 		owners     []string
 		allRepos   bool
@@ -65,6 +66,9 @@ or with --owner.
 With --open, repositories without open Dependabot PRs are left out of the
 report; ones that could not be processed are still shown.
 
+With --markdown, each repository's section is printed as GitHub Markdown,
+as an issue body would hold it, and no summary follows.
+
 Exits 1 if a repository could not be processed, a merge or rebase request
 failed or an agent review could not be done; 2 when the command line is
 wrong, including a --repo the config does not list or an --owner it has
@@ -74,6 +78,9 @@ no repository of; and 130 when interrupted.`,
 			// Flags first: a mistake in the command line is reported
 			// before anything in the config.
 			wantReviews := reviews || agentName != ""
+			if asJSON && markdown {
+				return usageError{errors.New("--json and --markdown cannot be used together")}
+			}
 			if cmd.Flags().Changed("max-reviews") && !wantReviews {
 				return usageError{errors.New("--max-reviews needs --review or --agent")}
 			}
@@ -146,7 +153,13 @@ no repository of; and 130 when interrupted.`,
 
 			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
 			var progress func(runner.RepoResult)
-			if !asJSON {
+			if markdown {
+				progress = func(r runner.RepoResult) {
+					if !open || report.HasPRs(r) {
+						report.Markdown(out, apply, r)
+					}
+				}
+			} else if !asJSON {
 				progress = func(r runner.RepoResult) {
 					if !open || report.HasPRs(r) {
 						report.Repo(out, apply, r)
@@ -174,11 +187,12 @@ no repository of; and 130 when interrupted.`,
 			if open {
 				shown = slices.DeleteFunc(slices.Clone(results), func(r runner.RepoResult) bool { return !report.HasPRs(r) })
 			}
-			if asJSON {
+			switch {
+			case asJSON:
 				if err := report.JSON(out, apply, shown); err != nil {
 					return err
 				}
-			} else {
+			case !markdown:
 				report.Summary(out, apply, shown, len(results)-len(shown))
 			}
 			if ctx.Err() != nil {
@@ -194,6 +208,7 @@ no repository of; and 130 when interrupted.`,
 	}
 	c.Flags().BoolVar(&apply, "apply", false, "merge safe PRs and request rebases (default is a dry run)")
 	c.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
+	c.Flags().BoolVar(&markdown, "markdown", false, "print each repository's section as GitHub Markdown")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
 	c.Flags().StringSliceVar(&owners, "owner", nil, "only handle the configured repos of these owners (repeatable)")
 	c.Flags().BoolVar(&allRepos, "include-skipped", false, "also handle repos set to skip: true")

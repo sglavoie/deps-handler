@@ -31,8 +31,17 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 }
 
 func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
-	p := res.Policy
 	apply = applies(apply, res)
+	// Everything printed goes through paint, which makes it Plain: reasons
+	// and findings can quote an agent's answer or GitHub's errors.
+	fmt.Fprintln(w, s.paint(bold, res.Repo)+"  "+s.paint(dim, "("+header(res)+")"))
+	repoBody(w, apply, res, s)
+}
+
+// header sums up the policy a repository ran under, and the access the
+// viewer has to it.
+func header(res runner.RepoResult) string {
+	p := res.Policy
 	checks := "checks required"
 	if !p.RequireChecks {
 		checks = "checks optional"
@@ -43,7 +52,7 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	if res.MergeMethod != "" && res.MergeMethod != p.MergeMethod {
 		method = fmt.Sprintf("%s; %s not allowed", res.MergeMethod, p.MergeMethod)
 	}
-	header := fmt.Sprintf("(%s, up to %s, %s", method, p.MaxUpdateType, checks)
+	header := fmt.Sprintf("%s, up to %s, %s", method, p.MaxUpdateType, checks)
 	if !p.AgentReview {
 		header += ", no agent review"
 	}
@@ -56,9 +65,10 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	if res.Permission != "" {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
-	// Everything printed goes through paint, which makes it Plain: reasons
-	// and findings can quote an agent's answer or GitHub's errors.
-	fmt.Fprintln(w, s.paint(bold, res.Repo)+"  "+s.paint(dim, header+")"))
+	return header
+}
+
+func repoBody(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	if len(res.ConfigFiles) > 0 {
 		fmt.Fprintln(w, "  "+s.paint(dim, "policy from "+strings.Join(res.ConfigFiles, ", ")))
 	}
@@ -93,7 +103,7 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		fmt.Fprintln(w, "  "+s.paint(bold+";"+yellow, "needs attention:"))
 		for _, f := range res.Findings {
 			fmt.Fprintf(w, "    %s %s\n", s.paint(yellow, "-"), s.paint("", f.Summary))
-			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks || f.Kind == policy.FindingReviewRequired || f.Kind == policy.FindingBehind {
+			if listsPRs(f.Kind) {
 				fmt.Fprintf(w, "      %s %s\n", s.paint(dim, "PRs:"), prList(f.PRs))
 			}
 			for _, d := range f.Details {
@@ -105,6 +115,16 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		}
 	}
 	fmt.Fprintln(w)
+}
+
+// listsPRs reports whether a finding's PRs are shown after it: the others
+// name theirs in their summary.
+func listsPRs(k policy.FindingKind) bool {
+	switch k {
+	case policy.FindingRepoCheck, policy.FindingNoChecks, policy.FindingReviewRequired, policy.FindingBehind:
+		return true
+	}
+	return false
 }
 
 // HasPRs reports whether a repository had open Dependabot PRs to report,

@@ -47,6 +47,7 @@ deps-merger run                   # dry run: report only
 deps-merger run --apply           # merge safe PRs
 deps-merger run --open            # only repos with open Dependabot PRs
 deps-merger run -r Storefront --json  # one repo, machine-readable
+deps-merger run --markdown        # GitHub Markdown, as for an issue body
 deps-merger run --review --apply  # let an AI agent judge bigger updates too
 deps-merger verdicts              # the agent's cached verdicts
 deps-merger verdicts acme/Storefront --json  # one repo's, with concerns
@@ -176,7 +177,9 @@ verdicts for a later `--apply`). The exit status is:
 `{"apply": bool, "results": [...]}`, one result per repository with its
 policy, a decision per PR, findings, the writes made and warnings. Lists
 are always arrays, never `null`. [Scripting](docs/behaviour.md#scripting)
-describes every field and what each exit status covers.
+describes every field and what each exit status covers. `run --markdown`
+prints each repository's section as GitHub Markdown instead, ready for an
+issue or a CI job summary.
 
 On a terminal the report is colored; `NO_COLOR=1` or `CLICOLOR=0` turns
 color off and `CLICOLOR_FORCE=1` keeps it when piped.

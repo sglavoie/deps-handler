@@ -137,6 +137,23 @@ func TestRunOpenLeavesOutQuietRepos(t *testing.T) {
 	}
 }
 
+func TestRunMarkdown(t *testing.T) {
+	_, cfg := runFixture(t)
+	code, out, _ := run("run", "-c", cfg, "--markdown", "--open")
+	if code != 0 {
+		t.Fatalf("code %d:\n%s", code, out)
+	}
+	for _, want := range []string{"## o/busy\n", "| PR | Update | Status | Reason |", "| would merge |", "### Needs attention"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// --open leaves the quiet repo out, and no summary follows.
+	if strings.Contains(out, "o/quiet") || strings.Contains(out, "dry run:") {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
 func TestRunOpenSummaryCountsHiddenRepos(t *testing.T) {
 	_, cfg := runFixture(t)
 	if _, out, _ := run("run", "-c", cfg, "--open"); !strings.Contains(out, "1 repo (1 without open PRs hidden): 1 would merge, 1 skipped") {
