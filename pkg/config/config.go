@@ -71,6 +71,11 @@ type Policy struct {
 	// not merge (over max_update_type, or of unknown size) when a run asks
 	// for agent reviews.
 	AgentReview bool `json:"agent_review"`
+	// DependabotCommands lets deps-merger comment @dependabot rebase on a
+	// PR that is behind. Dependabot takes commands only from users with
+	// push access, not from a GitHub App or GITHUB_TOKEN: without it, such
+	// a PR is left for a human to rebase.
+	DependabotCommands bool `json:"dependabot_commands"`
 }
 
 // MarshalJSON writes MergeWithoutChecksAfter as the config would, "10m",
@@ -155,6 +160,8 @@ type overrides struct {
 	MaxUpdateType *string `yaml:"max_update_type"`
 	RequireChecks *bool   `yaml:"require_checks"`
 	AgentReview   *bool   `yaml:"agent_review"`
+	// DependabotCommands is dependabot_commands.
+	DependabotCommands *bool `yaml:"dependabot_commands"`
 	// MergeWithoutChecksAfter is a duration such as "10m"; "0" turns it off.
 	MergeWithoutChecksAfter *string `yaml:"merge_without_checks_after"`
 }
@@ -251,7 +258,7 @@ var validMergeMethods = map[string]bool{"squash": true, "merge": true, "rebase":
 const ChecksGrace = 30 * time.Minute
 
 // Builtin is the policy used when neither defaults nor a repo override it.
-var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true}
+var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, DependabotCommands: true}
 
 // exampleURL is the annotated example config, which a `go install` leaves
 // no copy of.
@@ -440,6 +447,9 @@ func apply(base Policy, o overrides) (Policy, error) {
 	}
 	if o.AgentReview != nil {
 		p.AgentReview = *o.AgentReview
+	}
+	if o.DependabotCommands != nil {
+		p.DependabotCommands = *o.DependabotCommands
 	}
 	if o.MergeWithoutChecksAfter != nil {
 		d, err := time.ParseDuration(*o.MergeWithoutChecksAfter)

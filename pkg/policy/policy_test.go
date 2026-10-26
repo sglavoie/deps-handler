@@ -523,3 +523,38 @@ func TestVerdictConcernsAreNeverNull(t *testing.T) {
 		t.Fatalf("json = %s", b)
 	}
 }
+
+func TestEvaluateWithoutDependabotCommands(t *testing.T) {
+	behind := func(n int, deps ...string) github.PullRequest {
+		pr := testutil.PR(n, deps...)
+		pr.MergeState = "BEHIND"
+		return pr
+	}
+	p := defaultPolicy
+	p.DependabotCommands = false
+	repo := testutil.Repo(behind(1), behind(2), behind(3, "lib:major"), testutil.PR(4))
+	ds := Evaluate(repo, p, "me", nil)
+	var got []string
+	for _, d := range ds {
+		got = append(got, string(d.Action))
+	}
+	// Nothing is asked of Dependabot, and nothing queues behind a rebase
+	// that will not be requested.
+	if want := "skip skip skip merge"; strings.Join(got, " ") != want {
+		t.Fatalf("actions = %s, want %s", strings.Join(got, " "), want)
+	}
+	if !strings.Contains(ds[0].Reason, "left to a human") {
+		t.Errorf("reason = %q", ds[0].Reason)
+	}
+	f := map[FindingKind][]Finding{}
+	for _, x := range Diagnose(repo, p, ds) {
+		f[x.Kind] = append(f[x.Kind], x)
+	}
+	if len(f[FindingBehind]) != 1 || len(f[FindingBehind][0].PRs) != 2 || !strings.Contains(f[FindingBehind][0].Suggestions[0], RebaseCommand) {
+		t.Errorf("behind = %+v", f[FindingBehind])
+	}
+	// A major that is behind is still held for its size alone.
+	if len(f[FindingHeldMajor]) != 1 || f[FindingHeldMajor][0].PRs[0] != 3 {
+		t.Errorf("held-major = %+v", f[FindingHeldMajor])
+	}
+}

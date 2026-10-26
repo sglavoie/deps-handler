@@ -146,6 +146,9 @@ Under each repo the report lists, without acting on them:
   a Docker digest), when no agent reviewed them;
 - **review required**: branch protection wants an approving review, which
   deps-merger never gives;
+- **behind**: safe PRs behind a base branch that must be up to date, left
+  for a human to rebase under `dependabot_commands: false` (for runs as a
+  bot, whose `@dependabot` commands Dependabot ignores);
 - **stalled rebases**: a rebase request Dependabot ignored for a day, with
   `@dependabot recreate` as the fix;
 - **no checks**, **read-only** and **archived** repositories (no checks

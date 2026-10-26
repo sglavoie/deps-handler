@@ -20,13 +20,14 @@ repos:
     require_checks: false
     max_update_type: major
     agent_review: false
+    dependabot_commands: false
     merge_without_checks_after: "0"
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
 	a, b := cfg.Repos[0].Policy, cfg.Repos[1].Policy
-	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, MergeWithoutChecksAfter: 45 * time.Minute}) {
+	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, DependabotCommands: true, MergeWithoutChecksAfter: 45 * time.Minute}) {
 		t.Errorf("Billing policy = %+v", a)
 	}
 	if b != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMajor, RequireChecks: false, AgentReview: false}) {
@@ -78,16 +79,16 @@ func TestParseRejectsBadInput(t *testing.T) {
 }
 
 func TestParseAcceptsEveryEntryField(t *testing.T) {
-	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: true, agent_review: false, merge_without_checks_after: 5m, skip: true}\n"
+	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: true, agent_review: false, dependabot_commands: false, merge_without_checks_after: 5m, skip: true}\n"
 	if _, err := Parse([]byte(in)); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"repo", "skip", "merge_method", "max_update_type", "require_checks", "agent_review", "merge_without_checks_after"} {
+	for _, k := range []string{"repo", "skip", "merge_method", "max_update_type", "require_checks", "agent_review", "dependabot_commands", "merge_without_checks_after"} {
 		if !entryKeys[k] {
 			t.Errorf("entryKeys lacks %q", k)
 		}
 	}
-	if len(entryKeys) != 7 {
+	if len(entryKeys) != 8 {
 		t.Errorf("entryKeys = %v", entryKeys)
 	}
 }
@@ -252,7 +253,7 @@ func TestPolicyJSONWritesDurations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"merge_method":"squash","max_update_type":"minor","require_checks":true,"agent_review":true,"merge_without_checks_after":"10m"}`
+	want := `{"merge_method":"squash","max_update_type":"minor","require_checks":true,"agent_review":true,"dependabot_commands":true,"merge_without_checks_after":"10m"}`
 	if string(data) != want {
 		t.Fatalf("got %s\nwant %s", data, want)
 	}

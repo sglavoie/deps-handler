@@ -46,6 +46,9 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	if !p.AgentReview {
 		header += ", no agent review"
 	}
+	if !p.DependabotCommands {
+		header += ", no Dependabot commands"
+	}
 	if res.Permission != "" {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
@@ -83,7 +86,7 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		fmt.Fprintln(w, "  "+s.paint(bold+";"+yellow, "needs attention:"))
 		for _, f := range res.Findings {
 			fmt.Fprintf(w, "    %s %s\n", s.paint(yellow, "-"), s.paint("", f.Summary))
-			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks || f.Kind == policy.FindingReviewRequired {
+			if f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingNoChecks || f.Kind == policy.FindingReviewRequired || f.Kind == policy.FindingBehind {
 				fmt.Fprintf(w, "      %s %s\n", s.paint(dim, "PRs:"), prList(f.PRs))
 			}
 			for _, d := range f.Details {

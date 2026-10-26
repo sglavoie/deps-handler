@@ -56,6 +56,9 @@ type Decision struct {
 	stalledRebase bool
 	// needsReview is true when branch protection wants an approval.
 	needsReview bool
+	// behind is true for a PR that would be rebased, but that the policy
+	// leaves to a human: dependabot_commands is off.
+	behind bool
 	// heldForSize is true for a PR skipped for its size alone: it would
 	// merge, rebase or wait (for its checks, say) if the policy allowed
 	// updates that size.
@@ -301,6 +304,8 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		case judge == nil || !p.AgentReview:
 			reviewed := p
 			reviewed.AgentReview = true
+			// A PR left behind for a human would still rebase.
+			reviewed.DependabotCommands = true
 			switch evaluate(repo, pr, reviewed, viewer, approveAll).Action {
 			case ActionMerge, ActionRebase, ActionWait:
 				d.heldForSize = true
@@ -412,6 +417,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	}
 	if !repo.CanWrite() {
 		safe.Action, safe.Reason = ActionSkip, fmt.Sprintf("would %s, but %s", safe.Action, lacksWrite(repo))
+	} else if safe.Action == ActionRebase && !p.DependabotCommands {
+		safe.Action, safe.Reason = ActionSkip, "behind base branch; rebase left to a human (dependabot_commands: false)"
+		safe.behind = true
 	}
 	return safe
 }

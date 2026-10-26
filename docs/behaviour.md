@@ -53,6 +53,14 @@ them is newer than its head commit, a request may hide among the rest, so
 the PR is not asked again but waits as if one were pending, and is left for
 a human a day after that oldest comment.
 
+Dependabot takes commands only from users with push access, not from a
+GitHub App or `GITHUB_TOKEN`. With `dependabot_commands: false`,
+deps-merger posts none: a safe PR that is `BEHIND` is skipped, `rebase
+left to a human`, and listed under a `behind` finding suggesting
+`@dependabot rebase`. Nothing queues behind it, and a major that is behind
+is still reported as held for its size. A PR that conflicts needs no
+command: Dependabot rebases it on its own.
+
 Merges happen one at a time per repository, with the head SHA pinned,
 re-reading state after each. A merge GitHub rejects with 405 or 409, as it
 can right after another merge, is retried once. So is one that fails with
@@ -324,7 +332,7 @@ See [`config.example.yaml`](../config.example.yaml). Defaults: squash,
 patch and minor only, checks required, agent review allowed (it only runs
 with `--review`), Claude as the agent. Every policy field under `defaults`
 (`merge_method`, `max_update_type`, `require_checks`, `agent_review`,
-`merge_without_checks_after`) can be overridden per repo; the `agent`
+`dependabot_commands`, `merge_without_checks_after`) can be overridden per repo; the `agent`
 settings apply to every repo.
 When a repo does not allow the configured merge method, the first one it
 allows (squash, merge, rebase) is used and the report header says so.

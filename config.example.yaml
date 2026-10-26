@@ -25,6 +25,12 @@ defaults:
   # or of unknown size.
   # agent_review: true
 
+  # true: comment @dependabot rebase on a safe PR that is behind its base
+  # branch. Dependabot only takes commands from users with push access, so
+  # set it false when running as a bot, such as with GITHUB_TOKEN in
+  # GitHub Actions: such PRs are then reported for a human to rebase.
+  # dependabot_commands: true
+
 # The AI agent `deps-merger run --review` uses to judge updates over
 # max_update_type and of unknown size. --agent claude|codex overrides `use`.
 agent:

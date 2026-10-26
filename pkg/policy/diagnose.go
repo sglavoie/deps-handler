@@ -42,6 +42,9 @@ const (
 	FindingReviewRequired FindingKind = "review-required"
 	// FindingStalledRebase is a rebase request Dependabot has not acted on.
 	FindingStalledRebase FindingKind = "stalled-rebase"
+	// FindingBehind is PRs that need a rebase deps-merger may not ask
+	// for: dependabot_commands is off.
+	FindingBehind FindingKind = "behind"
 	// FindingAgentRejected is an update the AI agent judged unsafe.
 	FindingAgentRejected FindingKind = "agent-rejected"
 	// FindingAgentFailed is an update the AI agent could not review.
@@ -119,7 +122,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		})
 	}
 
-	noChecks, needsReview := []int{}, []int{}
+	noChecks, needsReview, behind := []int{}, []int{}, []int{}
 	for _, d := range decisions {
 		own := ownFailures(d, repoWide)
 		switch {
@@ -175,6 +178,9 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		if d.needsReview {
 			needsReview = append(needsReview, d.Number)
 		}
+		if d.behind {
+			behind = append(behind, d.Number)
+		}
 		if d.stalledRebase {
 			out = append(out, Finding{
 				Kind:        FindingStalledRebase,
@@ -190,6 +196,14 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 			Summary:     "branch protection requires an approving review, which deps-merger never gives",
 			PRs:         needsReview,
 			Suggestions: []string{"approve these PRs, or let Dependabot PRs merge without review"},
+		})
+	}
+	if len(behind) > 0 {
+		out = append(out, Finding{
+			Kind:        FindingBehind,
+			Summary:     "behind the base branch, which must be up to date to merge, and deps-merger posts no Dependabot commands here (dependabot_commands: false)",
+			PRs:         behind,
+			Suggestions: []string{fmt.Sprintf("comment %s on one at a time: each merge puts the others behind again", RebaseCommand)},
 		})
 	}
 	if len(noChecks) > 0 && p.RequireChecks && p.MergeWithoutChecksAfter == 0 {
