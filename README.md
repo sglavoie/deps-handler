@@ -103,6 +103,7 @@ agent judges those:
 deps-merger run --review                # dry run: review, merge nothing
 deps-merger run --review --apply
 deps-merger run --agent codex --apply   # another agent; implies --review
+deps-merger run --agent api --review    # a local model, or any OpenAI-compatible API
 ```
 
 The agent reads a shallow checkout of the PR, its release notes and its
@@ -111,10 +112,16 @@ read-only, without your customizations and without a GitHub token:
 
 - Claude Code with only the Read, Grep and Glob tools, no MCP servers,
   settings, `CLAUDE.md`, skills, plugins or hooks;
-- Codex in its read-only sandbox, without your `config.toml` or rules.
+- Codex in its read-only sandbox, without your `config.toml` or rules;
+- `api`: a model behind an OpenAI-compatible chat completions endpoint,
+  such as one served locally by llama.cpp's `llama-server`, Ollama or LM
+  Studio, which costs nothing per review. It runs no program: it reads
+  the checkout only through three tools deps-merger implements (list,
+  read and search), which cannot reach outside it.
 
-Read-only is not confined to the checkout: an agent can read any file your
-user can, and what it reads goes to its model provider.
+Read-only is not confined to the checkout for Claude Code and Codex: they
+can read any file your user can, and what an agent reads goes to its
+model provider (for `api`, wherever `api.url` points).
 [Agent review](docs/behaviour.md#agent-review) says exactly what each
 agent can reach.
 

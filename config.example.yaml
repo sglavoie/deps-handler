@@ -41,7 +41,7 @@ defaults:
 # and the repo's entry below overrides both.
 
 # The AI agent `deps-merger run --review` uses to judge updates over
-# max_update_type and of unknown size. --agent claude|codex overrides `use`.
+# max_update_type and of unknown size. --agent claude|codex|api overrides `use`.
 agent:
   use: claude
   timeout: 15m              # per review
@@ -54,6 +54,14 @@ agent:
     # model: gpt-5          # unset: Codex's default
     # home: ~/.codex        # passed as CODEX_HOME; absolute or ~/.
     #                       # Unset: the one in your environment, if any.
+  # api: any OpenAI-compatible chat completions endpoint, such as a local
+  # model: llama-server -hf <repo>:<quant> --port 8081 --jinja
+  # api:
+  #   url: http://127.0.0.1:8081/v1
+  #   model: qwen3.8-27b    # as the server names it
+  #   key_env: ""           # variable holding the key, if one is needed
+  #   tools: true           # false: judge from the prompt alone
+  #   max_turns: 30         # rounds of tool calls before it must answer
 
 # Repos are written owner/name, without .git. An entry is a bare name, or a
 # mapping with repo: and any of the defaults above to override. skip: true

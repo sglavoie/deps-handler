@@ -10,6 +10,7 @@ import (
 	"io"
 	"maps"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -143,11 +144,12 @@ type Config struct {
 // Agent configures the AI agent that reviews updates the policy alone
 // would not merge.
 type Agent struct {
-	// Use is the agent run by default: "claude" or "codex".
+	// Use is the agent run by default: "claude", "codex" or "api".
 	Use     string
 	Timeout time.Duration
 	Claude  Claude
 	Codex   Codex
+	API     API
 }
 
 // Claude configures `claude -p`.
@@ -166,8 +168,34 @@ type Codex struct {
 	Home string `yaml:"home"`
 }
 
+// API configures a model behind an OpenAI-compatible chat completions
+// endpoint, local (llama.cpp's llama-server, Ollama, LM Studio, vLLM) or
+// hosted.
+type API struct {
+	// URL is the API's base, such as http://127.0.0.1:8081/v1.
+	URL   string `yaml:"url"`
+	Model string `yaml:"model"`
+	// KeyEnv names the environment variable holding the API key, if the
+	// endpoint wants one: the key itself stays out of the config.
+	KeyEnv string `yaml:"key_env"`
+	// Tools lets the model list, read and search the checkout; true
+	// unless set false, for models that handle tools badly.
+	Tools *bool `yaml:"tools"`
+	// MaxTurns bounds the rounds of tool calls; 0 is the default, 30.
+	MaxTurns int `yaml:"max_turns"`
+}
+
+// AgentList names the supported agents for a message: "claude, codex or
+// api".
+func AgentList() string {
+	return strings.Join(Agents[:len(Agents)-1], ", ") + " or " + Agents[len(Agents)-1]
+}
+
+// UsesTools reports whether the model may use the checkout tools.
+func (a API) UsesTools() bool { return a.Tools == nil || *a.Tools }
+
 // Agents lists the supported agents, the first being the default.
-var Agents = []string{"claude", "codex"}
+var Agents = []string{"claude", "codex", "api"}
 
 // ValidAgent reports whether name is a supported agent.
 func ValidAgent(name string) bool {
@@ -270,6 +298,7 @@ type agentEntry struct {
 	Timeout string `yaml:"timeout"`
 	Claude  Claude `yaml:"claude"`
 	Codex   Codex  `yaml:"codex"`
+	API     API    `yaml:"api"`
 }
 
 var validMergeMethods = map[string]bool{"squash": true, "merge": true, "rebase": true}
@@ -502,12 +531,12 @@ func apply(base Policy, o overrides) (Policy, error) {
 }
 
 func parseAgent(e agentEntry) (Agent, error) {
-	a := Agent{Use: strings.ToLower(strings.TrimSpace(e.Use)), Timeout: DefaultAgentTimeout, Claude: e.Claude, Codex: e.Codex}
+	a := Agent{Use: strings.ToLower(strings.TrimSpace(e.Use)), Timeout: DefaultAgentTimeout, Claude: e.Claude, Codex: e.Codex, API: e.API}
 	if a.Use == "" {
 		a.Use = Agents[0]
 	}
 	if !ValidAgent(a.Use) {
-		return a, fmt.Errorf("invalid use %q (want %s)", e.Use, strings.Join(Agents, " or "))
+		return a, fmt.Errorf("invalid use %q (want %s)", e.Use, AgentList())
 	}
 	if e.Timeout != "" {
 		d, err := time.ParseDuration(e.Timeout)
@@ -527,7 +556,28 @@ func parseAgent(e agentEntry) (Agent, error) {
 	if a.Codex.Home, err = expandHome("codex.home", a.Codex.Home); err != nil {
 		return a, err
 	}
+	if err := checkAPI(a.API, a.Use == "api"); err != nil {
+		return a, err
+	}
 	return a, nil
+}
+
+// checkAPI checks the api settings: a URL and model are needed only when
+// api is the agent used by default, but whatever is set must be valid.
+func checkAPI(a API, used bool) error {
+	if used && (a.URL == "" || a.Model == "") {
+		return errors.New("use: api needs api.url and api.model")
+	}
+	if a.URL != "" {
+		u, err := url.Parse(a.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("api.url %q is not an http or https URL", a.URL)
+		}
+	}
+	if a.MaxTurns < 0 {
+		return fmt.Errorf("api.max_turns must not be negative, not %d", a.MaxTurns)
+	}
+	return nil
 }
 
 // expandHome replaces a leading ~ with the home directory, as a shell

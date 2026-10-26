@@ -97,7 +97,7 @@ no repository of; and 130 when interrupted.`,
 				return usageError{errors.New("--review-parallel must be at least 1")}
 			}
 			if agentName != "" && !config.ValidAgent(strings.ToLower(agentName)) {
-				return usageError{fmt.Errorf("unknown agent %q (want %s)", agentName, strings.Join(config.Agents, " or "))}
+				return usageError{fmt.Errorf("unknown agent %q (want %s)", agentName, config.AgentList())}
 			}
 			if err := checkSelection(cmd, repos, owners); err != nil {
 				return err
@@ -213,7 +213,7 @@ no repository of; and 130 when interrupted.`,
 	c.Flags().StringSliceVar(&owners, "owner", nil, "only handle the configured repos of these owners (repeatable)")
 	c.Flags().BoolVar(&allRepos, "include-skipped", false, "also handle repos set to skip: true")
 	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge updates over max_update_type and of unknown size")
-	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+strings.Join(config.Agents, " or ")+" (default from config; implies --review)")
+	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+config.AgentList()+" (default from config; implies --review)")
 	c.Flags().BoolVar(&open, "open", false, "only report repos with open Dependabot PRs")
 	c.Flags().IntVar(&maxReviews, "max-reviews", 10, "most agent reviews in one run (0 for no limit)")
 	c.Flags().IntVar(&parallel, "parallel", runner.DefaultParallel, "most repositories processed at once")
@@ -265,13 +265,30 @@ var newAgent = func(cfg config.Agent, name string) (review.Agent, error) {
 		agent = review.Claude{Model: cfg.Claude.Model, ConfigDir: cfg.Claude.ConfigDir, MaxBudgetUSD: cfg.Claude.MaxBudgetUSD}
 	case "codex":
 		agent = review.Codex{Model: cfg.Codex.Model, Home: cfg.Codex.Home}
+	case "api":
+		return newAPIAgent(cfg.API)
 	default:
-		return nil, fmt.Errorf("unknown agent %q (want %s)", name, strings.Join(config.Agents, " or "))
+		return nil, fmt.Errorf("unknown agent %q (want %s)", name, config.AgentList())
 	}
 	if _, err := exec.LookPath(agent.Name()); err != nil {
 		return nil, fmt.Errorf("%s is not installed or not on PATH", agent.Name())
 	}
 	return agent, nil
+}
+
+// newAPIAgent builds the api agent, reading its key from the variable
+// key_env names. It runs no program, so nothing is looked up on PATH.
+func newAPIAgent(cfg config.API) (review.Agent, error) {
+	if cfg.URL == "" || cfg.Model == "" {
+		return nil, errors.New("the api agent needs api.url and api.model in the config")
+	}
+	key := ""
+	if cfg.KeyEnv != "" {
+		if key = os.Getenv(cfg.KeyEnv); key == "" {
+			return nil, fmt.Errorf("api.key_env names %s, which is not set", cfg.KeyEnv)
+		}
+	}
+	return review.API{URL: cfg.URL, Model: cfg.Model, Key: key, Tools: cfg.UsesTools(), MaxTurns: cfg.MaxTurns}, nil
 }
 
 // newClient builds the GitHub client; tests and the demo build replace it.

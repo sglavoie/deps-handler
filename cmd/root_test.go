@@ -172,7 +172,7 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"unknown flag":    {[]string{"run", "--nope"}, 2, "unknown flag"},
 		"bad flag value":  {[]string{"run", "--max-reviews", "many"}, 2, "invalid argument"},
 		"missing arg":     {[]string{"verdicts", "forget"}, 2, "requires at least 1 arg"},
-		"unknown agent":   {[]string{"run", "-c", active, "--agent", "gemini"}, 2, `unknown agent "gemini" (want claude or codex)`},
+		"unknown agent":   {[]string{"run", "-c", active, "--agent", "gemini"}, 2, `unknown agent "gemini" (want claude, codex or api)`},
 		"bad limit":       {[]string{"run", "-c", active, "--review", "--max-reviews", "-1"}, 2, "--max-reviews must not be negative"},
 		"limit alone":     {[]string{"run", "-c", active, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
 		"no parallel":     {[]string{"run", "-c", active, "--parallel", "0"}, 2, "--parallel must be at least 1"},

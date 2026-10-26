@@ -425,3 +425,40 @@ func TestWithFilesRejectsBadFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAPIAgent(t *testing.T) {
+	cfg, err := Parse([]byte(`
+agent:
+  use: api
+  api:
+    url: http://127.0.0.1:8081/v1
+    model: qwen
+    key_env: LOCAL_KEY
+    tools: false
+    max_turns: 5
+repos: [a/b]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := cfg.Agent.API
+	if cfg.Agent.Use != "api" || a.URL != "http://127.0.0.1:8081/v1" || a.Model != "qwen" || a.KeyEnv != "LOCAL_KEY" || a.UsesTools() || a.MaxTurns != 5 {
+		t.Fatalf("agent = %+v", cfg.Agent)
+	}
+	// Tools are on unless turned off.
+	cfg, err = Parse([]byte("agent: {use: api, api: {url: 'https://llm.example/v1', model: m}}\nrepos: [a/b]\n"))
+	if err != nil || !cfg.Agent.API.UsesTools() {
+		t.Fatalf("tools default: %+v, %v", cfg.Agent.API, err)
+	}
+	for name, in := range map[string]string{
+		"no url":         "agent: {use: api, api: {model: m}}\nrepos: [a/b]\n",
+		"no model":       "agent: {use: api, api: {url: 'http://x/v1'}}\nrepos: [a/b]\n",
+		"bad scheme":     "agent: {api: {url: 'file:///etc', model: m}}\nrepos: [a/b]\n",
+		"negative turns": "agent: {api: {url: 'http://x/v1', model: m, max_turns: -1}}\nrepos: [a/b]\n",
+		"unknown field":  "agent: {api: {url: 'http://x/v1', model: m, key: secret}}\nrepos: [a/b]\n",
+	} {
+		if _, err := Parse([]byte(in)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

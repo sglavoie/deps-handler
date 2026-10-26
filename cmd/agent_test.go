@@ -5,6 +5,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sglavoie/deps-merger/pkg/config"
@@ -28,5 +29,28 @@ func TestNewAgent(t *testing.T) {
 	}
 	if c, ok := a.(review.Codex); !ok || c.Model != "gpt-5" {
 		t.Fatalf("agent = %#v", a)
+	}
+}
+
+func TestNewAPIAgent(t *testing.T) {
+	cfg := config.API{URL: "http://127.0.0.1:8081/v1", Model: "qwen", KeyEnv: "DMT_TEST_KEY"}
+	t.Setenv("DMT_TEST_KEY", "")
+	if _, err := newAPIAgent(cfg); err == nil || !strings.Contains(err.Error(), "DMT_TEST_KEY, which is not set") {
+		t.Fatalf("missing key: %v", err)
+	}
+	t.Setenv("DMT_TEST_KEY", "secret")
+	a, err := newAPIAgent(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if api := a.(review.API); api.Key != "secret" || !api.Tools || api.Model != "qwen" {
+		t.Fatalf("agent = %+v", api)
+	}
+	if _, err := newAPIAgent(config.API{}); err == nil {
+		t.Fatal("an agent without a URL was built")
+	}
+	// The api agent is not looked up on PATH: there is no program "api".
+	if _, err := newAgent(config.Agent{Use: "api", API: config.API{URL: "http://x/v1", Model: "m"}}, ""); err != nil {
+		t.Fatalf("newAgent: %v", err)
 	}
 }

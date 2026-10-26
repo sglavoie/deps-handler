@@ -132,12 +132,25 @@ answers `approve` or `reject` with its reasons. It runs read-only:
   the network. It does not load `config.toml` or execpolicy rules, which
   could add MCP servers (which run outside the sandbox) or let commands
   out of it; it still logs in from `CODEX_HOME`, but a model or provider
-  set in that `config.toml` is not used: set `codex.model` instead.
+  set in that `config.toml` is not used: set `codex.model` instead;
+- `api`: requests to an OpenAI-compatible chat completions endpoint
+  (`api.url`, such as `http://127.0.0.1:8081/v1` for a local
+  `llama-server`), with no program run. The model gets the prompt and,
+  unless `api.tools: false`, three tools deps-merger implements:
+  `list_files`, `read_file` (at most 400 lines at a time) and `search` (a
+  regular expression, at most 200 matching lines). Every path they take
+  is resolved, symlinks included, and refused unless it stays inside the
+  checkout and outside its `.git`; searches do not follow symlinks. After
+  at most `api.max_turns` rounds of tool calls (30 by default), or a reply
+  that is not the answer, the model is asked once more for the answer,
+  held to its JSON schema. A model that thinks aloud (`<think>`) or fences
+  its answer is read past both. The key, if the endpoint wants one, comes
+  from the variable `api.key_env` names, never from the config.
 
 Neither gets a GitHub token: `GH_TOKEN`, `GITHUB_TOKEN`,
 `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are removed from the
-agent's environment. Read-only is not confined to the checkout, though:
-Codex's sandbox lets it read any file your user can, such as
+agent's environment. For the CLI agents, read-only is not confined to the
+checkout, though: Codex's sandbox lets it read any file your user can, such as
 `~/.config/gh/hosts.yml` (where `gh` keeps its token when no keyring
 holds it) or SSH keys, and whatever an agent reads goes to its model
 provider. On Linux that includes the environment of your other processes
