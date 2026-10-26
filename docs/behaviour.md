@@ -145,7 +145,11 @@ answers `approve` or `reject` with its reasons. It runs read-only:
   that is not the answer, the model is asked once more for the answer,
   held to its JSON schema. A model that thinks aloud (`<think>`) or fences
   its answer is read past both. The key, if the endpoint wants one, comes
-  from the variable `api.key_env` names, never from the config.
+  from the variable `api.key_env` names, never from the config. A local
+  server usually answers one request at a time (`llama-server -np 1`):
+  run with `--review-parallel 1`, or the reviews queue behind each other
+  and the wait counts against each one's `timeout`. A local 27B model
+  takes a few minutes per review.
 
 Neither gets a GitHub token: `GH_TOKEN`, `GITHUB_TOKEN`,
 `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are removed from the

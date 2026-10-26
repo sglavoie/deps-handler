@@ -62,6 +62,8 @@ agent:
   #   key_env: ""           # variable holding the key, if one is needed
   #   tools: true           # false: judge from the prompt alone
   #   max_turns: 30         # rounds of tool calls before it must answer
+  # A local server answers one request at a time: run with
+  # --review-parallel 1, and allow a few minutes per review.
 
 # Repos are written owner/name, without .git. An entry is a bare name, or a
 # mapping with repo: and any of the defaults above to override. skip: true

@@ -103,7 +103,7 @@ agent judges those:
 deps-merger run --review                # dry run: review, merge nothing
 deps-merger run --review --apply
 deps-merger run --agent codex --apply   # another agent; implies --review
-deps-merger run --agent api --review    # a local model, or any OpenAI-compatible API
+deps-merger run --agent api --review --review-parallel 1   # a local model
 ```
 
 The agent reads a shallow checkout of the PR, its release notes and its
