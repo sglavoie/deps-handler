@@ -664,3 +664,30 @@ func TestNewWithToken(t *testing.T) {
 		t.Errorf("Authorization = %q, want token ghs_install", got)
 	}
 }
+
+// repoClient answers FetchRepo with a copy of repo.
+type repoClient struct {
+	Client
+	repo Repo
+}
+
+func (c repoClient) FetchRepo(context.Context, string, string) (*Repo, error) {
+	r := c.repo
+	return &r, nil
+}
+
+func TestWithPermission(t *testing.T) {
+	for _, c := range []struct{ reported, want string }{
+		{"", "WRITE"},
+		{"READ", "READ"},
+		{"ADMIN", "ADMIN"},
+	} {
+		r, err := WithPermission(repoClient{repo: Repo{Permission: c.reported}}, "WRITE").FetchRepo(context.Background(), "o", "n")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Permission != c.want {
+			t.Errorf("reported %q: Permission = %q, want %q", c.reported, r.Permission, c.want)
+		}
+	}
+}

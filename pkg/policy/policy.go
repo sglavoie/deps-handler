@@ -411,9 +411,19 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		}
 	}
 	if !repo.CanWrite() {
-		safe.Action, safe.Reason = ActionSkip, fmt.Sprintf("would %s, but you only have %s access", safe.Action, strings.ToLower(repo.Permission))
+		safe.Action, safe.Reason = ActionSkip, fmt.Sprintf("would %s, but %s", safe.Action, lacksWrite(repo))
 	}
 	return safe
+}
+
+// lacksWrite says what access the viewer has instead of write access.
+// GitHub reports none for a GitHub App installation, unless the caller
+// fills it in with github.WithPermission.
+func lacksWrite(repo *github.Repo) string {
+	if repo.Permission == "" {
+		return "GitHub reports no access for you"
+	}
+	return fmt.Sprintf("you only have %s access", strings.ToLower(repo.Permission))
 }
 
 // pushedAt is when the PR's latest commit was made, or the zero time when

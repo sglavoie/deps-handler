@@ -253,6 +253,8 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.MergeState = "UNSTABLE" }},
 		{name: "read-only repo", action: ActionSkip, reason: "would merge, but you only have read access",
 			mutate: func(r *github.Repo, _ *github.PullRequest) { r.Permission = "READ" }},
+		{name: "no reported permission", action: ActionSkip, reason: "would merge, but GitHub reports no access for you",
+			mutate: func(r *github.Repo, _ *github.PullRequest) { r.Permission = "" }},
 		{name: "archived repo", action: ActionSkip, reason: "archived",
 			mutate: func(r *github.Repo, _ *github.PullRequest) { r.Archived = true }},
 		{name: "unsigned commit", action: ActionSkip, reason: "not signed by GitHub",

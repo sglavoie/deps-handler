@@ -146,6 +146,27 @@ type Repo struct {
 	FetchedAt time.Time `json:"-"`
 }
 
+// WithPermission returns c with permission filled in as the viewer's
+// permission on every repository GitHub reports none for. GitHub reports
+// none for a GitHub App installation, whose permissions the caller knows
+// instead. A permission GitHub does report is kept.
+func WithPermission(c Client, permission string) Client {
+	return permissionClient{Client: c, permission: permission}
+}
+
+type permissionClient struct {
+	Client
+	permission string
+}
+
+func (c permissionClient) FetchRepo(ctx context.Context, owner, name string) (*Repo, error) {
+	r, err := c.Client.FetchRepo(ctx, owner, name)
+	if r != nil && r.Permission == "" {
+		r.Permission = c.permission
+	}
+	return r, err
+}
+
 // CanWrite reports whether the viewer can merge and comment as a collaborator.
 func (r *Repo) CanWrite() bool {
 	switch r.Permission {

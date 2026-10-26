@@ -101,7 +101,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	if !repo.CanWrite() {
 		out = append(out, Finding{
 			Kind:    FindingReadOnly,
-			Summary: fmt.Sprintf("you have %s access; deps-merger can only report here", strings.ToLower(repo.Permission)),
+			Summary: lacksWrite(repo) + "; deps-merger can only report here",
 		})
 	}
 
