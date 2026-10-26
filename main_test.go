@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/config"
+	"github.com/sglavoie/deps-merger/pkg/config"
 )
 
 // The example init writes lists no repos, so that no run reaches the

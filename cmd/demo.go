@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/config"
 	"github.com/sglavoie/deps-merger/internal/demo"
-	"github.com/sglavoie/deps-merger/internal/github"
-	"github.com/sglavoie/deps-merger/internal/review"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-merger/pkg/review"
 )
 
 // The demo build talks to the make-believe GitHub of package demo instead

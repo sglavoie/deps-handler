@@ -3,7 +3,7 @@ package dependabot
 import (
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/config"
+	"github.com/sglavoie/deps-merger/pkg/config"
 )
 
 const groupMsg = "build(deps): bump the go group\n\nBumps stuff.\n\n---\nupdated-dependencies:\n" +

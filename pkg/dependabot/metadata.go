@@ -5,7 +5,7 @@ package dependabot
 import (
 	"strings"
 
-	"github.com/sglavoie/deps-merger/internal/config"
+	"github.com/sglavoie/deps-merger/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 

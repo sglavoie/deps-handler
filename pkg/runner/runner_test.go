@@ -17,12 +17,12 @@ import (
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/dependabot"
-	"github.com/sglavoie/deps-merger/internal/github"
-	"github.com/sglavoie/deps-merger/internal/policy"
-	"github.com/sglavoie/deps-merger/internal/review"
 	"github.com/sglavoie/deps-merger/internal/testutil"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/dependabot"
+	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-merger/pkg/review"
 )
 
 // fakeClient serves a mutable repo; merging removes the PR and, like

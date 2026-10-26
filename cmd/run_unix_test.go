@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/review"
+	"github.com/sglavoie/deps-merger/pkg/review"
 )
 
 // reviewEnv gives a --review run its own state and cache directories and

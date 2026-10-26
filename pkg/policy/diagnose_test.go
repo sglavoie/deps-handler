@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/github"
 	"github.com/sglavoie/deps-merger/internal/testutil"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/github"
 )
 
 func findings(repo *github.Repo) map[FindingKind][]Finding {

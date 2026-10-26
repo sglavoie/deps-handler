@@ -9,9 +9,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/report"
-	"github.com/sglavoie/deps-merger/internal/review"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/report"
+	"github.com/sglavoie/deps-merger/pkg/review"
 	"github.com/spf13/cobra"
 )
 

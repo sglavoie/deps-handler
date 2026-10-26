@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cli/go-gh/v2/pkg/term"
-	"github.com/sglavoie/deps-merger/internal/config"
+	"github.com/sglavoie/deps-merger/pkg/config"
 )
 
 // SGR codes used by the report.

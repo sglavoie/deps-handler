@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/github"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/github"
 )
 
 // FindingKind classifies something in the repository worth fixing.

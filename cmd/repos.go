@@ -6,7 +6,7 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/sglavoie/deps-merger/internal/config"
+	"github.com/sglavoie/deps-merger/pkg/config"
 	"github.com/spf13/cobra"
 )
 

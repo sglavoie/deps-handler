@@ -19,10 +19,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/dependabot"
-	"github.com/sglavoie/deps-merger/internal/github"
-	"github.com/sglavoie/deps-merger/internal/policy"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/dependabot"
+	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-merger/pkg/policy"
 )
 
 // Request is one PR to review.

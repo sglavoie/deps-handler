@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/policy"
-	"github.com/sglavoie/deps-merger/internal/review"
+	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-merger/pkg/review"
 )
 
 // verdictsState points the state directory at a new one and returns the

@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/github"
-	"github.com/sglavoie/deps-merger/internal/policy"
-	"github.com/sglavoie/deps-merger/internal/review"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-merger/pkg/review"
 )
 
 // EventKind is a write deps-merger performed (or tried to).

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/github"
-	"github.com/sglavoie/deps-merger/internal/policy"
-	"github.com/sglavoie/deps-merger/internal/review"
 	"github.com/sglavoie/deps-merger/internal/testutil"
+	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-merger/pkg/review"
 )
 
 // fakeClient serves fixed repos by name; a name missing from repos fails.

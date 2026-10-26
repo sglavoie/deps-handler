@@ -202,6 +202,12 @@ repos:
 `deps-merger run -r Billing` runs one repo and `--owner acme` every repo
 of an owner. [Config](docs/behaviour.md#config) has every rule.
 
+## As a library
+
+The engine the CLI runs is importable from `pkg/`: `runner` drives a run
+over a `github.Client`, with `policy`, `config`, `review` and `report`
+behind it. Until 1.0 its API may change in any release; pin a version.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) to

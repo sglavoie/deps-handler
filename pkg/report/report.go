@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/policy"
-	"github.com/sglavoie/deps-merger/internal/runner"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-merger/pkg/runner"
 )
 
 const titleWidth = 60

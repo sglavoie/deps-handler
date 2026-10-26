@@ -15,11 +15,11 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/cli/go-gh/v2/pkg/term"
-	"github.com/sglavoie/deps-merger/internal/config"
-	"github.com/sglavoie/deps-merger/internal/github"
-	"github.com/sglavoie/deps-merger/internal/report"
-	"github.com/sglavoie/deps-merger/internal/review"
-	"github.com/sglavoie/deps-merger/internal/runner"
+	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-merger/pkg/report"
+	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-merger/pkg/runner"
 	"github.com/spf13/cobra"
 )
 
