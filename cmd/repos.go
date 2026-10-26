@@ -90,6 +90,13 @@ func reposJSON(w io.Writer, cfg *config.Config) error {
 			Model string `json:"model"`
 			Home  string `json:"home"`
 		} `json:"codex"`
+		API struct {
+			URL      string `json:"url"`
+			Model    string `json:"model"`
+			KeyEnv   string `json:"key_env"`
+			Tools    bool   `json:"tools"`
+			MaxTurns int    `json:"max_turns"`
+		} `json:"api"`
 	}
 	doc := struct {
 		Repos []repo `json:"repos"`
@@ -102,6 +109,8 @@ func reposJSON(w io.Writer, cfg *config.Config) error {
 	doc.Agent.Use, doc.Agent.Timeout = a.Use, config.ShortDuration(a.Timeout)
 	doc.Agent.Claude.Model, doc.Agent.Claude.ConfigDir, doc.Agent.Claude.MaxBudgetUSD = a.Claude.Model, a.Claude.ConfigDir, a.Claude.MaxBudgetUSD
 	doc.Agent.Codex.Model, doc.Agent.Codex.Home = a.Codex.Model, a.Codex.Home
+	doc.Agent.API.URL, doc.Agent.API.Model, doc.Agent.API.KeyEnv = a.API.URL, a.API.Model, a.API.KeyEnv
+	doc.Agent.API.Tools, doc.Agent.API.MaxTurns = a.API.UsesTools(), a.API.MaxTurns
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(doc)
@@ -117,6 +126,12 @@ func yesNo(b bool) string {
 // agentSummary describes the configured agent and its limits.
 func agentSummary(a config.Agent) string {
 	model, extra := a.Codex.Model, ""
+	if a.Use == "api" {
+		model = a.API.Model + " at " + a.API.URL
+		if !a.API.UsesTools() {
+			extra = ", without tools"
+		}
+	}
 	if a.Use == "claude" {
 		model = a.Claude.Model
 		if a.Claude.MaxBudgetUSD > 0 {
