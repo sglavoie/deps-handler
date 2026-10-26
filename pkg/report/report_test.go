@@ -334,3 +334,30 @@ func TestSummaryAllHidden(t *testing.T) {
 		t.Fatalf("got %q\nwant %q", b.String(), want)
 	}
 }
+
+func TestRepoInReportModeDuringApply(t *testing.T) {
+	p := config.Builtin
+	p.Mode, p.DependabotCommands = config.ModeReport, false
+	res := runner.RepoResult{
+		Repo:        "o/r",
+		Policy:      p,
+		ConfigFiles: []string{".github/deps-merger.yml"},
+		Permission:  "WRITE",
+		Decisions:   []policy.Decision{decision(1, policy.ActionMerge, "checks green, within policy")},
+	}
+	var b bytes.Buffer
+	Repo(&b, true, res)
+	want := `o/r  (squash, up to minor, checks required, no Dependabot commands, report only, write access)
+  policy from .github/deps-merger.yml
+  #1  patch  would merge  checks green, within policy  bump lib
+
+`
+	if b.String() != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", b.String(), want)
+	}
+	b.Reset()
+	Summary(&b, true, []runner.RepoResult{res}, 0)
+	if want := "1 repo: 1 would merge\nrepos in report mode (mode: report) were only reported on\n"; b.String() != want {
+		t.Fatalf("summary %q, want %q", b.String(), want)
+	}
+}

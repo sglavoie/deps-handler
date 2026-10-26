@@ -32,6 +32,7 @@ func Repo(w io.Writer, apply bool, res runner.RepoResult) {
 
 func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	p := res.Policy
+	apply = applies(apply, res)
 	checks := "checks required"
 	if !p.RequireChecks {
 		checks = "checks optional"
@@ -49,12 +50,18 @@ func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
 	if !p.DependabotCommands {
 		header += ", no Dependabot commands"
 	}
+	if p.Mode == config.ModeReport {
+		header += ", report only"
+	}
 	if res.Permission != "" {
 		header += ", " + strings.ToLower(res.Permission) + " access"
 	}
 	// Everything printed goes through paint, which makes it Plain: reasons
 	// and findings can quote an agent's answer or GitHub's errors.
 	fmt.Fprintln(w, s.paint(bold, res.Repo)+"  "+s.paint(dim, header+")"))
+	if len(res.ConfigFiles) > 0 {
+		fmt.Fprintln(w, "  "+s.paint(dim, "policy from "+strings.Join(res.ConfigFiles, ", ")))
+	}
 	// A repository that failed part way still shows the writes made and
 	// the warnings raised before then: they happened. Its decisions and
 	// findings come from a read the failure may have left stale.
@@ -146,7 +153,7 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 			counts[string(ev.Kind)]++
 		}
 		for _, d := range pending(r) {
-			counts[label(d.Action, apply)]++
+			counts[label(d.Action, applies(apply, r))]++
 		}
 	}
 	var parts []string
@@ -190,6 +197,8 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 		if len(todo) > 0 {
 			fmt.Fprintln(w, s.paint(dim, "dry run: nothing was changed; rerun with --apply to "+strings.Join(todo, " and ")))
 		}
+	} else if counts["would merge"] > 0 || counts["would rebase"] > 0 {
+		fmt.Fprintln(w, s.paint(dim, "repos in report mode (mode: report) were only reported on"))
 	}
 }
 
@@ -233,6 +242,12 @@ func pending(res runner.RepoResult) []policy.Decision {
 		}
 	}
 	return out
+}
+
+// applies reports whether a run that applies, or not, acts on res's
+// repository: one in report mode is only reported on.
+func applies(apply bool, res runner.RepoResult) bool {
+	return apply && res.Policy.Mode != config.ModeReport
 }
 
 func label(a policy.Action, apply bool) string {

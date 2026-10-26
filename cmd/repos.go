@@ -23,7 +23,11 @@ func newReposCmd() *cobra.Command {
 each one runs under, and the agent --review uses.
 
 With --repo and --owner, only the named repositories and the repositories
-of the named owners are listed, as run selects them.`,
+of the named owners are listed, as run selects them.
+
+The policy shown is the config's alone: run also reads each repository's
+.github/deps-merger.yml and deps-merger.yml in its owner's .github
+repository, which can override it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkSelection(cmd, repos, owners); err != nil {

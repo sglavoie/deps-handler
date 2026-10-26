@@ -21,16 +21,17 @@ repos:
     max_update_type: major
     agent_review: false
     dependabot_commands: false
+    mode: report
     merge_without_checks_after: "0"
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
 	a, b := cfg.Repos[0].Policy, cfg.Repos[1].Policy
-	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, DependabotCommands: true, MergeWithoutChecksAfter: 45 * time.Minute}) {
+	if a != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, DependabotCommands: true, Mode: ModeMerge, MergeWithoutChecksAfter: 45 * time.Minute}) {
 		t.Errorf("Billing policy = %+v", a)
 	}
-	if b != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMajor, RequireChecks: false, AgentReview: false}) {
+	if b != (Policy{MergeMethod: "merge", MaxUpdateType: UpdateMajor, RequireChecks: false, AgentReview: false, Mode: ModeReport}) {
 		t.Errorf("worker policy = %+v", b)
 	}
 }
@@ -79,16 +80,16 @@ func TestParseRejectsBadInput(t *testing.T) {
 }
 
 func TestParseAcceptsEveryEntryField(t *testing.T) {
-	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: true, agent_review: false, dependabot_commands: false, merge_without_checks_after: 5m, skip: true}\n"
+	in := "repos:\n  - {repo: a/b, merge_method: merge, max_update_type: patch, require_checks: true, agent_review: false, dependabot_commands: false, mode: merge, merge_without_checks_after: 5m, skip: true}\n"
 	if _, err := Parse([]byte(in)); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"repo", "skip", "merge_method", "max_update_type", "require_checks", "agent_review", "dependabot_commands", "merge_without_checks_after"} {
+	for _, k := range []string{"repo", "skip", "merge_method", "max_update_type", "require_checks", "agent_review", "dependabot_commands", "mode", "merge_without_checks_after"} {
 		if !entryKeys[k] {
 			t.Errorf("entryKeys lacks %q", k)
 		}
 	}
-	if len(entryKeys) != 8 {
+	if len(entryKeys) != 9 {
 		t.Errorf("entryKeys = %v", entryKeys)
 	}
 }
@@ -253,7 +254,7 @@ func TestPolicyJSONWritesDurations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"merge_method":"squash","max_update_type":"minor","require_checks":true,"agent_review":true,"dependabot_commands":true,"merge_without_checks_after":"10m"}`
+	want := `{"merge_method":"squash","max_update_type":"minor","require_checks":true,"agent_review":true,"dependabot_commands":true,"mode":"merge","merge_without_checks_after":"10m"}`
 	if string(data) != want {
 		t.Fatalf("got %s\nwant %s", data, want)
 	}
@@ -346,6 +347,81 @@ func TestRepoErrorsGiveLines(t *testing.T) {
 	} {
 		if _, err := Parse([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v, want %q", in, err, want)
+		}
+	}
+}
+
+func TestWithFilesLayersBetweenDefaultsAndEntry(t *testing.T) {
+	cfg, err := Parse([]byte(`
+defaults:
+  max_update_type: patch
+repos:
+  - acme/plain
+  - repo: acme/pinned
+    max_update_type: minor
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	org := []byte("max_update_type: major\nmode: report\n")
+	repo := []byte("require_checks: false\n")
+	plain, err := cfg.Repos[0].WithFiles(org, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The files override the defaults.
+	if p := plain.Policy; p.MaxUpdateType != UpdateMajor || p.Mode != ModeReport || p.RequireChecks {
+		t.Errorf("plain = %+v", p)
+	}
+	// The repo's entry overrides the files.
+	pinned, err := cfg.Repos[1].WithFiles(org, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := pinned.Policy; p.MaxUpdateType != UpdateMinor || p.Mode != ModeReport {
+		t.Errorf("pinned = %+v", p)
+	}
+	// The repo's file overrides its owner's.
+	r, err := cfg.Repos[0].WithFiles(org, []byte("mode: merge\n"))
+	if err != nil || r.Policy.Mode != ModeMerge {
+		t.Errorf("repo over org = %+v, %v", r.Policy, err)
+	}
+	// No files: unchanged.
+	if r, err := cfg.Repos[1].WithFiles(nil, nil); err != nil || r.Policy != cfg.Repos[1].Policy {
+		t.Errorf("no files = %+v, %v", r.Policy, err)
+	}
+	// Empty files set nothing.
+	if r, err := cfg.Repos[0].WithFiles([]byte{}, []byte("# nothing yet\n")); err != nil || r.Policy != cfg.Repos[0].Policy {
+		t.Errorf("empty files = %+v, %v", r.Policy, err)
+	}
+}
+
+func TestNewRepoTakesFiles(t *testing.T) {
+	base := Builtin
+	base.Mode = ModeReport
+	r, err := NewRepo("acme", "app", base).WithFiles(nil, []byte("mode: merge\nmax_update_type: patch\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.FullName() != "acme/app" || r.Policy.Mode != ModeMerge || r.Policy.MaxUpdateType != UpdatePatch || !r.Policy.RequireChecks {
+		t.Errorf("repo = %+v", r)
+	}
+}
+
+func TestWithFilesRejectsBadFiles(t *testing.T) {
+	r := NewRepo("acme", "app", Builtin)
+	for name, c := range map[string]struct {
+		org, repo []byte
+		want      string
+	}{
+		"unknown field":     {repo: []byte("repos: [a/b]\n"), want: "acme/app:.github/deps-merger.yml"},
+		"bad mode":          {repo: []byte("mode: yolo\n"), want: "invalid mode"},
+		"bad org value":     {org: []byte("max_update_type: huge\n"), want: "acme/.github:deps-merger.yml"},
+		"two documents":     {repo: []byte("mode: report\n---\nmode: merge\n"), want: "more than one YAML document"},
+		"no-op wait in org": {org: []byte("require_checks: false\nmerge_without_checks_after: 1h\n"), want: "has no effect"},
+	} {
+		if _, err := r.WithFiles(c.org, c.repo); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want one containing %q", name, err, c.want)
 		}
 	}
 }

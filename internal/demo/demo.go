@@ -200,6 +200,12 @@ func (c *Client) PullRequestDetails(context.Context, string, string, int) (*gith
 	return &github.PullRequestDetails{}, nil
 }
 
+// FileText finds no files: the demo's repositories keep no policy of
+// their own.
+func (c *Client) FileText(context.Context, string, string, string) ([]byte, error) {
+	return nil, nil
+}
+
 func (c *Client) PullRequestState(_ context.Context, owner, name string, number int) (github.PRState, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -49,6 +49,10 @@ func (f *fakeClient) Merge(_ context.Context, _, _ string, n int, _, _ string) e
 	return nil
 }
 
+func (f *fakeClient) FileText(context.Context, string, string, string) ([]byte, error) {
+	return nil, nil
+}
+
 func (f *fakeClient) PullRequestState(_ context.Context, _, _ string, n int) (github.PRState, error) {
 	if contains(f.merges, n) {
 		return github.PRMerged, nil

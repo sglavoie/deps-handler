@@ -41,9 +41,14 @@ type Event struct {
 
 // RepoResult is everything a run learned and did in one repository.
 type RepoResult struct {
-	Repo       string        `json:"repo"`
-	Policy     config.Policy `json:"policy"`
-	Permission string        `json:"permission"`
+	Repo   string        `json:"repo"`
+	Policy config.Policy `json:"policy"`
+	// ConfigFiles are the policy files the repository's policy was read
+	// from, besides the config: config.OrgFile in its owner's
+	// config.OrgRepo, as owner/.github:deps-merger.yml, then its own
+	// config.RepoFile.
+	ConfigFiles []string `json:"config_files"`
+	Permission  string   `json:"permission"`
 	// MergeMethod is the method merges use: the policy's, or the first one
 	// the repository allows when it does not allow that.
 	MergeMethod string            `json:"merge_method"`
@@ -66,6 +71,7 @@ func (r RepoResult) MarshalJSON() ([]byte, error) {
 		r.Decisions[i].Dependencies = nonNil(r.Decisions[i].Dependencies)
 		r.Decisions[i].FailedChecks = nonNil(r.Decisions[i].FailedChecks)
 	}
+	r.ConfigFiles = nonNil(r.ConfigFiles)
 	r.Findings = nonNil(r.Findings)
 	r.Events = nonNil(r.Events)
 	r.Warnings = nonNil(r.Warnings)
@@ -141,6 +147,10 @@ type Runner struct {
 
 	// warnings are the run's own, given to the first repository's result.
 	warnings []string
+
+	// orgFiles reads each owner's config.OrgFile once per run.
+	orgFilesMu sync.Mutex
+	orgFiles   map[string]func() ([]byte, error)
 }
 
 // Warn adds a warning about the run as a whole, such as a verdict cache
@@ -283,13 +293,22 @@ func (r *Runner) sleep(ctx context.Context, d time.Duration) error {
 }
 
 func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
+	rc, files, err := r.withFiles(ctx, rc)
 	res := RepoResult{
-		Repo:      rc.FullName(),
-		Policy:    rc.Policy,
-		Decisions: []policy.Decision{},
-		Findings:  []policy.Finding{},
-		Events:    []Event{},
+		Repo:        rc.FullName(),
+		Policy:      rc.Policy,
+		ConfigFiles: files,
+		Decisions:   []policy.Decision{},
+		Findings:    []policy.Finding{},
+		Events:      []Event{},
 	}
+	if err != nil {
+		// Without the policy the repository asks for, nothing is judged.
+		res.Error = errText(ctx, err)
+		return res
+	}
+	// A repository in report mode is only reported on, as in a dry run.
+	apply := r.Apply && rc.Policy.Mode != config.ModeReport
 	attempted := map[int]bool{}
 	retried := map[int]bool{}
 	rebased := map[int]bool{}
@@ -389,7 +408,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		res.Findings = policy.Diagnose(repo, rc.Policy, decisions)
 
 		var next *policy.Decision
-		if r.Apply {
+		if apply {
 			for _, d := range decisions {
 				if d.Action != policy.ActionRebase || rebased[d.Number] {
 					continue
@@ -551,6 +570,51 @@ func (r *Runner) prState(ctx context.Context, rc config.Repo, number int) (githu
 
 // fetch reads the repository, once more when GitHub fails in a way that
 // may pass.
+// withFiles layers the policy files of rc's owner and of rc itself over
+// its config, and names the files found.
+func (r *Runner) withFiles(ctx context.Context, rc config.Repo) (config.Repo, []string, error) {
+	org, err := r.orgFile(ctx, rc.Owner)
+	if err != nil {
+		return rc, nil, err
+	}
+	own, err := github.Again(ctx, r.PollInterval, r.sleep, func() ([]byte, error) {
+		return r.Client.FileText(ctx, rc.Owner, rc.Name, config.RepoFile)
+	})
+	if err != nil {
+		return rc, nil, err
+	}
+	var files []string
+	if org != nil {
+		files = append(files, rc.Owner+"/"+config.OrgRepo+":"+config.OrgFile)
+	}
+	if own != nil {
+		files = append(files, config.RepoFile)
+	}
+	rc, err = rc.WithFiles(org, own)
+	return rc, files, err
+}
+
+// orgFile reads owner's config.OrgFile, once per run however many of its
+// repositories run.
+func (r *Runner) orgFile(ctx context.Context, owner string) ([]byte, error) {
+	key := strings.ToLower(owner)
+	r.orgFilesMu.Lock()
+	read, ok := r.orgFiles[key]
+	if !ok {
+		read = sync.OnceValues(func() ([]byte, error) {
+			return github.Again(ctx, r.PollInterval, r.sleep, func() ([]byte, error) {
+				return r.Client.FileText(ctx, owner, config.OrgRepo, config.OrgFile)
+			})
+		})
+		if r.orgFiles == nil {
+			r.orgFiles = map[string]func() ([]byte, error){}
+		}
+		r.orgFiles[key] = read
+	}
+	r.orgFilesMu.Unlock()
+	return read()
+}
+
 func (r *Runner) fetch(ctx context.Context, rc config.Repo) (*github.Repo, error) {
 	return github.Again(ctx, r.PollInterval, r.sleep, func() (*github.Repo, error) {
 		return r.Client.FetchRepo(ctx, rc.Owner, rc.Name)

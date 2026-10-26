@@ -31,6 +31,15 @@ defaults:
   # GitHub Actions: such PRs are then reported for a human to rebase.
   # dependabot_commands: true
 
+  # merge | report: report only reports on a repo, as a dry run does, even
+  # with --apply.
+  # mode: merge
+
+# A repo can also set these fields in its own .github/deps-merger.yml, and
+# an owner for all its repos in deps-merger.yml in its .github repo: the
+# owner's file overrides these defaults, the repo's overrides the owner's,
+# and the repo's entry below overrides both.
+
 # The AI agent `deps-merger run --review` uses to judge updates over
 # max_update_type and of unknown size. --agent claude|codex overrides `use`.
 agent:

@@ -278,7 +278,8 @@ run's review approved without asking the agent again. For
   kills deps-merger at once, should the first not stop it.
 
 `--json` prints `{"apply": bool, "results": [...]}` with one result per
-repository: `repo`, `policy`, `permission`, `decisions` (one per PR, with
+repository: `repo`, `policy`, `config_files` (the policy files read
+from GitHub, as in [Policy files in the repositories](#policy-files-in-the-repositories)), `permission`, `decisions` (one per PR, with
 `action` `merge`, `rebase`, `review`, `wait` or `skip`, a `reason`,
 `dependencies` (`name`, `version`, `type`, `group` and `update_type`, empty
 strings for what Dependabot did not record), `failed_checks`, and a
@@ -332,10 +333,33 @@ See [`config.example.yaml`](../config.example.yaml). Defaults: squash,
 patch and minor only, checks required, agent review allowed (it only runs
 with `--review`), Claude as the agent. Every policy field under `defaults`
 (`merge_method`, `max_update_type`, `require_checks`, `agent_review`,
-`dependabot_commands`, `merge_without_checks_after`) can be overridden per repo; the `agent`
+`dependabot_commands`, `merge_without_checks_after`, `mode`) can be overridden per repo; the `agent`
 settings apply to every repo.
+`mode` is `merge` (the default) or `report`: a repo in report mode is
+only reported on, as in a dry run, even by `run --apply`, and its header
+says `report only`.
 When a repo does not allow the configured merge method, the first one it
 allows (squash, merge, rebase) is used and the report header says so.
+
+### Policy files in the repositories
+
+A run reads two more files for each repo, both on the default branch:
+
+- `deps-merger.yml` in the owner's `.github` repository (`acme/.github`),
+  for every repo of that owner, read once per owner per run;
+- `.github/deps-merger.yml` in the repo itself.
+
+Each holds policy fields only, the ones `defaults` takes, and is checked
+as strictly as the config. They are layered, each overriding the one
+before: the built-in defaults, your `defaults`, the owner's file, the
+repo's file, then your entry for the repo. A file that is missing, or in
+a repository the token cannot see, is skipped. An empty file sets nothing.
+A file that is invalid (an unknown field, a bad value, a second YAML
+document, a directory, a binary or a file too large), or that cannot be
+read, fails that repo: nothing in it is judged or written. The report
+names the files used under the repo's header (`policy from ...`), and
+`run --json` lists them in `config_files`. `deps-merger repos` reads
+nothing from GitHub and shows the policy from your config alone.
 
 To leave a repo out without deleting it, give its entry `skip: true`:
 

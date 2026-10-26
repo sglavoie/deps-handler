@@ -184,6 +184,10 @@ type Client interface {
 	Comment(ctx context.Context, owner, name string, number int, body string) error
 	PullRequestDetails(ctx context.Context, owner, name string, number int) (*PullRequestDetails, error)
 	PullRequestState(ctx context.Context, owner, name string, number int) (PRState, error)
+	// FileText reads the file at path on the repository's default branch.
+	// It returns nil, and no error, when the repository or the file does
+	// not exist or cannot be seen.
+	FileText(ctx context.Context, owner, name, path string) ([]byte, error)
 }
 
 // PRState is whether a pull request is open, merged, or closed without
@@ -660,6 +664,49 @@ func (c *client) PullRequestState(ctx context.Context, owner, name string, numbe
 		return PROpen, nil
 	}
 	return PRClosed, nil
+}
+
+const fileQuery = `
+query($owner: String!, $name: String!, $expression: String!) {
+  repository(owner: $owner, name: $name) {
+    object(expression: $expression) {
+      __typename
+      ... on Blob { text isBinary isTruncated }
+    }
+  }
+}`
+
+func (c *client) FileText(ctx context.Context, owner, name, path string) ([]byte, error) {
+	var resp struct {
+		Repository *struct {
+			Object *struct {
+				Typename    string `json:"__typename"`
+				Text        *string
+				IsBinary    bool
+				IsTruncated bool
+			}
+		}
+	}
+	vars := map[string]any{"owner": owner, "name": name, "expression": "HEAD:" + path}
+	if err := c.gql.DoWithContext(ctx, fileQuery, vars, &resp); err != nil {
+		if repoNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("%s/%s:%s: %w", owner, name, path, c.withReset(ctx, err))
+	}
+	if resp.Repository == nil || resp.Repository.Object == nil {
+		return nil, nil
+	}
+	switch o := resp.Repository.Object; {
+	case o.Typename != "Blob":
+		return nil, fmt.Errorf("%s/%s:%s is not a file", owner, name, path)
+	case o.IsBinary || o.Text == nil:
+		return nil, fmt.Errorf("%s/%s:%s is not a text file", owner, name, path)
+	case o.IsTruncated:
+		return nil, fmt.Errorf("%s/%s:%s is too large", owner, name, path)
+	default:
+		return []byte(*o.Text), nil
+	}
 }
 
 // repoNotFound reports whether err is GitHub saying the repository a

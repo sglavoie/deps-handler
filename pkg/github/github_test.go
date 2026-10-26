@@ -691,3 +691,39 @@ func TestWithPermission(t *testing.T) {
 		}
 	}
 }
+
+func TestFileText(t *testing.T) {
+	for _, c := range []struct {
+		name, body string
+		want       string
+		missing    bool
+		err        string
+	}{
+		{name: "file", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": "mode: report\n"}}}}`, want: "mode: report\n"},
+		{name: "empty file", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": ""}}}}`, want: ""},
+		{name: "no file", body: `{"data": {"repository": {"object": null}}}`, missing: true},
+		{name: "no repository", body: `{"data": {"repository": null}, "errors": [{"type": "NOT_FOUND", "path": ["repository"], "message": "Could not resolve to a Repository with the name 'o/.github'."}]}`, missing: true},
+		{name: "directory", body: `{"data": {"repository": {"object": {"__typename": "Tree"}}}}`, err: "not a file"},
+		{name: "binary", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": null, "isBinary": true}}}}`, err: "not a text file"},
+		{name: "truncated", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": "x", "isTruncated": true}}}}`, err: "too large"},
+		{name: "other error", body: `{"data": null, "errors": [{"type": "FORBIDDEN", "message": "no"}]}`, err: "o/r:.github/deps-merger.yml"},
+	} {
+		gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(c.body)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := (&client{gql: gql}).FileText(context.Background(), "o", "r", ".github/deps-merger.yml")
+		switch {
+		case c.err != "":
+			if err == nil || !strings.Contains(err.Error(), c.err) {
+				t.Errorf("%s: err = %v, want one containing %q", c.name, err, c.err)
+			}
+		case err != nil:
+			t.Errorf("%s: %v", c.name, err)
+		case c.missing && got != nil:
+			t.Errorf("%s: got %q, want nil", c.name, got)
+		case !c.missing && (got == nil || string(got) != c.want):
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}

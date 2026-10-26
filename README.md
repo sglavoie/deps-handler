@@ -205,6 +205,23 @@ repos:
 `deps-merger run -r Billing` runs one repo and `--owner acme` every repo
 of an owner. [Config](docs/behaviour.md#config) has every rule.
 
+A repository can also set its own policy in `.github/deps-merger.yml` on
+its default branch, and an owner for all its repositories in
+`deps-merger.yml` in its `.github` repository. They take the policy
+fields `defaults` takes, plus `mode: report` to have the repository only
+reported on, even by `run --apply`:
+
+```yaml
+# .github/deps-merger.yml
+max_update_type: patch
+mode: report
+```
+
+The owner's file overrides your `defaults`, the repository's file
+overrides its owner's, and your entry for the repository overrides both.
+`deps-merger repos` shows your config alone; a run reads the files, and
+its report names those it used.
+
 ## As a library
 
 The engine the CLI runs is importable from `pkg/`: `runner` drives a run

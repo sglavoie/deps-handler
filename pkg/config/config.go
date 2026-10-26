@@ -76,7 +76,16 @@ type Policy struct {
 	// push access, not from a GitHub App or GITHUB_TOKEN: without it, such
 	// a PR is left for a human to rebase.
 	DependabotCommands bool `json:"dependabot_commands"`
+	// Mode is ModeMerge, or ModeReport to only report on the repository,
+	// as a dry run does, even in a run that merges.
+	Mode string `json:"mode"`
 }
+
+// The modes a policy can set.
+const (
+	ModeMerge  = "merge"
+	ModeReport = "report"
+)
 
 // MarshalJSON writes MergeWithoutChecksAfter as the config would, "10m",
 // rather than as nanoseconds.
@@ -107,6 +116,20 @@ type Repo struct {
 	Policy Policy `json:"policy"`
 	// Skip leaves the repo out of runs unless it is named explicitly.
 	Skip bool `json:"skip,omitempty"`
+
+	// layered is set when base and entry say how Policy was made, so that
+	// WithFiles can slot the repository's own files in between.
+	layered bool
+	// base is the policy before the repo's entry: the defaults.
+	base Policy
+	// entry is what the repo's entry overrides.
+	entry overrides
+}
+
+// NewRepo returns a repository with policy base, as a config listing it
+// with no overrides would, for callers that build their own defaults.
+func NewRepo(owner, name string, base Policy) Repo {
+	return Repo{Owner: owner, Name: name, Policy: base, layered: true, base: base}
 }
 
 func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
@@ -164,6 +187,7 @@ type overrides struct {
 	DependabotCommands *bool `yaml:"dependabot_commands"`
 	// MergeWithoutChecksAfter is a duration such as "10m"; "0" turns it off.
 	MergeWithoutChecksAfter *string `yaml:"merge_without_checks_after"`
+	Mode                    *string `yaml:"mode"`
 }
 
 type repoEntry struct {
@@ -258,7 +282,7 @@ var validMergeMethods = map[string]bool{"squash": true, "merge": true, "rebase":
 const ChecksGrace = 30 * time.Minute
 
 // Builtin is the policy used when neither defaults nor a repo override it.
-var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, DependabotCommands: true}
+var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireChecks: true, AgentReview: true, DependabotCommands: true, Mode: ModeMerge}
 
 // exampleURL is the annotated example config, which a `go install` leaves
 // no copy of.
@@ -377,7 +401,7 @@ func Parse(data []byte) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("repos: line %d: %s: %w", n.Line, e.Repo, err)
 		}
-		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: p, Skip: e.Skip})
+		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: p, Skip: e.Skip, layered: true, base: defaults, entry: e.overrides})
 	}
 	if len(cfg.Repos) == 0 {
 		return nil, ErrNoRepos
@@ -450,6 +474,13 @@ func apply(base Policy, o overrides) (Policy, error) {
 	}
 	if o.DependabotCommands != nil {
 		p.DependabotCommands = *o.DependabotCommands
+	}
+	if o.Mode != nil {
+		m := strings.ToLower(strings.TrimSpace(*o.Mode))
+		if m != ModeMerge && m != ModeReport {
+			return p, fmt.Errorf("invalid mode %q (want merge or report)", *o.Mode)
+		}
+		p.Mode = m
 	}
 	if o.MergeWithoutChecksAfter != nil {
 		d, err := time.ParseDuration(*o.MergeWithoutChecksAfter)
@@ -580,4 +611,69 @@ func (c *Config) Filter(only, owners []string, includeSkipped bool) ([]Repo, err
 		}
 	}
 	return out, nil
+}
+
+// RepoFile is where a repository keeps its own policy, on its default
+// branch. OrgFile, in the owner's .github repository (OrgRepo), holds
+// policy for every repository of the owner.
+const (
+	RepoFile = ".github/deps-merger.yml"
+	OrgRepo  = ".github"
+	OrgFile  = "deps-merger.yml"
+)
+
+// WithFiles returns r with the policy fields set in its owner's OrgFile
+// and its own RepoFile, either nil when absent, layered between the
+// defaults and r's entry: the defaults, then org, then repo, then the
+// entry. The files hold policy fields only, as under defaults.
+func (r Repo) WithFiles(org, repo []byte) (Repo, error) {
+	if org == nil && repo == nil {
+		return r, nil
+	}
+	base, entry := r.Policy, overrides{}
+	if r.layered {
+		base, entry = r.base, r.entry
+	}
+	p := base
+	for _, f := range []struct {
+		name string
+		data []byte
+	}{{r.Owner + "/" + OrgRepo + ":" + OrgFile, org}, {r.FullName() + ":" + RepoFile, repo}} {
+		if f.data == nil {
+			continue
+		}
+		o, err := parseFile(f.data)
+		if err == nil {
+			p, err = apply(p, o)
+		}
+		if err != nil {
+			return r, fmt.Errorf("%s: %w", f.name, err)
+		}
+	}
+	p, err := apply(p, entry)
+	if err != nil {
+		return r, fmt.Errorf("config entry for %s, over its files: %w", r.FullName(), err)
+	}
+	r.Policy = p
+	return r, nil
+}
+
+// parseFile reads a repository's or owner's policy file: policy fields
+// only, as under defaults. An empty file sets nothing.
+func parseFile(data []byte) (overrides, error) {
+	var o overrides
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&o); errors.Is(err, io.EOF) {
+		return o, nil
+	} else if err != nil {
+		return o, err
+	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); err == nil {
+		return o, fmt.Errorf("line %d: more than one YAML document", extra.Line)
+	} else if !errors.Is(err, io.EOF) {
+		return o, err
+	}
+	return o, nil
 }

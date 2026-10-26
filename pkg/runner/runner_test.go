@@ -53,6 +53,10 @@ type fakeClient struct {
 	// closedAnyway makes a failure from mergeErrs close the PR without
 	// merging it, as someone can meanwhile.
 	closedAnyway map[int]bool
+	// files are the files FileText finds, by "owner/name:path"; fileErr
+	// fails it instead.
+	files   map[string]string
+	fileErr error
 	// unknownAfterMerge leaves every PR's mergeability UNKNOWN for that
 	// many fetches after any merge attempt, failed ones included.
 	unknownAfterMerge int
@@ -161,6 +165,16 @@ func (f *fakeClient) Comment(_ context.Context, _, _ string, n int, body string)
 	}
 	f.comments[n] = append(f.comments[n], body)
 	return nil
+}
+
+func (f *fakeClient) FileText(_ context.Context, owner, name, path string) ([]byte, error) {
+	if f.fileErr != nil {
+		return nil, f.fileErr
+	}
+	if s, ok := f.files[owner+"/"+name+":"+path]; ok {
+		return []byte(s), nil
+	}
+	return nil, nil
 }
 
 func (f *fakeClient) PullRequestDetails(context.Context, string, string, int) (*github.PullRequestDetails, error) {
@@ -347,6 +361,7 @@ type reposClient struct {
 	repos             map[string]*fakeClient
 	writing, overlaps atomic.Int32
 	delay             time.Duration
+	fileReads         atomic.Int32
 }
 
 func (c *reposClient) Viewer(context.Context) (string, error) { return "me", nil }
@@ -375,6 +390,11 @@ func (c *reposClient) Comment(ctx context.Context, _, name string, n int, body s
 
 func (c *reposClient) PullRequestDetails(ctx context.Context, _, name string, n int) (*github.PullRequestDetails, error) {
 	return c.repos[name].PullRequestDetails(ctx, "", name, n)
+}
+
+func (c *reposClient) FileText(context.Context, string, string, string) ([]byte, error) {
+	c.fileReads.Add(1)
+	return nil, nil
 }
 
 func (c *reposClient) PullRequestState(ctx context.Context, _, name string, n int) (github.PRState, error) {
@@ -1065,5 +1085,65 @@ func TestRejectionInThisRunLapsesWhenTheHeadMoves(t *testing.T) {
 	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
 	if fmt.Sprint(rv.calls) != "[1 1]" || fmt.Sprint(c.merges) != "[1]" {
 		t.Fatalf("reviews %v, merges %v, decisions %+v", rv.calls, c.merges, res.Decisions)
+	}
+}
+
+func TestRepoFilesSetThePolicy(t *testing.T) {
+	behind := testutil.PR(2)
+	behind.MergeState = "BEHIND"
+	fc := &fakeClient{
+		repo: testutil.Repo(testutil.PR(1), behind),
+		files: map[string]string{
+			"o/.github:deps-merger.yml":   "dependabot_commands: false\n",
+			"o/r:.github/deps-merger.yml": "mode: report\n",
+		},
+	}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if res.Error != "" {
+		t.Fatal(res.Error)
+	}
+	// Report mode: nothing is written, though the run applies.
+	if len(fc.merges) != 0 || len(fc.comments) != 0 {
+		t.Fatalf("merges = %v, comments = %v", fc.merges, fc.comments)
+	}
+	if res.Policy.Mode != config.ModeReport || res.Policy.DependabotCommands {
+		t.Errorf("policy = %+v", res.Policy)
+	}
+	if want := []string{"o/.github:deps-merger.yml", ".github/deps-merger.yml"}; !slices.Equal(res.ConfigFiles, want) {
+		t.Errorf("config files = %v, want %v", res.ConfigFiles, want)
+	}
+	if res.Decisions[0].Action != policy.ActionMerge {
+		t.Errorf("#1 = %s %q", res.Decisions[0].Action, res.Decisions[0].Reason)
+	}
+}
+
+func TestBadOrUnreadableRepoFileFailsTheRepo(t *testing.T) {
+	for name, fc := range map[string]*fakeClient{
+		"invalid":    {files: map[string]string{"o/r:.github/deps-merger.yml": "max_update_type: huge\n"}},
+		"unreadable": {fileErr: errors.New("boom")},
+	} {
+		fc.repo = testutil.Repo(testutil.PR(1))
+		res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+		if res.Error == "" || len(fc.merges) != 0 || len(res.Decisions) != 0 {
+			t.Errorf("%s: error %q, merges %v, decisions %d", name, res.Error, fc.merges, len(res.Decisions))
+		}
+	}
+}
+
+func TestOrgFileIsReadOncePerOwner(t *testing.T) {
+	c := &reposClient{repos: map[string]*fakeClient{}}
+	for _, name := range []string{"a", "b", "c"} {
+		c.repos[name] = &fakeClient{repo: testutil.Repo()}
+	}
+	r := newRunner(c, false)
+	repos := []config.Repo{
+		{Owner: "o", Name: "a", Policy: config.Builtin},
+		{Owner: "O", Name: "b", Policy: config.Builtin},
+		{Owner: "p", Name: "c", Policy: config.Builtin},
+	}
+	r.Run(context.Background(), repos, nil)
+	// One org file for each of o and p, and each repo's own.
+	if got := c.fileReads.Load(); got != 5 {
+		t.Errorf("file reads = %d, want 5", got)
 	}
 }
