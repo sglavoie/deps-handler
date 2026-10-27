@@ -355,6 +355,18 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	finish := func() RepoResult {
 		for _, n := range slices.Sorted(maps.Keys(unsure)) {
 			p := unsure[n]
+			if ctx.Err() != nil {
+				// There is no asking GitHub now.
+				switch {
+				case p.uncertain:
+					resolve(n, p.failed("interrupted; may have merged after "+p.cause))
+				case p.failure != "":
+					resolve(n, p.failed(p.failure))
+				default:
+					resolve(n, p.failed(p.cause))
+				}
+				continue
+			}
 			switch state, err := r.prState(ctx, rc, n); {
 			case err != nil && p.uncertain:
 				resolve(n, p.failed(fmt.Sprintf("may have merged after %s, but GitHub could not say: %s", p.cause, errText(ctx, err))))
@@ -506,6 +518,13 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			// pass's other merges as not sent, rather than read the
 			// repository again for each, and go on to the reviews.
 			for _, d := range decisions {
+				if p, ok := unsure[d.Number]; ok {
+					// Tried once already, and that try may have merged it:
+					// reported as it turned out as the pass ends.
+					p.failure = fmt.Sprintf("not merged after %s; retry %s", p.cause, errWritesBlocked)
+					unsure[d.Number] = p
+					continue
+				}
 				if d.Action == policy.ActionMerge && !attempted[d.Number] {
 					attempted[d.Number] = true
 					res.Events = append(res.Events, Event{Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventMergeFailed, Detail: errWritesBlocked.Error()})

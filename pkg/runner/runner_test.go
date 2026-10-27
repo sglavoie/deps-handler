@@ -981,6 +981,67 @@ func TestTimedOutMergeInterruptedBeforeItsRetryMayHaveMerged(t *testing.T) {
 	}
 }
 
+// ctxStateClient fails to say a PR's state once the run is interrupted,
+// as the real client does.
+type ctxStateClient struct{ *fakeClient }
+
+func (c ctxStateClient) PullRequestState(ctx context.Context, owner, name string, number int) (github.PRState, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return c.fakeClient.PullRequestState(ctx, owner, name, number)
+}
+
+func TestTimedOutMergeInterruptedInThePauseBeforeItsRetry(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {&api.HTTPError{StatusCode: 504}}}}
+	r := newRunner(ctxStateClient{fc}, true)
+	r.Sleep = func(ctx context.Context, _ time.Duration) error { cancel(); return ctx.Err() }
+	res := r.RunRepo(ctx, repoCfg)
+	if len(res.Events) != 1 || !strings.HasPrefix(res.Events[0].Detail, "interrupted; may have merged after HTTP 504") {
+		t.Fatalf("events %+v", res.Events)
+	}
+}
+
+// pendingFirstClient shows PR 1's checks still running in the first read.
+type pendingFirstClient struct{ *fakeClient }
+
+func (c pendingFirstClient) FetchRepo(ctx context.Context, owner, name string) (*github.Repo, error) {
+	repo, err := c.fakeClient.FetchRepo(ctx, owner, name)
+	if repo != nil && c.fetches == 1 {
+		for i, pr := range repo.PullRequests {
+			if pr.Number == 1 {
+				pr.Checks = []github.Check{{Name: "build", State: github.CheckPending}}
+				repo.PullRequests[i] = pr
+			}
+		}
+	}
+	return repo, err
+}
+
+func TestRetryCutOffByBlockedWritesIsReportedOnce(t *testing.T) {
+	limited := &api.HTTPError{StatusCode: 403, Message: "API rate limit exceeded", Headers: map[string][]string{"Retry-After": {"3600"}}}
+	for _, merged := range []bool{false, true} {
+		fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2)), mergeErrs: map[int][]error{1: {limited}, 2: {&api.HTTPError{StatusCode: 504}}}, mergedAnyway: map[int]bool{2: merged}}
+		res := newRunner(pendingFirstClient{fc}, true).RunRepo(context.Background(), repoCfg)
+		var two []Event
+		for _, ev := range res.Events {
+			if ev.Number == 2 {
+				two = append(two, ev)
+			}
+		}
+		switch {
+		case len(two) != 1:
+			t.Errorf("merged %v: PR 2 reported %d times: %+v", merged, len(two), two)
+		case merged && two[0].Kind != EventMerged:
+			t.Errorf("PR 2 merged by its first try, reported as %+v", two[0])
+		case !merged && (two[0].Kind != EventMergeFailed || !strings.Contains(two[0].Detail, "after HTTP 504") || !strings.Contains(two[0].Detail, "retry not sent")):
+			t.Errorf("PR 2 reported as %+v", two[0])
+		}
+	}
+}
+
 func TestRefusedMergeIsAPlainFailureWhenGitHubCannotSay(t *testing.T) {
 	bad := &api.HTTPError{StatusCode: 502}
 	notMergeable := &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}
