@@ -611,6 +611,31 @@ func reviewRunner(c github.Client, rv review.Reviewer, apply bool) *Runner {
 	return r
 }
 
+func TestCancelledReviewDoesNotCacheApproval(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{onReview: func(review.Request) { cancel() }}
+	r := reviewRunner(c, rv, true)
+	cachePath := t.TempDir() + "/verdicts.json"
+	cache, err := review.OpenCache(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Verdicts = cache
+	res := r.RunRepo(ctx, repoCfg)
+	if !res.Failed() || len(c.merges) != 0 {
+		t.Fatalf("cancelled run = %+v; merges = %v", res, c.merges)
+	}
+	reopened, err := review.OpenCache(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cache.Entries()) != 0 || len(reopened.Entries()) != 0 {
+		t.Fatal("approval returned after cancellation was cached for a later run")
+	}
+}
+
 func TestAgentApprovedMajorMergesAfterSafePRs(t *testing.T) {
 	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"), testutil.PR(2))}
 	rv := &fakeReviewer{onReview: func(review.Request) {

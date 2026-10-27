@@ -916,6 +916,8 @@ func TestFileText(t *testing.T) {
 		{name: "binary", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": null, "isBinary": true}}}}`, err: "not a text file"},
 		{name: "truncated", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": "x", "isTruncated": true}}}}`, err: "too large"},
 		{name: "other error", body: `{"data": null, "errors": [{"type": "FORBIDDEN", "message": "no"}]}`, err: "o/r:.github/deps-merger.yml"},
+		{name: "missing nested object", body: `{"data": {"repository": {"object": null}}, "errors": [{"type": "NOT_FOUND", "path": ["repository", "object"], "message": "object unavailable"}]}`, err: "object unavailable"},
+		{name: "missing repository with another error", body: `{"data": null, "errors": [{"type": "NOT_FOUND", "path": ["repository"], "message": "missing repository"}, {"type": "RATE_LIMITED", "message": "rate limit"}]}`, err: "rate limit"},
 	} {
 		gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(c.body)})
 		if err != nil {

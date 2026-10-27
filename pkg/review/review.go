@@ -122,6 +122,11 @@ func (r *AgentReviewer) Review(ctx context.Context, req Request) (policy.Verdict
 		defer cancel()
 	}
 	v, stage, err := r.review(ctx, req)
+	// An adapter may finish successfully as cancellation arrives. Its
+	// answer is no longer eligible for approval or storage in the cache.
+	if ctx.Err() != nil {
+		v, err = policy.Verdict{}, ctx.Err()
+	}
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		// The review's time runs out in whichever stage was running.
 		if stage == "" {

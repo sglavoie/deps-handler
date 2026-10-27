@@ -240,6 +240,8 @@ verdicts for a later `--apply`). The exit status is:
 
 A failed review still makes the run exit `1` if the PR closes or changes
 before the next repository read; its failure remains in the report.
+An answer returned after its review times out or the run is cancelled is
+discarded and cannot become a cached approval for a later run.
 `init`, `repos` and `verdicts` also exit `1` if their output cannot be
 written, including confirmations after a config or cache change.
 
@@ -297,6 +299,9 @@ The owner's file overrides your `defaults`, the repository's file
 overrides its owner's, and your entry for the repository overrides both.
 `deps-merger repos` shows your config alone; a run reads the files, and
 its report names those it used.
+Errors reading those files stop the repository from being processed;
+only an absent file or an unambiguously missing repository inherits policy
+without a file. A concurrent rate-limit error is still reported.
 
 Recursive YAML merge aliases are rejected in both local config and
 repository policy files.

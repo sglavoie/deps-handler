@@ -821,7 +821,17 @@ func (r *Runner) review(ctx context.Context, req review.Request) (policy.Verdict
 		return policy.Verdict{}, ctx.Err()
 	}
 	defer func() { <-r.reviewSlots }()
-	return r.Reviewer.Review(ctx, req)
+	// A ready slot can win the select even when cancellation is ready.
+	if err := ctx.Err(); err != nil {
+		return policy.Verdict{}, err
+	}
+	v, err := r.Reviewer.Review(ctx, req)
+	// Custom reviewers may return an answer after cancellation. Never
+	// persist that answer as an approval for a later run.
+	if ctx.Err() != nil {
+		return policy.Verdict{}, ctx.Err()
+	}
+	return v, err
 }
 
 // errText describes err, or just "interrupted" when it comes from the run

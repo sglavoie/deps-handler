@@ -470,12 +470,18 @@ func (c *expiringContext) Err() error {
 }
 
 // expiringAgent runs out the review's time once it starts.
-type expiringAgent struct{ ctx *expiringContext }
+type expiringAgent struct {
+	ctx     *expiringContext
+	approve bool
+}
 
 func (expiringAgent) Name() string { return "claude" }
 func (a expiringAgent) Run(ctx context.Context, _, _ string) (Answer, error) {
 	a.ctx.expire()
 	<-ctx.Done()
+	if a.approve {
+		return Answer{Decision: "approve", Summary: "late approval"}, nil
+	}
 	return Answer{}, ctx.Err()
 }
 
@@ -486,10 +492,23 @@ func TestAgentReviewerTimesOut(t *testing.T) {
 	// The deadline passes only once the agent runs, so a slow checkout
 	// cannot take the timeout for itself.
 	ctx := newExpiringContext()
-	r := &AgentReviewer{Agent: expiringAgent{ctx}, Details: fakeDetails{}, Timeout: time.Minute,
+	r := &AgentReviewer{Agent: expiringAgent{ctx: ctx}, Details: fakeDetails{}, Timeout: time.Minute,
 		Workspace: &Workspace{Root: t.TempDir(), URL: func(string, string) string { return origin }}}
 	if _, err := r.Review(ctx, req); err == nil || err.Error() != "claude timed out after 1m0s" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAgentReviewerRejectsApprovalAfterTimeout(t *testing.T) {
+	origin, head := gitOrigin(t)
+	req := request()
+	req.HeadOID = head
+	ctx := newExpiringContext()
+	r := &AgentReviewer{Agent: expiringAgent{ctx: ctx, approve: true}, Details: fakeDetails{}, Timeout: time.Minute,
+		Workspace: &Workspace{Root: t.TempDir(), URL: func(string, string) string { return origin }}}
+	v, err := r.Review(ctx, req)
+	if err == nil || err.Error() != "claude timed out after 1m0s" || v.Approved {
+		t.Fatalf("review = %+v, %v; want timeout without an approval", v, err)
 	}
 }
 

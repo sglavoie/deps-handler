@@ -779,14 +779,17 @@ func (c *client) FileText(ctx context.Context, owner, name, path string) ([]byte
 }
 
 // repoNotFound reports whether err is GitHub saying the repository a
-// query asked for does not exist or cannot be seen.
+// query asked for does not exist or cannot be seen, with no other errors.
+// A missing nested object does not establish that its policy file is
+// absent, and another error (such as a rate limit) must not be swallowed.
 func repoNotFound(err error) bool {
-	if ge, ok := errors.AsType[*api.GraphQLError](err); ok {
+	if ge, ok := errors.AsType[*api.GraphQLError](err); ok && len(ge.Errors) > 0 {
 		for _, e := range ge.Errors {
-			if e.Type == "NOT_FOUND" && len(e.Path) > 0 && e.Path[0] == "repository" {
-				return true
+			if e.Type != "NOT_FOUND" || len(e.Path) != 1 || e.Path[0] != "repository" {
+				return false
 			}
 		}
+		return true
 	}
 	return false
 }
