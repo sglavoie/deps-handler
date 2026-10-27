@@ -114,6 +114,9 @@ func TestRateLimited(t *testing.T) {
 		"429":         {&api.HTTPError{StatusCode: 429}, time.Minute, true},
 		"secondary":   {&api.HTTPError{StatusCode: 403, Message: "You have exceeded a secondary rate limit"}, time.Minute, true},
 		"forbidden":   {&api.HTTPError{StatusCode: 403, Message: "Resource not accessible by integration"}, 0, false},
+		// The refusal that happened to use up the quota is not the limit.
+		"forbidden at the quota": {&api.HTTPError{StatusCode: 403, Message: "Resource not accessible by integration",
+			Headers: http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {soon}}}, 0, false},
 		// Without its reset, GraphQL's hourly limit is not waited for.
 		"graphql": {&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Type: "RATE_LIMITED"}}}, time.Hour, true},
 		"other":   {errors.New("boom"), 0, false},
@@ -411,6 +414,11 @@ func TestMergePinsHeadAndMethod(t *testing.T) {
 	var we *WorkflowScopeError
 	if !errors.As(err, &we) || !Refused(err) || !strings.Contains(err.Error(), "gh auth refresh") {
 		t.Fatalf("err = %v; a missing workflow scope should come back refused, with how to fix it", err)
+	}
+	rt.answers["PUT /repos/o/r/pulls/5/merge"] = reply(403, `{"message": "refusing to allow a GitHub App to create or update workflow `+"`.github/workflows/ci.yml` without `workflows` permission"+`"}`)
+	err = restClient(t, rt).Merge(context.Background(), "o", "r", 5, "squash", "abc")
+	if !errors.As(err, &we) || !we.App || !Refused(err) || !strings.Contains(err.Error(), "Workflows: read and write") {
+		t.Fatalf("err = %v; a GitHub App without the workflows permission should be told to get it", err)
 	}
 }
 

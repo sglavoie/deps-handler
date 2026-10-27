@@ -586,8 +586,15 @@ func (c *client) Merge(ctx context.Context, owner, name string, number int, meth
 	body, _ := json.Marshal(map[string]string{"merge_method": method, "sha": headOID})
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/merge", owner, name, number)
 	err := c.rest.DoWithContext(ctx, "PUT", path, bytes.NewReader(body), nil)
-	if he, ok := errors.AsType[*api.HTTPError](err); ok && he.StatusCode == http.StatusForbidden && strings.Contains(he.Message, "without `workflow` scope") {
-		return &WorkflowScopeError{Err: err}
+	if he, ok := errors.AsType[*api.HTTPError](err); ok && he.StatusCode == http.StatusForbidden {
+		// GitHub words it as a scope for a user's token, and as a
+		// permission for a GitHub App's.
+		switch {
+		case strings.Contains(he.Message, "without `workflow` scope"):
+			return &WorkflowScopeError{Err: err}
+		case strings.Contains(he.Message, "without `workflows` permission"):
+			return &WorkflowScopeError{Err: err, App: true}
+		}
 	}
 	return err
 }
@@ -773,14 +780,17 @@ func RateLimited(err error) (time.Duration, bool) {
 		if s, err := strconv.Atoi(he.Headers.Get("Retry-After")); err == nil {
 			return time.Duration(s) * time.Second, true
 		}
-		if he.Headers.Get("X-Ratelimit-Remaining") == "0" {
+		// GitHub sends the quota on every response: one refused for another
+		// reason may also have used up the last of it, and is no rate limit.
+		msg := strings.ToLower(he.Message)
+		if he.Headers.Get("X-Ratelimit-Remaining") == "0" && (he.StatusCode == http.StatusTooManyRequests || msg == "" || strings.Contains(msg, "rate limit")) {
 			if reset, err := strconv.ParseInt(he.Headers.Get("X-Ratelimit-Reset"), 10, 64); err == nil {
 				return max(0, time.Until(time.Unix(reset, 0))), true
 			}
 		}
 		// A secondary rate limit may come without either header; GitHub
 		// then asks for at least a minute's pause.
-		if he.StatusCode == http.StatusTooManyRequests || strings.Contains(strings.ToLower(he.Message), "rate limit") {
+		if he.StatusCode == http.StatusTooManyRequests || strings.Contains(msg, "rate limit") {
 			return time.Minute, true
 		}
 		return 0, false
@@ -811,10 +821,17 @@ func (e *RateLimitError) Unwrap() error { return e.Err }
 
 // WorkflowScopeError is a merge refused because the PR changes a file under
 // .github/workflows and the token lacks the workflow scope GitHub asks for
-// to write one, as gh's default login does.
-type WorkflowScopeError struct{ Err error }
+// to write one, as gh's default login does. App is true for a GitHub App's
+// token, which lacks the Workflows permission instead.
+type WorkflowScopeError struct {
+	Err error
+	App bool
+}
 
 func (e *WorkflowScopeError) Error() string {
+	if e.App {
+		return "the GitHub App lacks the Workflows permission needed to merge changes to workflow files: grant it Workflows: read and write"
+	}
 	return "token lacks the `workflow` scope needed to merge changes to workflow files: run `gh auth refresh -h github.com -s workflow`, or give GH_TOKEN that scope"
 }
 
