@@ -203,6 +203,13 @@ func anyRan(checks []github.Check) bool {
 	return false
 }
 
+// inConflict reports whether GitHub says pr conflicts with its base. It
+// then runs no pull_request workflow on it, so no checks is the conflict's
+// doing, not a repository without CI.
+func inConflict(pr *github.PullRequest) bool {
+	return pr.Mergeable == "CONFLICTING" || pr.MergeState == "DIRTY"
+}
+
 func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string, judge Judge) Decision {
 	d := Decision{PR: pr, Number: pr.Number, Title: pr.Title, URL: pr.URL, Dependencies: []dependabot.Dependency{}}
 	// A commit whose size cannot be read makes the whole PR's unknown, not
@@ -355,6 +362,8 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		return wait(upToDate, "%d check(s) still running", pending)
 	case len(stale) > 0:
 		return skip("stale checks: %s (rerun them or comment @dependabot recreate)", strings.Join(stale, ", "))
+	case !anyRan(checks) && inConflict(pr):
+		return conflicts(conflictHint(pr))
 	case !anyRan(checks) && p.RequireChecks:
 		none := "no checks reported yet"
 		if len(checks) > 0 {
@@ -383,7 +392,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 
 	switch pr.Mergeable {
 	case "CONFLICTING":
-		return conflicts(" (Dependabot normally rebases; try @dependabot recreate)")
+		return conflicts(conflictHint(pr))
 	case "UNKNOWN", "":
 		return wait(upToDate, "GitHub is still computing mergeability")
 	}
@@ -422,7 +431,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		}
 		return skip("blocked by branch protection")
 	case "DIRTY":
-		return conflicts("")
+		return conflicts(conflictHint(pr))
 	case "UNKNOWN", "":
 		return wait(true, "GitHub is still computing merge state")
 	default:
@@ -460,6 +469,15 @@ func lacksWrite(repo *github.Repo) string {
 		return "GitHub reports no access for you"
 	}
 	return fmt.Sprintf("you only have %s access", strings.ToLower(repo.Permission))
+}
+
+// conflictHint is what the skip of a PR in conflict suggests, from how
+// GitHub reports the conflict.
+func conflictHint(pr *github.PullRequest) string {
+	if pr.Mergeable == "CONFLICTING" {
+		return " (Dependabot normally rebases; try @dependabot recreate)"
+	}
+	return ""
 }
 
 // pushedAt is when the PR's latest commit was made, or the zero time when

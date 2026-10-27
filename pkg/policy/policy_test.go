@@ -209,6 +209,19 @@ func TestEvaluate(t *testing.T) {
 				pr.BaseMovedAt = testutil.T0.Add(-time.Minute)
 				r.FetchedAt = testutil.T0.Add(time.Minute)
 			}},
+		// GitHub runs no pull_request workflow on a PR in conflict.
+		{name: "conflicting without checks is a conflict", action: ActionSkip, reason: "merge conflicts (Dependabot normally rebases",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = nil
+				pr.Mergeable = "CONFLICTING"
+			}},
+		{name: "dirty without checks after the base moved waits for Dependabot", action: ActionWait, reason: "waiting for Dependabot to rebase",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = nil
+				pr.MergeState = "DIRTY"
+				pr.BaseMovedAt = testutil.Fetched.Add(-2 * time.Minute)
+			},
+			policy: func(p *config.Policy) { p.MergeWithoutChecksAfter = time.Hour }},
 		{name: "a second commit without metadata makes the size unknown", action: ActionSkip, reason: "cannot determine",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				c := pr.Commits[0]

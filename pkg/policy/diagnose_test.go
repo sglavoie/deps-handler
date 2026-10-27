@@ -126,6 +126,15 @@ func TestDiagnoseHeldMinorUnderPatchLimit(t *testing.T) {
 	}
 }
 
+func TestDiagnoseNoChecksIgnoresConflictingPRs(t *testing.T) {
+	conflicting := testutil.PR(1)
+	conflicting.Checks = nil
+	conflicting.Mergeable, conflicting.MergeState = "CONFLICTING", "DIRTY"
+	if f := findings(testutil.Repo(conflicting)); len(f[FindingNoChecks]) != 0 {
+		t.Fatalf("no-checks = %+v; GitHub runs no workflow on a PR in conflict", f[FindingNoChecks])
+	}
+}
+
 func TestDiagnoseNoChecksIgnoresWaitingPRs(t *testing.T) {
 	fresh := testutil.PR(1)
 	fresh.Checks = nil
