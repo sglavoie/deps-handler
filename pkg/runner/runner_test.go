@@ -560,6 +560,67 @@ func TestAgentFailureFailsTheRun(t *testing.T) {
 	}
 }
 
+func TestAgentFailureSurvivesChangedSnapshot(t *testing.T) {
+	for _, change := range []string{"closed", "draft", "new update", "fetch failed"} {
+		t.Run(change, func(t *testing.T) {
+			c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+			rv := &fakeReviewer{fail: map[int]bool{1: true}, onReview: func(review.Request) {
+				switch change {
+				case "closed":
+					c.drop(1)
+				case "draft":
+					c.repo.PullRequests[0].IsDraft = true
+				case "new update":
+					c.repo.PullRequests[0] = testutil.PR(1, "lib:patch")
+				case "fetch failed":
+					c.fetchErrs = []error{errors.New("repository unavailable")}
+				}
+			}}
+			res := reviewRunner(c, rv, false).RunRepo(context.Background(), repoCfg)
+			if !res.Failed() || !strings.Contains(res.Error, "#1: agent review failed: claude: exit status 1") {
+				t.Fatalf("review failure disappeared after %s: %+v", change, res)
+			}
+			if change == "fetch failed" && !strings.Contains(res.Error, "repository unavailable") {
+				t.Fatalf("lost fetch error: %s", res.Error)
+			}
+		})
+	}
+}
+
+func TestAgentFailureSurvivesReplacementVerdict(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{errs: map[int][]error{1: {errors.New("review unavailable")}}}
+	rv.onReview = func(review.Request) {
+		if len(rv.calls) == 1 {
+			pr := &c.repo.PullRequests[0]
+			pr.HeadOID = "rebased"
+			pr.ChecksOID = pr.HeadOID
+			pr.Commits[0].OID = pr.HeadOID
+		}
+	}
+	res := reviewRunner(c, rv, true).RunRepo(context.Background(), repoCfg)
+	if len(rv.calls) != 2 || len(c.merges) != 1 || !res.Failed() || !strings.Contains(res.Error, "#1: agent review failed: review unavailable") {
+		t.Fatalf("reviews %v, merges %v, result %+v", rv.calls, c.merges, res)
+	}
+}
+
+func TestAgentFailureSummaryIncludesFailuresOfOpenPRs(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "a:major"), testutil.PR(2, "b:major"))}
+	rv := &fakeReviewer{fail: map[int]bool{1: true, 2: true}, onReview: func(req review.Request) {
+		if req.Number == 2 {
+			c.drop(2)
+		}
+	}}
+	res := reviewRunner(c, rv, false).RunRepo(context.Background(), repoCfg)
+	// A repository error hides the decisions in text reports, so the
+	// summary must include the failure of the still-open PR as well.
+	for _, number := range []int{1, 2} {
+		if !strings.Contains(res.Error, fmt.Sprintf("#%d: agent review failed", number)) {
+			t.Fatalf("failure missing from summary: %+v", res)
+		}
+	}
+}
+
 func TestAgentReviewLimit(t *testing.T) {
 	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"), testutil.PR(2, "lib:major"))}
 	rv := &fakeReviewer{}

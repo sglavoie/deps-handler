@@ -181,6 +181,7 @@ type fakeModel struct {
 	replies []string
 	// cut holds the indexes of the replies cut short at max_tokens.
 	cut      map[int]bool
+	finish   map[int]string
 	requests []chatRequest
 	bodies   []string
 	auth     []string
@@ -209,6 +210,9 @@ func (f *fakeModel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.cut[len(f.requests)-1] {
 		finish = "length"
 	}
+	if reason, ok := f.finish[len(f.requests)-1]; ok {
+		finish = reason
+	}
 	w.Write([]byte(`{"choices": [{"message": ` + reply + `, "finish_reason": "` + finish + `"}], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}`))
 }
 
@@ -225,9 +229,31 @@ func content(s string) string {
 	return string(b)
 }
 
+func TestAPIRejectsUnfinishedApprovals(t *testing.T) {
+	for _, reason := range []string{"content_filter", "", "unknown", "function_call", "tool_calls"} {
+		for _, final := range []bool{false, true} {
+			name := reason
+			if final {
+				name += "/final"
+			}
+			t.Run(name, func(t *testing.T) {
+				replies := []string{content(approve)}
+				if final {
+					replies = append([]string{content("please wait")}, replies...)
+				}
+				f := &fakeModel{replies: replies, finish: map[int]string{len(replies) - 1: reason}}
+				_, err := (API{URL: serve(t, f)}).Run(context.Background(), t.TempDir(), "review")
+				if err == nil {
+					t.Fatal("accepted an approval without a completed answer")
+				}
+			})
+		}
+	}
+}
+
 func TestAPIUsesToolsThenAnswers(t *testing.T) {
 	root := checkout(t)
-	f := &fakeModel{replies: []string{
+	f := &fakeModel{finish: map[int]string{0: "tool_calls"}, replies: []string{
 		`{"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "search", "arguments": "{\"pattern\": \"app\\\\.del\"}"}}]}`,
 		content("<think>app.del is used once</think>\n```json\n" + approve + "\n```"),
 	}}

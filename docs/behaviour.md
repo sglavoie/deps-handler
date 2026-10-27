@@ -229,8 +229,11 @@ will not for a rate limit, is asked for again like any read, and the
 review fails if it still cannot be had, rather than be cached without it.
 A rejection is reported with the agent's concerns under "needs
 attention"; a review that fails or times out leaves the PR alone and makes
-the run exit 1. A review whose time runs out while it fetches the PR or
-checks it out says so, rather than blame the agent, which never ran. The PR's title, dependency names and versions, description
+the run exit 1. If the PR closes, becomes a draft or changes so that its
+latest decision no longer carries that failure, the repository's `error`
+preserves it, including when a later review succeeds. A review whose time
+runs out while it fetches the PR or checks it out says so, rather than
+blame the agent, which never ran. The PR's title, dependency names and versions, description
 and diff are treated as untrusted: the prompt tells the agent they cannot
 change its instructions, and fences them with markers carrying a random
 token, so they cannot fake their own end. It says the same of files in the
@@ -331,7 +334,8 @@ PR's `url` and `grade`), `merge_method` (the one merges use; it and
 `permission` are empty strings when the repository could not be read),
 `warnings` (what went wrong without stopping the run), and `error`
 when the repository could not be read (`interrupted` if the run was
-stopped). The text report of a repository that failed part way still lists
+stopped), or a failed review is no longer present in its latest decisions.
+The text report of a repository that failed part way still lists
 the writes made and warnings raised before it failed. Durations such as `policy.merge_without_checks_after` are written
 as in the config (`"45m"`, `"0s"`), and give the value in effect: at least
 `30m`, and `"0s"` where checks are not required. Lists are always arrays, never `null`. When stderr is a terminal,

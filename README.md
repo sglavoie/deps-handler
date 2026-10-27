@@ -124,7 +124,9 @@ read-only, without your customizations and without a GitHub token:
   all verdict fields must be present with the expected types, with no
   duplicate fields. Ambiguous or incomplete replies require a fresh answer
   before they can approve a PR. Reasoning after the answer also requires
-  a fresh answer. Claude Code and Codex verdicts undergo the same field
+  a fresh answer. Filtered responses and missing or unsupported completion
+  states fail the review, even when their text contains a valid verdict.
+  Claude Code and Codex verdicts undergo the same field
   validation; malformed verdicts fail the review. File reads and searches
   stop when the review is cancelled or its timeout expires.
 
@@ -189,6 +191,9 @@ verdicts for a later `--apply`). The exit status is:
   failed, an agent review could not be done, or the report could not be written;
 - `2`: the command line is wrong, and nothing ran;
 - `130`: interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`).
+
+A failed review still makes the run exit `1` if the PR closes or changes
+before the next repository read; its failure remains in the report.
 
 `run`, `repos` and `verdicts` take `--json`. `run --json` prints
 `{"apply": bool, "results": [...]}`, one result per repository with its

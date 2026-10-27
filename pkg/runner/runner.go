@@ -348,6 +348,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			}
 		}
 	}
+	rv := &repoReviews{verdicts: map[string]runVerdict{}, moved: map[int]int{}, res: &res}
 	// finish reports the merges still in unsure as the pass ends, such as
 	// one whose PR became unmergeable for a while, so that none goes
 	// unreported, and returns the result. Each is reported as GitHub says
@@ -383,6 +384,30 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 				resolve(n, p.failed(fmt.Sprintf("not merged after %s, and not mergeable again in this run", p.cause)))
 			}
 		}
+		// Decisions describe the latest snapshot. A PR closing, becoming a
+		// draft or changing updates can remove its failed verdict from that
+		// snapshot, but cannot turn a review that failed into a successful run.
+		needsSummary := res.Error != ""
+		seen := map[string]bool{}
+		var failures []string
+		for _, failure := range rv.failures {
+			if !slices.ContainsFunc(res.Decisions, func(d policy.Decision) bool {
+				return d.Number == failure.number && d.Verdict != nil && d.Verdict.Error == failure.message
+			}) {
+				needsSummary = true
+			}
+			msg := fmt.Sprintf("#%d: agent review failed: %s", failure.number, failure.message)
+			if !seen[msg] {
+				failures = append(failures, msg)
+				seen[msg] = true
+			}
+		}
+		if needsSummary && len(failures) > 0 {
+			if res.Error != "" {
+				failures = append([]string{res.Error}, failures...)
+			}
+			res.Error = strings.Join(failures, "; ")
+		}
 		return res
 	}
 	// fail ends the pass with err as the reason it could not go on.
@@ -391,7 +416,6 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		return finish()
 	}
 	polls := 0
-	rv := &repoReviews{verdicts: map[string]runVerdict{}, moved: map[int]int{}, res: &res}
 	var judge policy.Judge
 	if r.Reviewer != nil {
 		judge = func(d policy.Decision) *policy.Verdict {
@@ -678,6 +702,13 @@ type repoReviews struct {
 	// moves with its head, so each new head would look unreviewed.
 	moved map[int]int
 	res   *RepoResult
+	// failures survive later snapshots and replacement verdicts.
+	failures []reviewFailure
+}
+
+type reviewFailure struct {
+	number  int
+	message string
 }
 
 // runVerdict is a verdict given in this run, on the PR at head.
@@ -735,6 +766,9 @@ func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []pol
 			if recovered != "" {
 				rv.res.Warnings = append(rv.res.Warnings, recovered)
 			}
+		}
+		if v.Error != "" {
+			rv.failures = append(rv.failures, reviewFailure{d.Number, v.Error})
 		}
 		rv.verdicts[key] = runVerdict{&v, req.HeadOID}
 		return true

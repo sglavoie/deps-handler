@@ -254,7 +254,17 @@ func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (messag
 	}
 	reply := out.Choices[0].Message
 	reply.Role = "assistant"
-	return reply, out.Choices[0].FinishReason == "length", nil
+	switch reason := out.Choices[0].FinishReason; reason {
+	case "stop", "length":
+		return reply, reason == "length", nil
+	case "tool_calls":
+		if len(reply.ToolCalls) > 0 {
+			return reply, false, nil
+		}
+	}
+	// Filtered, missing or unrecognized completion states cannot certify
+	// that an otherwise valid JSON verdict is the model's final answer.
+	return message{}, false, fmt.Errorf("api: incomplete response (finish_reason %q)", out.Choices[0].FinishReason)
 }
 
 var fenced = regexp.MustCompile("(?s)^```(?:json)?\\s*(.*?)\\s*```$")
