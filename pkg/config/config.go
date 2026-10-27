@@ -231,7 +231,10 @@ type repoEntry struct {
 	overrides `yaml:",inline"`
 }
 
-var entryKeys = yamlKeys(reflect.TypeFor[repoEntry]())
+var (
+	entryKeys  = yamlKeys(reflect.TypeFor[repoEntry]())
+	policyKeys = yamlKeys(reflect.TypeFor[overrides]())
+)
 
 // yamlKeys returns the mapping keys a struct accepts, following inlined
 // fields, so the check below cannot drift from the struct tags.
@@ -263,28 +266,54 @@ func (e *repoEntry) UnmarshalYAML(n *yaml.Node) error {
 	return n.Decode((*plain)(e))
 }
 
-// checkEntryKeys rejects unknown keys in a repo entry, following YAML merge
-// keys ("<<: *shared") into the mappings they pull in.
-func checkEntryKeys(n *yaml.Node) error {
+// policyFields is overrides as a mapping of its own, under defaults or in
+// a policy file. A repo entry inlines overrides and checks them itself:
+// yaml.v3 would hand an inlined field's unmarshaler the whole entry.
+type policyFields struct{ overrides }
+
+// UnmarshalYAML rejects what checkKeys does.
+func (p *policyFields) UnmarshalYAML(n *yaml.Node) error {
+	// Node.Decode does not inherit the decoder's KnownFields, so check here.
+	if err := checkKeys(n, policyKeys, ""); err != nil {
+		return err
+	}
+	return n.Decode(&p.overrides)
+}
+
+// checkEntryKeys is checkKeys for a repo entry.
+func checkEntryKeys(n *yaml.Node) error { return checkKeys(n, entryKeys, " in repo entry") }
+
+// checkKeys rejects keys of a mapping outside keys, and policy fields given
+// no value ("max_update_type:" or "~"), which would decode as unset and
+// inherit without a word, though an empty string is rejected as invalid.
+// It follows YAML merge keys ("<<: *shared") into the mappings they pull
+// in. where follows "unknown field" in an error.
+func checkKeys(n *yaml.Node, keys map[string]bool, where string) error {
 	if n.Kind == yaml.AliasNode {
 		n = n.Alias
 	}
 	switch n.Kind {
 	case yaml.SequenceNode: // <<: [*a, *b]
 		for _, c := range n.Content {
-			if err := checkEntryKeys(c); err != nil {
+			if err := checkKeys(c, keys, where); err != nil {
 				return err
 			}
 		}
 	case yaml.MappingNode:
 		for i := 0; i < len(n.Content); i += 2 {
-			k := n.Content[i]
-			if k.Tag == "!!merge" {
-				if err := checkEntryKeys(n.Content[i+1]); err != nil {
+			k, v := n.Content[i], n.Content[i+1]
+			if v.Kind == yaml.AliasNode {
+				v = v.Alias
+			}
+			switch {
+			case k.Tag == "!!merge":
+				if err := checkKeys(v, keys, where); err != nil {
 					return err
 				}
-			} else if !entryKeys[k.Value] {
-				return fmt.Errorf("line %d: unknown field %q in repo entry", k.Line, k.Value)
+			case !keys[k.Value]:
+				return fmt.Errorf("line %d: unknown field %q%s", k.Line, k.Value, where)
+			case policyKeys[k.Value] && v.Tag == "!!null":
+				return fmt.Errorf("line %d: %s has no value; give it one, or remove it to inherit", k.Line, k.Value)
 			}
 		}
 	}
@@ -292,7 +321,7 @@ func checkEntryKeys(n *yaml.Node) error {
 }
 
 type file struct {
-	Defaults overrides `yaml:"defaults"`
+	Defaults policyFields `yaml:"defaults"`
 	// Repos holds nodes, decoded one by one, so that each error can give
 	// its line and an empty entry ("- " or "~"), which the decoder would
 	// otherwise drop without a word, can be reported.
@@ -406,7 +435,7 @@ func Parse(data []byte) (*Config, error) {
 	} else if !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	defaults, err := apply(Builtin, f.Defaults)
+	defaults, err := apply(Builtin, f.Defaults.overrides)
 	if err != nil {
 		return nil, fmt.Errorf("defaults: %w", err)
 	}
@@ -726,19 +755,19 @@ func (r Repo) WithFiles(org, repo []byte) (Repo, error) {
 // parseFile reads a repository's or owner's policy file: policy fields
 // only, as under defaults. An empty file sets nothing.
 func parseFile(data []byte) (overrides, error) {
-	var o overrides
+	var p policyFields
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	if err := dec.Decode(&o); errors.Is(err, io.EOF) {
-		return o, nil
+	if err := dec.Decode(&p); errors.Is(err, io.EOF) {
+		return p.overrides, nil
 	} else if err != nil {
-		return o, err
+		return p.overrides, err
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); err == nil {
-		return o, fmt.Errorf("line %d: more than one YAML document", extra.Line)
+		return p.overrides, fmt.Errorf("line %d: more than one YAML document", extra.Line)
 	} else if !errors.Is(err, io.EOF) {
-		return o, err
+		return p.overrides, err
 	}
-	return o, nil
+	return p.overrides, nil
 }

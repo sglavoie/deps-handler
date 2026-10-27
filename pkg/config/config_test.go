@@ -351,6 +351,27 @@ func TestRepoErrorsGiveLines(t *testing.T) {
 	}
 }
 
+func TestParseRejectsPolicyFieldWithNoValue(t *testing.T) {
+	for in, want := range map[string]string{
+		"defaults:\n  max_update_type:\nrepos: [a/b]\n":                                        "line 2: max_update_type has no value",
+		"defaults:\n  require_checks: ~\nrepos: [a/b]\n":                                       "line 2: require_checks has no value",
+		"repos:\n  - repo: a/b\n    mode:\n":                                                   "line 3: mode has no value",
+		"repos:\n  - &s {repo: a/b}\n  - {<<: *s, repo: c/d, merge_without_checks_after: ~}\n": "line 3: merge_without_checks_after has no value",
+		"defaults:\n  auto: true\nrepos: [a/b]\n":                                              `line 2: unknown field "auto"`,
+	} {
+		if _, err := Parse([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: err = %v, want %q", in, err, want)
+		}
+	}
+	// An empty defaults section still sets nothing.
+	if cfg, err := Parse([]byte("defaults:\nrepos: [a/b]\n")); err != nil || cfg.Repos[0].Policy != Builtin {
+		t.Errorf("empty defaults: %v", err)
+	}
+	if _, err := NewRepo("acme", "app", Builtin).WithFiles(nil, []byte("agent_review:\n")); err == nil || !strings.Contains(err.Error(), "agent_review has no value") {
+		t.Errorf("policy file: err = %v", err)
+	}
+}
+
 func TestWithFilesLayersBetweenDefaultsAndEntry(t *testing.T) {
 	cfg, err := Parse([]byte(`
 defaults:

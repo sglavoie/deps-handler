@@ -386,7 +386,7 @@ as strictly as the config. They are layered, each overriding the one
 before: the built-in defaults, your `defaults`, the owner's file, the
 repo's file, then your entry for the repo. A file that is missing, or in
 a repository the token cannot see, is skipped. An empty file sets nothing.
-A file that is invalid (an unknown field, a bad value, a second YAML
+A file that is invalid (an unknown field, a bad value or none, a second YAML
 document, a directory, a binary or a file too large), or that cannot be
 read, fails that repo: nothing in it is judged or written. The report
 names the files used under the repo's header (`policy from ...`), and
