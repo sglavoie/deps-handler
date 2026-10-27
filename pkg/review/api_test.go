@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -120,6 +121,30 @@ func TestTools(t *testing.T) {
 	}
 	if got := runTool(context.Background(), root, "search", `{"pattern": "("}`); !strings.Contains(got, "bad pattern") {
 		t.Errorf("bad pattern = %q", got)
+	}
+}
+
+func TestAPIEndpointPreservesQuery(t *testing.T) {
+	for _, suffix := range []string{"/v1?api-version=1", "/v1/?api-version=1", "/v1?route=a%2Fb#local"} {
+		t.Run(suffix, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v1/chat/completions" {
+					t.Errorf("request path = %q", r.URL.Path)
+				}
+				if strings.Contains(suffix, "api-version") && r.URL.Query().Get("api-version") != "1" {
+					t.Errorf("request query = %q", r.URL.RawQuery)
+				}
+				if strings.Contains(suffix, "route=") && r.URL.Query().Get("route") != "a/b" {
+					t.Errorf("request query = %q", r.URL.RawQuery)
+				}
+				fmt.Fprint(w, `{"choices":[{"message":{"content":"{\"decision\":\"approve\",\"summary\":\"ok\",\"breaking_changes\":[],\"concerns\":[]}"},"finish_reason":"stop"}]}`)
+			}))
+			defer server.Close()
+			a := API{URL: server.URL + suffix, Model: "test"}
+			if _, err := a.Run(context.Background(), t.TempDir(), "review"); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

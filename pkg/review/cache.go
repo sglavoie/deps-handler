@@ -261,7 +261,6 @@ func (c *Cache) update(change func(map[string]cacheEntry)) error {
 			delete(entries, k)
 		}
 	}
-	c.entries = entries
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return err
@@ -284,5 +283,11 @@ func (c *Cache) update(change func(map[string]cacheEntry)) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), c.path)
+	if err := os.Rename(tmp.Name(), c.path); err != nil {
+		return err
+	}
+	// Publish only a committed write: a failed Put or Forget must not
+	// expose changes that were never saved.
+	c.entries = entries
+	return nil
 }

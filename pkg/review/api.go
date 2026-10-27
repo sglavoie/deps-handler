@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -209,7 +210,13 @@ func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (messag
 	if err != nil {
 		return message{}, false, err
 	}
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(a.URL, "/")+"/chat/completions", bytes.NewReader(body))
+	// Append to the URL's path, not its query or fragment. Hosted
+	// endpoints may require query parameters on every request.
+	endpoint, err := url.JoinPath(a.URL, "chat", "completions")
+	if err != nil {
+		return message{}, false, err
+	}
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return message{}, false, err
 	}

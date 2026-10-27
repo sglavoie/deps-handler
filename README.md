@@ -153,6 +153,7 @@ read-only, without your customizations and without a GitHub token:
   before they can approve a PR. Reasoning after the answer also requires
   a fresh answer. Filtered responses and missing or unsupported completion
   states fail the review, even when their text contains a valid verdict.
+  Query parameters in `api.url` are preserved when requesting chat completions.
   Claude Code and Codex verdicts undergo the same field
   validation; malformed verdicts fail the review. File reads and searches
   stop when the review is cancelled or its timeout expires.
@@ -324,7 +325,8 @@ constants; empty or unrecognized states block merging even when checks
 are optional, an agent approved the update, or a newer check would otherwise
 supersede the unrecognized one.
 The review cache copies verdict concerns on storage and retrieval, so callers
-can edit their own copies independently. Codex and API reviews accept
+can edit their own copies independently. Failed cache writes leave the
+in-memory verdicts unchanged. Codex and API reviews accept
 absolute or relative checkout paths, including `.` for the current directory.
 
 ## Contributing
