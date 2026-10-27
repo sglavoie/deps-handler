@@ -397,7 +397,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 			safe.Reason = "no checks ran, within policy"
 		}
 	case "BEHIND":
-		if at, seen, ok := rebaseRequested(pr, viewer); ok {
+		// Without Dependabot commands no request is made, so none is
+		// waited on: the PR is left to a human below.
+		if at, seen, ok := rebaseRequested(pr, viewer); ok && p.DependabotCommands {
 			requested := "rebase requested"
 			if !seen {
 				requested = "rebase may have been requested (older comments not read)"

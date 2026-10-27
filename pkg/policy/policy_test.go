@@ -587,6 +587,18 @@ func TestEvaluateWithoutDependabotCommands(t *testing.T) {
 	if len(f[FindingBehind]) != 1 || len(f[FindingBehind][0].PRs) != 2 || !strings.Contains(f[FindingBehind][0].Suggestions[0], RebaseCommand) {
 		t.Errorf("behind = %+v", f[FindingBehind])
 	}
+	// Nor is a request read into comments too many to see: none is made.
+	busy := behind(1)
+	busy.CommentCount = 80
+	busy.Comments = []github.Comment{{Author: "someone", Body: "ping", CreatedAt: testutil.T0.Add(time.Hour)}}
+	for _, at := range []time.Duration{0, 50 * time.Hour} {
+		r := testutil.Repo(busy)
+		r.FetchedAt = r.FetchedAt.Add(at)
+		d := Evaluate(r, p, "me", nil)[0]
+		if d.Action != ActionSkip || !d.behind || d.stalledRebase {
+			t.Errorf("busy PR after %s = %s, %q", at, d.Action, d.Reason)
+		}
+	}
 	// A major that is behind is still held for its size alone.
 	if len(f[FindingHeldMajor]) != 1 || f[FindingHeldMajor][0].PRs[0] != 3 {
 		t.Errorf("held-major = %+v", f[FindingHeldMajor])
