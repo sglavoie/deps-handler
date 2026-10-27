@@ -172,7 +172,8 @@ func queueRebases(ds []Decision, refused map[int]bool) {
 // opened can trigger: it judged nothing, so it hides nothing, and is kept
 // beside the run it would otherwise have replaced. A check missing its
 // name, suite, app, workflow or event is kept too: missing identities cannot
-// establish that two runs came from the same source.
+// establish that two runs came from the same source. Unknown states are
+// kept and cannot supersede known results: they establish no new outcome.
 func LatestChecks(checks []github.Check) []github.Check {
 	type origin struct {
 		app, workflow int64
@@ -181,16 +182,27 @@ func LatestChecks(checks []github.Check) []github.Check {
 	identified := func(c github.Check) bool {
 		return !c.Status && c.Name != "" && c.Suite > 0 && c.App > 0 && c.Workflow > 0 && c.Event != ""
 	}
+	replaceable := func(c github.Check) bool {
+		if !identified(c) {
+			return false
+		}
+		switch c.State {
+		case github.CheckPending, github.CheckPassed, github.CheckFailed, github.CheckStale:
+			return true
+		default:
+			return false
+		}
+	}
 	newest := map[origin]int64{}
 	for _, c := range checks {
-		if identified(c) && c.State != github.CheckSkipped {
+		if replaceable(c) {
 			o := origin{c.App, c.Workflow, c.Event, c.Name}
 			newest[o] = max(newest[o], c.Suite)
 		}
 	}
 	out := make([]github.Check, 0, len(checks))
 	for _, c := range checks {
-		if !identified(c) || c.State == github.CheckSkipped || c.Suite == newest[origin{c.App, c.Workflow, c.Event, c.Name}] {
+		if !replaceable(c) || c.Suite == newest[origin{c.App, c.Workflow, c.Event, c.Name}] {
 			out = append(out, c)
 		}
 	}

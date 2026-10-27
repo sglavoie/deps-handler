@@ -44,6 +44,30 @@ func TestDiagnoseRepoWideFailure(t *testing.T) {
 	}
 }
 
+func TestUnknownRerunDoesNotHideFailures(t *testing.T) {
+	for _, state := range []github.CheckState{"", github.CheckUnknown, "future-state"} {
+		t.Run(string(state), func(t *testing.T) {
+			pr := testutil.PR(1)
+			pr.Checks = []github.Check{
+				{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+				{Name: "test", State: state, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
+			}
+			d := one(t, testutil.Repo(pr), defaultPolicy)
+			if d.Action != ActionSkip || len(d.FailedChecks) != 1 {
+				t.Fatalf("unknown rerun hid the known failure: %+v", d)
+			}
+			if f := findings(testutil.Repo(pr)); len(f[FindingIncompatible]) != 1 {
+				t.Fatalf("missing failure diagnosis: %+v", f)
+			}
+			other := pr
+			other.Number = 2
+			if f := findings(testutil.Repo(pr, other)); len(f[FindingRepoCheck]) != 1 {
+				t.Fatalf("missing shared failure diagnosis: %+v", f)
+			}
+		})
+	}
+}
+
 func TestDiagnoseRepoWideFailuresByBaseBranch(t *testing.T) {
 	pr := func(number int, base string, fails bool) github.PullRequest {
 		p := testutil.PR(number)

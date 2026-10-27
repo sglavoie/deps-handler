@@ -61,6 +61,11 @@ func ParseCommitMessage(msg string) []Dependency {
 	}
 	out := make([]Dependency, 0, len(doc.Deps))
 	for _, d := range doc.Deps {
+		// An unnamed entry cannot establish what was updated. Invalidate
+		// the whole block instead of grading just its readable members.
+		if strings.TrimSpace(d.Name) == "" {
+			return nil
+		}
 		out = append(out, Dependency{
 			Name:       d.Name,
 			Version:    d.Version,

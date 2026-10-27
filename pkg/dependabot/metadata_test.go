@@ -6,6 +6,24 @@ import (
 	"github.com/sglavoie/deps-merger/pkg/config"
 )
 
+func TestParseCommitMessageRejectsUnnamedDependency(t *testing.T) {
+	for label, name := range map[string]string{
+		"missing":    "",
+		"null":       "  dependency-name: null\n",
+		"empty":      "  dependency-name: ''\n",
+		"whitespace": "  dependency-name: '   '\n",
+	} {
+		msg := "bump libraries\n\n---\nupdated-dependencies:\n" +
+			"- dependency-name: known\n  update-type: version-update:semver-patch\n" +
+			"- dependency-version: 2.0.0\n" + name + "  update-type: version-update:semver-patch\n...\n"
+		t.Run(label, func(t *testing.T) {
+			if deps := ParseCommitMessage(msg); len(deps) != 0 {
+				t.Fatalf("incomplete metadata must invalidate the whole group, got %+v", deps)
+			}
+		})
+	}
+}
+
 const groupMsg = "build(deps): bump the go group\n\nBumps stuff.\n\n---\nupdated-dependencies:\n" +
 	"- dependency-name: cloud.google.com/go/compute\n  dependency-version: 1.72.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-minor-patch\n" +
 	"- dependency-name: github.com/aws/aws-sdk-go-v2\n  dependency-version: 1.47.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-minor-patch\n" +

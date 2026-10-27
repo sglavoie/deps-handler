@@ -47,6 +47,19 @@ func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
 	}
 }
 
+func TestUnnamedDependencyCannotMergeWithoutReview(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.Commits[0].Message = strings.ReplaceAll(pr.Commits[0].Message, "dependency-name: lib", "dependency-name: ''")
+	d := one(t, testutil.Repo(pr), defaultPolicy)
+	if d.Grade != config.UpdateUnknown || d.Action != ActionSkip {
+		t.Fatalf("unnamed dependency authorized a merge: %+v", d)
+	}
+	ds := Evaluate(testutil.Repo(pr), defaultPolicy, "me", func(Decision) *Verdict { return nil })
+	if ds[0].Action != ActionReview {
+		t.Fatalf("unreadable metadata should require review: %+v", ds[0])
+	}
+}
+
 func TestNoChecksRequiresKnownHeadAge(t *testing.T) {
 	for _, size := range []string{"patch", "major"} {
 		for _, state := range []string{"CLEAN", "BEHIND"} {
@@ -171,12 +184,15 @@ func TestIncompleteCheckIdentityCannotHideFailure(t *testing.T) {
 }
 
 func TestNewerCheckCannotHideUnknownState(t *testing.T) {
-	for _, state := range []github.CheckState{"", "unknown"} {
+	for _, state := range []github.CheckState{"", github.CheckUnknown, "future-state"} {
 		for _, size := range []string{"patch", "major"} {
 			pr := testutil.PR(1, "lib:"+size)
 			pr.Checks = []github.Check{
 				{Name: "build", State: state, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
 				{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
+			}
+			if got := LatestChecks(pr.Checks); len(got) != 2 {
+				t.Fatalf("unknown check must survive supersession: %+v", got)
 			}
 			p := defaultPolicy
 			p.RequireChecks = false

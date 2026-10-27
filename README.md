@@ -83,6 +83,8 @@ A PR is merged only when all of these hold:
   to it.
 - Every dependency it moves has a known semver bump, and the largest is
   within `max_update_type` (a grouped PR is as risky as its riskiest bump).
+  Missing or blank dependency names invalidate the metadata for the whole
+  commit, requiring agent review or manual handling.
 - Every check on its head commit passed, and at least one ran, unless the
   repo sets `require_checks: false` or `merge_without_checks_after`.
 - GitHub reports it mergeable and clean, and nothing about it was cut off
@@ -93,6 +95,8 @@ check types, statuses and completed-check conclusions also block action,
 even when a newer check passed. A newer check can replace
 an older one only when both identify their name, suite, app, workflow and
 event; checks with missing identifiers remain part of the decision.
+An unknown check state cannot replace an earlier result, so known failures
+remain visible in reports while the unknown state blocks merging.
 The waiting period for `merge_without_checks_after` uses the head commit's
 timestamp. When that timestamp is missing, the PR waits and is not diagnosed
 as having no CI yet.
