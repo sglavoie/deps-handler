@@ -454,6 +454,7 @@ func TestMdTextOpensNoBlock(t *testing.T) {
 		"#12 bump lib":            "#\u200b12 bump lib",
 		"fixes #345 upstream":     "fixes #\u200b345 upstream",
 		"C# 12":                   "C# 12",
+		"see GH-123 upstream":     "see GH-\u200b123 upstream",
 		"-1 is less":              "-1 is less",
 		"1.2.3 is out":            "1.2.3 is out",
 		// GitHub links no URL but the PR's own.

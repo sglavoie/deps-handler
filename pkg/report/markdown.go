@@ -122,9 +122,10 @@ var mdSpecial = strings.NewReplacer(
 )
 
 // mdAutolink is what GitHub links in text with no markup around it: a
-// URL, a domain starting with www., or #N, which it takes for an issue of
-// the repository the Markdown is posted in, whichever it was written for.
-var mdAutolink = regexp.MustCompile(`(?i)://|www\.|#[0-9]`)
+// URL, a domain starting with www., or #N or GH-N, which it takes for an
+// issue of the repository the Markdown is posted in, whichever it was
+// written for.
+var mdAutolink = regexp.MustCompile(`(?i)://|www\.|#[0-9]|GH-[0-9]`)
 
 // mdBlock is what, starting a list item, would open a block of its own
 // in it: a heading, a list or a rule.
