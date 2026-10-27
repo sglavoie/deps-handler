@@ -54,3 +54,17 @@ func TestNewAPIAgent(t *testing.T) {
 		t.Fatalf("newAgent: %v", err)
 	}
 }
+
+// Off only in the defaults, reviews may be turned on by the repo's files,
+// so the agent is set up, and here found missing. The demo build's agent
+// is never missing.
+func TestRunReviewSetsUpAgentOffOnlyInDefaults(t *testing.T) {
+	_, _ = runFixture(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir()) // no agent installed
+	off := writeConfig(t, "defaults:\n  agent_review: false\nrepos:\n  - o/busy\n")
+	if code, _, stderr := run("run", "-c", off, "--review"); code == 0 || !strings.Contains(stderr, "claude is not installed") {
+		t.Errorf("code %d, %q", code, stderr)
+	}
+}

@@ -175,12 +175,6 @@ func TestRunReviewSkipsSetupWithoutAgentReview(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(state, "deps-merger")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("review setup ran anyway: %v", err)
 	}
-	// Off only in the defaults, reviews may be turned on by the repo's
-	// files, so the agent is set up, and here found missing.
-	off := writeConfig(t, "defaults:\n  agent_review: false\nrepos:\n  - o/busy\n")
-	if code, _, stderr := run("run", "-c", off, "--review"); code == 0 || !strings.Contains(stderr, "claude is not installed") {
-		t.Errorf("off in the defaults: code %d, %q", code, stderr)
-	}
 	if code, _, stderr := run("run", "-c", cfg, "--agent", "gemini"); code != 2 || !strings.Contains(stderr, `unknown agent "gemini"`) {
 		t.Errorf("unknown agent: code %d, %q", code, stderr)
 	}
