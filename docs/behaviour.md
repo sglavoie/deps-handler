@@ -297,6 +297,8 @@ run's review approved without asking the agent again. For
 - `0`: every repository was processed and every write succeeded;
 - `1`: a repository could not be processed, a merge or rebase request
   failed, or an agent review could not be done (the report says which).
+  Failure to write the report also exits 1, in text, Markdown or JSON;
+  writes to GitHub may still have succeeded.
   A read GitHub fails with a 502, 503 or 504, a timeout, a connection
   closed or reset before it answered, or "Something went wrong" is tried
   once more before the repository counts as failed,

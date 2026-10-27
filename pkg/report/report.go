@@ -26,8 +26,29 @@ func JSON(w io.Writer, apply bool, results []runner.RepoResult) error {
 
 // Repo writes one repository's section. On a terminal, PR titles link to
 // their pull requests and the report is colored.
-func Repo(w io.Writer, apply bool, res runner.RepoResult) {
-	repo(w, apply, res, styleFor(w))
+func Repo(w io.Writer, apply bool, res runner.RepoResult) error {
+	out := &errorWriter{w: w}
+	repo(out, apply, res, styleFor(w))
+	return out.err
+}
+
+// errorWriter keeps the first output error, even when rendering continues
+// through several writes. A partial report must not count as success.
+type errorWriter struct {
+	w   io.Writer
+	err error
+}
+
+func (w *errorWriter) Write(p []byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
+	n, err := w.w.Write(p)
+	if err == nil && n < len(p) {
+		err = io.ErrShortWrite
+	}
+	w.err = err
+	return n, err
 }
 
 func repo(w io.Writer, apply bool, res runner.RepoResult, s style) {
@@ -155,8 +176,10 @@ func progress(w io.Writer, res runner.RepoResult, s style) {
 
 // Summary writes the totals line across the repositories reported. hidden
 // counts those left out of the report for having no open Dependabot PRs.
-func Summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int) {
-	summary(w, apply, results, hidden, styleFor(w))
+func Summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int) error {
+	out := &errorWriter{w: w}
+	summary(out, apply, results, hidden, styleFor(w))
+	return out.err
 }
 
 func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s style) {

@@ -71,7 +71,8 @@ With --markdown, each repository's section is printed as GitHub Markdown,
 as an issue body would hold it, and no summary follows.
 
 Exits 1 if a repository could not be processed, a merge or rebase request
-failed or an agent review could not be done; 2 when the command line is
+failed, an agent review could not be done or the report could not be written;
+2 when the command line is
 wrong, including a --repo the config does not list or an --owner it has
 no repository of; and 130 when interrupted.`,
 		Args: cobra.NoArgs,
@@ -140,7 +141,7 @@ no repository of; and 130 when interrupted.`,
 			// SIGHUP too: an agent runs in a process group of its own, so
 			// the hangup of the terminal would kill deps-merger and leave
 			// the agent running rather than kill it.
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
 			// The first signal starts an orderly stop; once it has, the
 			// signals act as they normally do, so a second one kills the
@@ -160,17 +161,18 @@ no repository of; and 130 when interrupted.`,
 			}
 
 			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
+			var outputErr error
 			var progress func(runner.RepoResult)
 			if markdown {
 				progress = func(r runner.RepoResult) {
-					if !open || report.HasPRs(r) {
-						report.Markdown(out, apply, r)
+					if outputErr == nil && (!open || report.HasPRs(r)) {
+						outputErr = report.Markdown(out, apply, r)
 					}
 				}
 			} else if !asJSON {
 				progress = func(r runner.RepoResult) {
-					if !open || report.HasPRs(r) {
-						report.Repo(out, apply, r)
+					if outputErr == nil && (!open || report.HasPRs(r)) {
+						outputErr = report.Repo(out, apply, r)
 					}
 				}
 			} else if f, ok := errOut.(*os.File); ok && term.IsTerminal(f) {
@@ -191,6 +193,9 @@ no repository of; and 130 when interrupted.`,
 				}
 			}
 			results := r.Run(ctx, selected, progress)
+			if outputErr != nil {
+				return outputErr
+			}
 			shown := results
 			if open {
 				shown = slices.DeleteFunc(slices.Clone(results), func(r runner.RepoResult) bool { return !report.HasPRs(r) })
@@ -201,7 +206,9 @@ no repository of; and 130 when interrupted.`,
 					return err
 				}
 			case !markdown:
-				report.Summary(out, apply, shown, len(results)-len(shown))
+				if err := report.Summary(out, apply, shown, len(results)-len(shown)); err != nil {
+					return err
+				}
 			}
 			if ctx.Err() != nil {
 				return errInterrupted

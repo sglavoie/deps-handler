@@ -186,7 +186,7 @@ verdicts for a later `--apply`). The exit status is:
 
 - `0`: every repository was processed and every write succeeded;
 - `1`: a repository could not be processed, a merge or rebase request
-  failed, or an agent review could not be done;
+  failed, an agent review could not be done, or the report could not be written;
 - `2`: the command line is wrong, and nothing ran;
 - `130`: interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`).
 

@@ -14,7 +14,13 @@ import (
 // body of an issue tracking the repository's Dependabot PRs. Text from
 // elsewhere (PR titles, reasons quoting GitHub or an agent) is escaped, so
 // that it can neither change the layout nor mention anyone.
-func Markdown(w io.Writer, apply bool, res runner.RepoResult) {
+func Markdown(w io.Writer, apply bool, res runner.RepoResult) error {
+	out := &errorWriter{w: w}
+	markdown(out, apply, res)
+	return out.err
+}
+
+func markdown(w io.Writer, apply bool, res runner.RepoResult) {
 	apply = applies(apply, res)
 	fmt.Fprintf(w, "## %s\n\n", mdText(res.Repo))
 	fmt.Fprintf(w, "%s\n", mdText(upperFirst(header(res))))
