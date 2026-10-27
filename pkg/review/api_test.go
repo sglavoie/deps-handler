@@ -99,6 +99,7 @@ type fakeModel struct {
 	mu       sync.Mutex
 	replies  []string
 	requests []chatRequest
+	bodies   []string
 	auth     []string
 }
 
@@ -113,6 +114,7 @@ func (f *fakeModel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	json.Unmarshal(body, &req)
 	f.requests = append(f.requests, req)
+	f.bodies = append(f.bodies, string(body))
 	f.auth = append(f.auth, r.Header.Get("Authorization"))
 	if len(f.replies) == 0 {
 		http.Error(w, `{"error": "no more replies"}`, http.StatusInternalServerError)
@@ -181,6 +183,29 @@ func TestAPIAsksForTheSchemaWhenTheReplyIsNotAnAnswer(t *testing.T) {
 	// Without tools, the model is told it cannot read the checkout.
 	if len(f.requests[0].Tools) != 0 || !strings.Contains(f.requests[0].Messages[0].Content, "cannot read the checkout") {
 		t.Fatalf("first request: %+v", f.requests[0])
+	}
+}
+
+func TestAPIBoundsEachReplyAndLeavesSamplingToTheServer(t *testing.T) {
+	// Thinking cut short at the bound: no tool call and no answer.
+	cut := `{"role": "assistant", "content": "", "reasoning_content": "wait, let me check again. wait, let me check again."}`
+	f := &fakeModel{replies: []string{cut, content(approve)}}
+	a := API{URL: serve(t, f), Model: "m", Tools: true, MaxTokens: 1000}
+	if ans, err := a.Run(context.Background(), checkout(t), "p"); err != nil || ans.Decision != "approve" {
+		t.Fatalf("answer %+v, %v", ans, err)
+	}
+	if len(f.requests) != 2 || f.requests[1].ResponseFormat == nil {
+		t.Fatalf("%d requests; last %+v", len(f.requests), f.requests[len(f.requests)-1])
+	}
+	for i, r := range f.requests {
+		if r.MaxTokens != 1000 || strings.Contains(f.bodies[i], "temperature") {
+			t.Fatalf("request %d: max_tokens %d, body %s", i, r.MaxTokens, f.bodies[i])
+		}
+	}
+	f = &fakeModel{replies: []string{content(approve)}}
+	(API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "p")
+	if f.requests[0].MaxTokens != DefaultMaxTokens {
+		t.Fatalf("default max_tokens %d", f.requests[0].MaxTokens)
 	}
 }
 

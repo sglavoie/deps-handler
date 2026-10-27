@@ -35,6 +35,10 @@ type API struct {
 	// MaxTurns bounds the rounds of tool calls before the model must
 	// answer; 0 is DefaultMaxTurns.
 	MaxTurns int
+	// MaxTokens bounds what the model writes in one request, its thinking
+	// included, so a model caught in a loop gives up in minutes rather
+	// than at the review's timeout; 0 is DefaultMaxTokens.
+	MaxTokens int
 	// Client makes the requests; nil uses one without a timeout, the
 	// review's own bounding them.
 	Client *http.Client
@@ -52,6 +56,9 @@ type Usage struct {
 
 // DefaultMaxTurns is API's MaxTurns when unset.
 const DefaultMaxTurns = 30
+
+// DefaultMaxTokens is API's MaxTokens when unset.
+const DefaultMaxTokens = 8192
 
 // The tools' limits keep what they return within a local model's context.
 const (
@@ -84,8 +91,14 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	if turns <= 0 {
 		turns = DefaultMaxTurns
 	}
+	limit := a.MaxTokens
+	if limit <= 0 {
+		limit = DefaultMaxTokens
+	}
+	// No temperature is sent: the server's own sampling applies, as greedy
+	// decoding sends thinking models into endless repetition.
 	for range turns {
-		req := chatRequest{Model: a.Model, Messages: msgs, Temperature: 0}
+		req := chatRequest{Model: a.Model, Messages: msgs, MaxTokens: limit}
 		if a.Tools {
 			req.Tools = apiTools
 		}
@@ -94,6 +107,8 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 			return Answer{}, err
 		}
 		msgs = append(msgs, reply)
+		// A reply cut short at MaxTokens has no tool calls and no answer
+		// either: it is asked for the answer below.
 		if len(reply.ToolCalls) == 0 {
 			if ans, err := parseAnswer(reply.Content); err == nil {
 				return ans, nil
@@ -107,7 +122,7 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	// Out of turns, or a reply that was not the answer: ask for it, held
 	// to the schema, with no tools left to call.
 	msgs = append(msgs, message{Role: "user", Content: apiAnswerNow})
-	req := chatRequest{Model: a.Model, Messages: msgs, Temperature: 0, ResponseFormat: answerFormat}
+	req := chatRequest{Model: a.Model, Messages: msgs, MaxTokens: limit, ResponseFormat: answerFormat}
 	reply, err := a.complete(ctx, req, &used)
 	if err != nil {
 		return Answer{}, err
@@ -139,7 +154,7 @@ type chatRequest struct {
 	Model          string    `json:"model"`
 	Messages       []message `json:"messages"`
 	Tools          []tool    `json:"tools,omitempty"`
-	Temperature    float64   `json:"temperature"`
+	MaxTokens      int       `json:"max_tokens"`
 	ResponseFormat any       `json:"response_format,omitempty"`
 }
 
