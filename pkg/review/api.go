@@ -464,6 +464,10 @@ func readLine(r *bufio.Reader, limit int) (text string, clipped bool, err error)
 	var b []byte
 	for {
 		chunk, more, err := r.ReadLine()
+		if errors.Is(err, io.EOF) && len(b) > 0 {
+			// The file ends a line that filled the reader exactly.
+			return strings.ToValidUTF8(string(b), ""), clipped, nil
+		}
 		if err != nil {
 			return "", false, err
 		}

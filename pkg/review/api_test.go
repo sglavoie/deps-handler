@@ -114,6 +114,16 @@ func TestReadFileCutsLongLines(t *testing.T) {
 	if got != want {
 		t.Errorf("read = %.200q… (%d bytes), want %d bytes", got, len(got), len(want))
 	}
+
+	// A last line, without its newline, that fills the reader exactly.
+	if err := os.WriteFile(filepath.Join(root, "dist.js"), []byte("first\n"+strings.Repeat("x", 64<<10)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got = runTool(root, "read_file", `{"path": "dist.js"}`)
+	want = "1\tfirst\n2\t" + strings.Repeat("x", maxLineBytes) + " … [line cut at 2000 bytes]\n"
+	if got != want {
+		t.Errorf("last line of 64 KiB: read = %.200q… (%d bytes), want %d bytes", got, len(got), len(want))
+	}
 }
 
 // fakeModel is an OpenAI-compatible endpoint answering with replies, in
