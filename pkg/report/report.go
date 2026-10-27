@@ -286,7 +286,10 @@ func label(a policy.Action, apply bool) string {
 	return string(a)
 }
 
+// truncate shortens a title to titleWidth characters, counting only those
+// the report shows: invisible ones cannot push the title out of view.
 func truncate(s string) string {
+	s = Plain(s)
 	r := []rune(s)
 	if len(r) <= titleWidth {
 		return s

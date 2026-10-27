@@ -72,11 +72,15 @@ func Markdown(w io.Writer, apply bool, res runner.RepoResult) {
 	}
 }
 
+// mdURL is a github.com URL with nothing in it that Markdown, a table or
+// a terminal would read as more than a URL.
+var mdURL = regexp.MustCompile(`^https://github\.com/[A-Za-z0-9._~/%#?=+-]+$`)
+
 // mdPR links a PR's number and title to it. Only a github.com URL is
 // linked: the link is the one thing in a cell that is not escaped.
 func mdPR(n int, title, url string) string {
 	text := mdText(fmt.Sprintf("#%d %s", n, truncate(title)))
-	if !strings.HasPrefix(url, "https://github.com/") || strings.ContainsAny(url, " ()<>\"'`") {
+	if !mdURL.MatchString(url) {
 		return text
 	}
 	return "[" + text + "](" + url + ")"
@@ -92,6 +96,10 @@ var mdSpecial = strings.NewReplacer(
 	"@", "@\u200b",
 )
 
+// mdAutolink is what GitHub links in text with no markup around it: a
+// URL, or a domain starting with www.
+var mdAutolink = regexp.MustCompile(`(?i)://|www\.`)
+
 // mdBlock is what, starting a list item, would open a block of its own
 // in it: a heading, a list or a rule.
 var mdBlock = regexp.MustCompile(`^(?:#{1,6}|[-+]|\d{1,9}[.)])(?:[\s-]|$)`)
@@ -101,6 +109,10 @@ var mdBlock = regexp.MustCompile(`^(?:#{1,6}|[-+]|\d{1,9}[.)])(?:[\s-]|$)`)
 // open a heading, a list, a rule or a code block in it.
 func mdText(text string) string {
 	s := mdSpecial.Replace(strings.TrimLeft(Plain(text), " "))
+	// A zero-width space in it, as after @, stops GitHub linking text
+	// from elsewhere, such as an agent's concerns a prompt injection
+	// shaped, to a site of its choosing.
+	s = mdAutolink.ReplaceAllStringFunc(s, func(m string) string { return m[:len(m)-1] + "\u200b" + m[len(m)-1:] })
 	if m := mdBlock.FindString(s); m != "" {
 		// A list number is escaped at its . or ), which follows its digits.
 		i := strings.IndexAny(m, ".)")

@@ -431,10 +431,36 @@ func TestMdTextOpensNoBlock(t *testing.T) {
 		"#12 bump lib":            "#12 bump lib",
 		"-1 is less":              "-1 is less",
 		"1.2.3 is out":            "1.2.3 is out",
+		// GitHub links no URL but the PR's own.
+		"see https://evil.example/x": "see https:/\u200b/evil.example/x",
+		"see WWW.evil.example":       "see WWW\u200b.evil.example",
+		"_www.evil.example":          "\\_www\u200b.evil.example",
 	} {
 		if got := mdText(in); got != want {
 			t.Errorf("mdText(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestMdPRLinksOnlyAPlainGitHubURL(t *testing.T) {
+	for url, linked := range map[string]bool{
+		"https://github.com/o/r/pull/1":         true,
+		"https://github.com.evil.example/x":     false,
+		"https://github.com/o/r/pull/1|x":       false,
+		"https://github.com/o/r/pull/1\nx":      false,
+		"https://github.com/o/r/pull/1\x1b[31m": false,
+		"https://github.com/o/r/pull/1)[x](y":   false,
+	} {
+		if got := mdPR(1, "t", url); strings.Contains(got, "](") != linked {
+			t.Errorf("mdPR(%q) = %q", url, got)
+		}
+	}
+}
+
+func TestTruncateCountsOnlyWhatIsShown(t *testing.T) {
+	in := strings.Repeat("\u200b", 59) + "Bump lodash from 1 to 2"
+	if got := truncate(in); got != "Bump lodash from 1 to 2" {
+		t.Errorf("truncate = %q", got)
 	}
 }
 
