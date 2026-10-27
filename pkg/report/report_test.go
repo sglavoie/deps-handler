@@ -171,6 +171,19 @@ func TestSummaryDryRun(t *testing.T) {
 	}
 }
 
+// --apply would change nothing in a repository in report mode: no rerun
+// is suggested for it.
+func TestSummaryDryRunInReportMode(t *testing.T) {
+	p := config.Builtin
+	p.Mode = config.ModeReport
+	res := runner.RepoResult{Repo: "o/r", Policy: p, Decisions: []policy.Decision{decision(1, policy.ActionMerge, "")}}
+	var b bytes.Buffer
+	Summary(&b, false, []runner.RepoResult{res}, 0)
+	if want := "1 repo: 1 would merge\n"; b.String() != want {
+		t.Fatalf("got %q\nwant %q", b.String(), want)
+	}
+}
+
 func TestSummaryNothingToDo(t *testing.T) {
 	var b bytes.Buffer
 	Summary(&b, false, []runner.RepoResult{{Repo: "o/r"}}, 0)

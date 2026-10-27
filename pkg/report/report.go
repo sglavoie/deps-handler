@@ -161,6 +161,9 @@ func Summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int) {
 
 func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s style) {
 	counts := map[string]int{}
+	// applicable counts what --apply would do: not what a repository in
+	// report mode would, as it is never changed.
+	applicable := map[string]int{}
 	findings, failed := 0, 0
 	for _, r := range results {
 		// Failed as the exit status counts it: a failed write or review
@@ -179,6 +182,9 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 		findings += len(r.Findings)
 		for _, d := range pending(r) {
 			counts[label(d.Action, applies(apply, r))]++
+			if applies(true, r) {
+				applicable[label(d.Action, apply)]++
+			}
 		}
 	}
 	var parts []string
@@ -213,10 +219,10 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 	fmt.Fprintln(w, line)
 	if !apply {
 		var todo []string
-		if counts["would merge"] > 0 {
+		if applicable["would merge"] > 0 {
 			todo = append(todo, "merge")
 		}
-		if counts["would rebase"] > 0 {
+		if applicable["would rebase"] > 0 {
 			todo = append(todo, "rebase")
 		}
 		if len(todo) > 0 {
