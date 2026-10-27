@@ -418,6 +418,26 @@ func TestMarkdownReportModeAndError(t *testing.T) {
 	}
 }
 
+func TestMdTextOpensNoBlock(t *testing.T) {
+	for in, want := range map[string]string{
+		"# Breaking: foo removed": `\# Breaking: foo removed`,
+		"###":                     `\###`,
+		"- a":                     `\- a`,
+		"---":                     `\---`,
+		"+ a":                     `\+ a`,
+		"1. step":                 `1\. step`,
+		"12) step":                `12\) step`,
+		"    indented":            "indented",
+		"#12 bump lib":            "#12 bump lib",
+		"-1 is less":              "-1 is less",
+		"1.2.3 is out":            "1.2.3 is out",
+	} {
+		if got := mdText(in); got != want {
+			t.Errorf("mdText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestMdCode(t *testing.T) {
 	for in, want := range map[string]string{
 		"@dependabot rebase": "`@dependabot rebase`",

@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/sglavoie/deps-merger/pkg/policy"
@@ -91,11 +92,24 @@ var mdSpecial = strings.NewReplacer(
 	"@", "@\u200b",
 )
 
+// mdBlock is what, starting a list item, would open a block of its own
+// in it: a heading, a list or a rule.
+var mdBlock = regexp.MustCompile(`^(?:#{1,6}|[-+]|\d{1,9}[.)])(?:[\s-]|$)`)
+
 // mdText makes text safe to show as one line of Markdown, or in a table
-// cell. A # starting the text cannot make it a heading: it never starts a
-// line on its own.
+// cell. Text that starts a list item, as a finding's details do, cannot
+// open a heading, a list, a rule or a code block in it.
 func mdText(text string) string {
-	return mdSpecial.Replace(Plain(text))
+	s := mdSpecial.Replace(strings.TrimLeft(Plain(text), " "))
+	if m := mdBlock.FindString(s); m != "" {
+		// A list number is escaped at its . or ), which follows its digits.
+		i := strings.IndexAny(m, ".)")
+		if i < 0 {
+			i = 0
+		}
+		s = s[:i] + `\` + s[i:]
+	}
+	return s
 }
 
 // mdSuggestion shows a Dependabot command as code, to copy and comment
