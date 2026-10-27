@@ -302,8 +302,9 @@ run's review approved without asking the agent again. For
 repository: `repo`, `policy`, `config_files` (the policy files read
 from GitHub, as in [Policy files in the repositories](#policy-files-in-the-repositories)), `permission`, `decisions` (one per PR, with
 `action` `merge`, `rebase`, `review`, `wait` or `skip`, a `reason`,
-`dependencies` (`name`, `version`, `type`, `group` and `update_type`, empty
-strings for what Dependabot did not record), `failed_checks`, and a
+`dependencies` (`name`, `version`, `type` and `group`, empty strings for
+what Dependabot did not record, and `update_type`: `patch`, `minor`,
+`major`, or `unknown` when it recorded no semver bump), `failed_checks`, and a
 `verdict` with `approved`, `summary`, `concerns` and `error` when the agent
 reviewed it), `findings` (`kind`, `summary`, `prs`, `details`,
 `suggestions`), `events` (the writes made:
