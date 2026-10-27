@@ -230,7 +230,7 @@ func TestInitWritesExampleOnce(t *testing.T) {
 	t.Cleanup(func() { ExampleConfig = old })
 	ExampleConfig = []byte("repos:\n  - o/a\n")
 	path := filepath.Join(t.TempDir(), "sub", "config.yaml")
-	if code, out, stderr := run("init", "-c", path); code != 0 || !strings.Contains(out, "wrote "+path) {
+	if code, out, stderr := run("init", "-c", path); code != 0 || !strings.Contains(out, "wrote "+path) || !strings.Contains(out, "`deps-merger repos -c "+path+"`") {
 		t.Fatalf("init: code %d, %q, %q", code, out, stderr)
 	}
 	if code, out, _ := run("repos", "-c", path); code != 0 || !strings.Contains(out, "o/a") {
@@ -239,7 +239,7 @@ func TestInitWritesExampleOnce(t *testing.T) {
 	if err := os.WriteFile(path, []byte("repos: [o/mine]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, stderr := run("init", "-c", path); code != 1 || !strings.Contains(stderr, "already exists") {
+	if code, _, stderr := run("init", "-c", path); code != 1 || !strings.Contains(stderr, "already exists") || !strings.Contains(stderr, "`deps-merger init --force -c "+path+"`") {
 		t.Fatalf("second init: code %d, %q", code, stderr)
 	}
 	if data, _ := os.ReadFile(path); string(data) != "repos: [o/mine]\n" {

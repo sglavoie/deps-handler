@@ -176,10 +176,7 @@ func loadConfig() (*config.Config, error) {
 		path = p
 	}
 	cfg, err := config.Load(path)
-	initCmd := "deps-merger init"
-	if configPath != "" {
-		initCmd += " -c " + configPath
-	}
+	initCmd := command("init")
 	if nf, ok := errors.AsType[*config.NotFoundError](err); ok {
 		return nil, fmt.Errorf("config not found at %s; create one with `%s`", nf.Path, initCmd)
 	}
@@ -188,4 +185,13 @@ func loadConfig() (*config.Config, error) {
 		return nil, fmt.Errorf("%s lists no repos yet; list yours under repos:, or fill them in with `%s --discover --force`", path, initCmd)
 	}
 	return cfg, err
+}
+
+// command is the deps-merger command line to suggest for sub, naming the
+// config given with -c, as following the advice must not act on another.
+func command(sub string) string {
+	if configPath == "" {
+		return "deps-merger " + sub
+	}
+	return "deps-merger " + sub + " -c " + configPath
 }

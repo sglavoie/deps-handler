@@ -105,9 +105,9 @@ With --stdout, the config is printed rather than written.`,
 			}
 			fmt.Fprintf(out, "wrote %s\n", path)
 			if discover {
-				fmt.Fprintln(out, "check the repositories it lists under repos: with `deps-merger repos`, then try a dry run with `deps-merger run`")
+				fmt.Fprintf(out, "check the repositories it lists under repos: with `%s`, then try a dry run with `%s`\n", command("repos"), command("run"))
 			} else {
-				fmt.Fprintln(out, "list your repositories under repos:, then check them with `deps-merger repos`")
+				fmt.Fprintf(out, "list your repositories under repos:, then check them with `%s`\n", command("repos"))
 			}
 			return nil
 		},
@@ -125,7 +125,7 @@ With --stdout, the config is printed rather than written.`,
 func writeNew(path string, data []byte) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
-		return fmt.Errorf("%s already exists; edit it, or replace it with `deps-merger init --force`", path)
+		return fmt.Errorf("%s already exists; edit it, or replace it with `%s`", path, command("init --force"))
 	} else if err != nil {
 		return err
 	}
