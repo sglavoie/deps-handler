@@ -45,7 +45,7 @@ repository, which can override it.`,
 				return reposJSON(cmd.OutOrStdout(), cfg)
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "REPO\tMERGE\tMAX UPDATE\tREQUIRE CHECKS\tNO-CHECKS MERGE\tAGENT REVIEW\tDEPENDABOT COMMANDS\tSKIP")
+			fmt.Fprintln(tw, "REPO\tMODE\tMERGE\tMAX UPDATE\tREQUIRE CHECKS\tNO-CHECKS MERGE\tAGENT REVIEW\tDEPENDABOT COMMANDS\tSKIP")
 			for _, r := range cfg.Repos {
 				noChecks := "never"
 				switch d := r.Policy.MergeWithoutChecksAfter; {
@@ -54,7 +54,7 @@ repository, which can override it.`,
 				case d > 0:
 					noChecks = "after " + config.ShortDuration(d)
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.FullName(), r.Policy.MergeMethod, r.Policy.MaxUpdateType, yesNo(r.Policy.RequireChecks), noChecks, yesNo(r.Policy.AgentReview), yesNo(r.Policy.DependabotCommands), yesNo(r.Skip))
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.FullName(), r.Policy.Mode, r.Policy.MergeMethod, r.Policy.MaxUpdateType, yesNo(r.Policy.RequireChecks), noChecks, yesNo(r.Policy.AgentReview), yesNo(r.Policy.DependabotCommands), yesNo(r.Skip))
 			}
 			if err := tw.Flush(); err != nil {
 				return err

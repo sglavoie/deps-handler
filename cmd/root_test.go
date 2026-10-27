@@ -50,9 +50,9 @@ func run(args ...string) (int, string, string) {
 }
 
 func TestReposListsPolicy(t *testing.T) {
-	cfg := writeConfig(t, "agent:\n  claude:\n    max_budget_usd: 2\nrepos:\n  - o/a\n  - repo: o/b\n    skip: true\n    require_checks: false\n")
+	cfg := writeConfig(t, "agent:\n  claude:\n    max_budget_usd: 2\nrepos:\n  - o/a\n  - repo: o/b\n    skip: true\n    require_checks: false\n    mode: report\n")
 	code, out, _ := run("repos", "-c", cfg)
-	if code != 0 || !strings.Contains(out, "o/a   squash  minor") || !strings.Contains(out, "o/b") {
+	if code != 0 || !strings.Contains(out, "o/a   merge   squash  minor") || !strings.Contains(out, "o/b   report  squash") {
 		t.Fatalf("code %d, output:\n%s", code, out)
 	}
 	if !strings.Contains(out, "no              -  ") {
