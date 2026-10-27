@@ -45,6 +45,13 @@ func TestNewRequest(t *testing.T) {
 	if !strings.Contains(req.NoChecks, "within 0s") {
 		t.Errorf("no-checks note = %q", req.NoChecks)
 	}
+	if req.Unread {
+		t.Error("a PR without commits has none unread")
+	}
+	pr.Commits = []github.Commit{{Message: "Bump lib"}}
+	if req := NewRequest(config.Repo{Owner: "o", Name: "r", Policy: config.Builtin}, d); !req.Unread {
+		t.Error("a commit without metadata must mark the request unread")
+	}
 	optional := config.Builtin
 	optional.RequireChecks = false
 	if req := NewRequest(config.Repo{Owner: "o", Name: "r", Policy: optional}, d); req.NoChecks != "the repository does not require checks" {
@@ -70,7 +77,11 @@ func TestKey(t *testing.T) {
 	if !strings.HasSuffix(b.Key(), " rebased") {
 		t.Errorf("without versions the head commit identifies the update: %q", b.Key())
 	}
-	b.Dependencies = nil
+	b.Dependencies, b.Unread = a.Dependencies, true
+	if !strings.HasSuffix(b.Key(), " rebased") {
+		t.Errorf("a commit without metadata must pin the head commit: %q", b.Key())
+	}
+	b.Dependencies, b.Unread = nil, false
 	if b.Key() != "o/r#7 rebased" {
 		t.Errorf("key without dependencies = %q", b.Key())
 	}

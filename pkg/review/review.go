@@ -41,6 +41,9 @@ type Request struct {
 	// NoChecks explains to the agent why the PR may merge without checks,
 	// should none have run.
 	NoChecks string
+	// Unread is set when a commit records no dependencies: what it changed
+	// is known only from the head commit reviewed.
+	Unread bool
 }
 
 // NewRequest describes the PR behind d in repository rc. Its checks are
@@ -50,24 +53,29 @@ func NewRequest(rc config.Repo, d policy.Decision) Request {
 	if rc.Policy.RequireChecks {
 		noChecks = fmt.Sprintf("no check started within %s of the latest commit, after which the repository's policy merges without them because its CI does not run for every change", config.ShortDuration(rc.Policy.MergeWithoutChecksAfter))
 	}
+	unread := false
+	for _, c := range d.PR.Commits {
+		unread = unread || len(dependabot.ParseCommitMessage(c.Message)) == 0
+	}
 	return Request{
 		Owner: rc.Owner, Name: rc.Name, Number: d.Number, Title: d.Title, URL: d.URL,
 		HeadOID: d.PR.HeadOID, BaseRef: d.PR.BaseRef, Grade: d.Grade, Limit: rc.Policy.MaxUpdateType,
 		Reason: strings.TrimSuffix(d.Reason, policy.AwaitingReview), Dependencies: d.Dependencies, Checks: policy.LatestChecks(d.PR.Checks),
-		NoChecks: noChecks,
+		NoChecks: noChecks, Unread: unread,
 	}
 }
 
 // Key identifies the update under review: the PR and the versions it moves
 // to. A rebase changes the head commit but not the update, so an approval
 // still holds (the cache drops a rejection then); when Dependabot does not
-// record versions, the head commit stands in for them, so not even an
-// approval survives a rebase (see Entry.PinsHead). The repository is
-// lower-cased, as GitHub ignores its case, and the agent is left out: a
-// verdict from one agent is reused by another.
+// record versions, or a commit records no dependencies at all, the head
+// commit stands in for them, so not even an approval survives a rebase
+// (see Entry.PinsHead). The repository is lower-cased, as GitHub ignores
+// its case, and the agent is left out: a verdict from one agent is reused
+// by another.
 func (r Request) Key() string {
 	deps := make([]string, 0, len(r.Dependencies))
-	versioned := len(r.Dependencies) > 0
+	versioned := len(r.Dependencies) > 0 && !r.Unread
 	for _, d := range r.Dependencies {
 		deps = append(deps, d.Name+"@"+d.Version)
 		versioned = versioned && d.Version != ""
