@@ -385,6 +385,26 @@ func TestApplyRequestsOneRebaseAtATime(t *testing.T) {
 	}
 }
 
+func TestApplyRequestsOneRebasePerBaseBranch(t *testing.T) {
+	var prs []github.PullRequest
+	for i, base := range []string{"main", "release", "main", "release"} {
+		pr := testutil.PR(i + 1)
+		pr.BaseRef, pr.MergeState = base, "BEHIND"
+		prs = append(prs, pr)
+	}
+	fc := &fakeClient{repo: testutil.Repo(prs...)}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if res.Failed() {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if len(fc.comments) != 2 || len(fc.comments[1]) != 1 || len(fc.comments[2]) != 1 {
+		t.Fatalf("comments = %v; only #1 and #2 should be rebased", fc.comments)
+	}
+	if len(res.Events) != 2 || res.Events[0].Kind != EventRebaseRequested || res.Events[1].Kind != EventRebaseRequested {
+		t.Fatalf("events = %+v", res.Events)
+	}
+}
+
 func TestApplyFallsBackToAllowedMergeMethod(t *testing.T) {
 	repo := testutil.Repo(testutil.PR(1, "lib:minor"))
 	repo.SquashAllowed, repo.MergeAllowed = false, true

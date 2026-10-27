@@ -50,11 +50,13 @@ A PR is merged only when all of these hold:
   run, even when checks already match that head.
 
 A safe PR that is only `BEHIND` its base branch gets one `@dependabot rebase`
-comment per head commit, one PR at a time: while a PR can merge, is up to
-date and waiting on CI, or has a rebase pending, the others wait
-(`queued behind #N`). If the base branch must be up to date, each merge puts
-every other PR behind again, so rebasing them all at once would rerun CI on
-each for every merge. A rebase request Dependabot has not acted on within a
+comment per head commit, one PR at a time per target branch: while a PR can
+merge, is up to date and waiting on CI, or has a rebase pending, the others
+targeting that branch wait (`queued behind #N`). If the base branch must be
+up to date, each merge puts
+every other PR targeting that branch behind again, so rebasing them all at
+once would rerun CI on each for every merge. Independent target branches
+have separate queues. A rebase request Dependabot has not acted on within a
 day stops holding the queue: that PR is left for a human and the next one is
 rebased. Only a PR's latest 50 comments are read: when even the oldest of
 them is newer than its head commit, a request may hide among the rest, so

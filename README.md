@@ -90,10 +90,11 @@ an older one only when both identify their name, suite, app, workflow and
 event; checks with missing identifiers remain part of the decision.
 
 A safe PR that is only behind its base branch gets one `@dependabot rebase`
-comment, one PR at a time per repository, so that merges do not rerun CI
-on every other PR. Merges are made one at a time with the head SHA pinned,
-re-reading the repository after each; a merge GitHub fails in a way that
-may hide a success is checked before it is reported. Writes are never sent
+comment, one PR at a time per target branch, so that merges do not rerun CI
+on every other PR targeting that branch. PRs targeting independent branches
+do not hold each other's rebase queues. Merges are made one at a time with
+the head SHA pinned, re-reading the repository after each; a merge GitHub
+fails in a way that may hide a success is checked before it is reported. Writes are never sent
 concurrently, and a rate limit stops them rather than push through it.
 A PR whose merge or rebase request failed stops holding the rebase queue
 for that run, even if it later waits on CI or GitHub to compute mergeability.

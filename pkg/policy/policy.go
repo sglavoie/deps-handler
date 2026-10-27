@@ -133,28 +133,28 @@ func EvaluateAfter(repo *github.Repo, p config.Policy, viewer string, judge Judg
 	return out
 }
 
-// queueRebases keeps at most one PR moving towards the base branch at a
-// time. When the base must be up to date, each merge puts every other PR
+// queueRebases keeps at most one PR moving towards each base branch at a
+// time. When the base must be up to date, each merge puts its other PRs
 // behind again, so rebasing them all at once reruns CI on each of them for
 // every merge. The rest wait behind the next merge or rebase; a merge or
 // rebase in refused is not next.
 func queueRebases(ds []Decision, refused map[int]bool) {
-	ahead := 0
+	ahead := map[string]int{}
 	for _, d := range ds {
-		if !refused[d.Number] && (d.Action == ActionMerge || d.inFlight) {
-			ahead = d.Number
-			break
+		if !refused[d.Number] && (d.Action == ActionMerge || d.inFlight) && ahead[d.PR.BaseRef] == 0 {
+			ahead[d.PR.BaseRef] = d.Number
 		}
 	}
 	for i := range ds {
 		if ds[i].Action != ActionRebase || refused[ds[i].Number] {
 			continue
 		}
-		if ahead == 0 {
-			ahead = ds[i].Number
+		base := ds[i].PR.BaseRef
+		if ahead[base] == 0 {
+			ahead[base] = ds[i].Number
 			continue
 		}
-		ds[i].Action, ds[i].Reason = ActionWait, fmt.Sprintf("queued behind #%d", ahead)
+		ds[i].Action, ds[i].Reason = ActionWait, fmt.Sprintf("queued behind #%d", ahead[base])
 	}
 }
 

@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -571,6 +572,43 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 	ds = Evaluate(testutil.Repo(major, stillBehind, behind(3)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "wait checks not yet reported for head commit sha1; wait 1 check(s) still running; rebase behind base branch"; got != want {
 		t.Errorf("not in flight:\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestRebaseQueuesAreIndependentByBaseBranch(t *testing.T) {
+	for _, state := range []string{"merge", "pending checks", "missing checks", "rebase", "rebase requested", "unknown mergeability"} {
+		t.Run(state, func(t *testing.T) {
+			first := testutil.PR(1)
+			first.BaseRef = "main"
+			switch state {
+			case "pending checks":
+				first.Checks[0].State = github.CheckPending
+			case "missing checks":
+				first.ChecksOID = "older"
+			case "rebase":
+				first.MergeState = "BEHIND"
+			case "rebase requested":
+				first.MergeState = "BEHIND"
+				first.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(time.Minute)}}
+			case "unknown mergeability":
+				first.Mergeable = "UNKNOWN"
+			}
+			behind := func(n int, base string) github.PullRequest {
+				pr := testutil.PR(n)
+				pr.BaseRef, pr.MergeState = base, "BEHIND"
+				return pr
+			}
+			ds := Evaluate(testutil.Repo(first, behind(2, "release"), behind(3, "main"), behind(4, "release")), defaultPolicy, "me", nil)
+			if ds[1].Action != ActionRebase {
+				t.Errorf("independent branch: got %s (%s), want rebase", ds[1].Action, ds[1].Reason)
+			}
+			for _, pair := range []struct{ index, ahead int }{{2, 1}, {3, 2}} {
+				d := ds[pair.index]
+				if d.Action != ActionWait || d.Reason != fmt.Sprintf("queued behind #%d", pair.ahead) {
+					t.Errorf("#%d: got %s (%s), want queued behind #%d", d.Number, d.Action, d.Reason, pair.ahead)
+				}
+			}
+		})
 	}
 }
 
