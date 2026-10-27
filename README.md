@@ -153,6 +153,7 @@ read-only, without your customizations and without a GitHub token:
   before they can approve a PR. Reasoning after the answer also requires
   a fresh answer. Filtered responses and missing or unsupported completion
   states fail the review, even when their text contains a valid verdict.
+  Responses over 16 MiB also fail rather than accepting a truncated JSON prefix.
   Query parameters in `api.url` are preserved when requesting chat completions.
   Claude Code and Codex verdicts undergo the same field
   validation; malformed verdicts fail the review. File reads and searches
@@ -324,6 +325,8 @@ Custom clients must normalize check states to the `github.CheckState`
 constants; empty or unrecognized states block merging even when checks
 are optional, an agent approved the update, or a newer check would otherwise
 supersede the unrecognized one.
+Custom clients must return a known `github.PRState` when reconciling a merge;
+empty or unrecognized states leave the outcome uncertain and report an error.
 The review cache copies verdict concerns on storage and retrieval, so callers
 can edit their own copies independently. Failed cache writes leave the
 in-memory verdicts unchanged. Codex and API reviews accept

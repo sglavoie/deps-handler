@@ -233,12 +233,18 @@ func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (messag
 		return message{}, false, fmt.Errorf("api: %w", err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	const maxResponseBytes = 16 << 20
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return message{}, false, fmt.Errorf("api: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return message{}, false, fmt.Errorf("api: %s: %s", resp.Status, clip(string(raw)))
+	}
+	// A valid JSON prefix does not establish that the whole response is
+	// valid. Read one extra byte to distinguish EOF from our own limit.
+	if len(raw) > maxResponseBytes {
+		return message{}, false, fmt.Errorf("api: response too large (limit %d bytes)", maxResponseBytes)
 	}
 	var out struct {
 		Choices []struct {

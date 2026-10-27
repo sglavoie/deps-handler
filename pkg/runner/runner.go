@@ -631,7 +631,18 @@ func (p pendingMerge) failed(detail string) Event {
 // more when it fails in a way that may pass.
 func (r *Runner) prState(ctx context.Context, rc config.Repo, number int) (github.PRState, error) {
 	return github.Again(ctx, r.PollInterval, r.sleep, func() (github.PRState, error) {
-		return r.Client.PullRequestState(ctx, rc.Owner, rc.Name, number)
+		state, err := r.Client.PullRequestState(ctx, rc.Owner, rc.Name, number)
+		if err != nil {
+			return state, err
+		}
+		// Custom clients must establish a known state too: an empty or
+		// future value cannot prove an uncertain merge closed unmerged.
+		switch state {
+		case github.PROpen, github.PRMerged, github.PRClosed:
+			return state, nil
+		default:
+			return "", fmt.Errorf("%s#%d: unrecognized pull request state %q", rc.FullName(), number, state)
+		}
 	})
 }
 

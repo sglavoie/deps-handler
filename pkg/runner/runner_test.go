@@ -830,6 +830,35 @@ func TestTimedOutMergeThatWentThroughIsReportedMerged(t *testing.T) {
 	}
 }
 
+type unknownStateClient struct {
+	*fakeClient
+	state github.PRState
+}
+
+func (c unknownStateClient) PullRequestState(context.Context, string, string, int) (github.PRState, error) {
+	return c.state, nil
+}
+
+func TestUncertainMergeWithUnknownState(t *testing.T) {
+	for _, state := range []github.PRState{"", "UNKNOWN"} {
+		t.Run(string(state), func(t *testing.T) {
+			fc := &fakeClient{
+				repo:         testutil.Repo(testutil.PR(1)),
+				mergeErrs:    map[int][]error{1: {&api.HTTPError{StatusCode: 502}}},
+				mergedAnyway: map[int]bool{1: true},
+			}
+			res := newRunner(unknownStateClient{fc, state}, true).RunRepo(context.Background(), repoCfg)
+			if !res.Failed() || len(res.Events) != 1 || res.Events[0].Kind != EventMergeFailed {
+				t.Fatalf("result = %+v; want one unresolved merge failure", res)
+			}
+			detail := res.Events[0].Detail
+			if !strings.Contains(detail, "may have merged") || !strings.Contains(detail, "unrecognized") || strings.Contains(detail, "closed without") {
+				t.Fatalf("detail = %q; unknown state must preserve merge uncertainty", detail)
+			}
+		})
+	}
+}
+
 func TestInternalServerErrorMergeIsReconciled(t *testing.T) {
 	for _, merged := range []bool{false, true} {
 		t.Run(fmt.Sprintf("merged=%t", merged), func(t *testing.T) {

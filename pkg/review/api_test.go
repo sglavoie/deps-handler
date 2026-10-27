@@ -269,6 +269,29 @@ func serve(t *testing.T, f *fakeModel) string {
 
 const approve = `{"decision": "approve", "summary": "only app.del changed, unused", "breaking_changes": ["app.del removed: not used"], "concerns": []}`
 
+func TestAPIResponseSizeLimit(t *testing.T) {
+	const limit = 16 << 20
+	response := `{"choices":[{"message":` + content(approve) + `,"finish_reason":"stop"}]}`
+	response += strings.Repeat(" ", limit-len(response))
+	for _, suffix := range []string{"", " ", `{"error":"response continued"}`} {
+		t.Run(fmt.Sprintf("extra_bytes=%d", len(suffix)), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, response+suffix)
+			}))
+			defer server.Close()
+			a := API{URL: server.URL}
+			answer, err := a.Run(context.Background(), t.TempDir(), "review")
+			if suffix == "" {
+				if err != nil || answer.Decision != "approve" {
+					t.Fatalf("response at limit: answer=%+v, err=%v", answer, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "too large") {
+				t.Fatalf("oversized response: answer=%+v, err=%v; want size error", answer, err)
+			}
+		})
+	}
+}
+
 func content(s string) string {
 	b, _ := json.Marshal(map[string]string{"role": "assistant", "content": s})
 	return string(b)
