@@ -264,6 +264,17 @@ func TestDiagnoseNoChecksIgnoresWaitingPRs(t *testing.T) {
 	}
 }
 
+func TestDiagnoseNoChecksRequiresKnownHeadAge(t *testing.T) {
+	for _, size := range []string{"patch", "major"} {
+		pr := testutil.PR(1, "lib:"+size)
+		pr.Checks = nil
+		pr.Commits[0].CommittedDate = time.Time{}
+		if f := findings(testutil.Repo(pr)); len(f[FindingNoChecks]) != 0 {
+			t.Errorf("%s: no-checks = %+v; an unknown age cannot establish that CI never started", size, f[FindingNoChecks])
+		}
+	}
+}
+
 // A PR skipped for its size never reaches the wait for CI to start, but
 // its CI may not have started yet all the same.
 func TestDiagnoseNoChecksIgnoresNewOversizedPRs(t *testing.T) {

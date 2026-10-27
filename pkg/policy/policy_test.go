@@ -47,6 +47,60 @@ func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
 	}
 }
 
+func TestNoChecksRequiresKnownHeadAge(t *testing.T) {
+	for _, size := range []string{"patch", "major"} {
+		for _, state := range []string{"CLEAN", "BEHIND"} {
+			for _, skipped := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/skipped=%t", size, state, skipped), func(t *testing.T) {
+					pr := testutil.PR(1, "lib:"+size)
+					pr.MergeState = state
+					pr.Commits[0].CommittedDate = time.Time{}
+					pr.Checks = nil
+					if skipped {
+						pr.Checks = []github.Check{{Name: "test", State: github.CheckSkipped}}
+					}
+					p := defaultPolicy
+					p.MergeWithoutChecksAfter = time.Hour
+					d := Evaluate(testutil.Repo(pr), p, "me", approveAll)[0]
+					if d.Action != ActionWait || !strings.Contains(d.Reason, "timestamp") {
+						t.Fatalf("unknown head age must wait, even with approval: %+v", d)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestNoChecksUsesHeadCommitAge(t *testing.T) {
+	pr := testutil.PR(1)
+	older := pr.Commits[0]
+	older.OID = "older"
+	pr.Commits[0].CommittedDate = testutil.Fetched.Add(-time.Minute)
+	// The head must determine the grace period, regardless of list order.
+	pr.Commits = append(pr.Commits, older)
+	pr.CommitCount = len(pr.Commits)
+	pr.Checks = nil
+	p := defaultPolicy
+	p.MergeWithoutChecksAfter = time.Hour
+	if d := one(t, testutil.Repo(pr), p); d.Action != ActionWait {
+		t.Fatalf("a fresh head must not use an older commit's age: %+v", d)
+	}
+}
+
+func TestMissingHeadAgeDoesNotBlockTestedOrChecksOptionalPR(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.Commits[0].CommittedDate = time.Time{}
+	if d := one(t, testutil.Repo(pr), defaultPolicy); d.Action != ActionMerge {
+		t.Fatalf("passing checks do not need an age exemption: %+v", d)
+	}
+	pr.Checks = nil
+	p := defaultPolicy
+	p.RequireChecks = false
+	if d := one(t, testutil.Repo(pr), p); d.Action != ActionMerge {
+		t.Fatalf("optional checks do not need an age exemption: %+v", d)
+	}
+}
+
 func TestUnknownCheckStateCannotMerge(t *testing.T) {
 	for _, state := range []github.CheckState{"", "unknown"} {
 		for _, require := range []bool{true, false} {

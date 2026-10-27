@@ -187,8 +187,9 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		// judged on its checks at all. Checks that were all skipped
 		// tested nothing either. A PR skipped for its size is not left to
 		// wait, so its age says whether CI has had time to start.
-		young := repo.FetchedAt.Sub(pushedAt(d.PR)) < checksGrace
-		if d.assessed && !anyRan(LatestChecks(d.PR.Checks)) && d.Action != ActionWait && !young && !inConflict(d.PR) {
+		pushed := pushedAt(d.PR)
+		oldEnough := !pushed.IsZero() && repo.FetchedAt.Sub(pushed) >= checksGrace
+		if d.assessed && !anyRan(LatestChecks(d.PR.Checks)) && d.Action != ActionWait && oldEnough && !inConflict(d.PR) {
 			noChecks = append(noChecks, d.Number)
 		}
 		if d.needsReview {

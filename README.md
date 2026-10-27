@@ -88,6 +88,9 @@ check types, statuses and completed-check conclusions also block action,
 even when a newer check passed. A newer check can replace
 an older one only when both identify their name, suite, app, workflow and
 event; checks with missing identifiers remain part of the decision.
+The waiting period for `merge_without_checks_after` uses the head commit's
+timestamp. When that timestamp is missing, the PR waits and is not diagnosed
+as having no CI yet.
 
 A safe PR that is only behind its base branch gets one `@dependabot rebase`
 comment, one PR at a time per target branch, so that merges do not rerun CI
@@ -99,6 +102,8 @@ concurrently, and a rate limit stops them rather than push through it.
 Merge responses must explicitly confirm success. Missing or malformed
 confirmations are reconciled against the PR's state; an unknown state is
 reported as an error rather than assumed to mean the PR was closed.
+HTTP 500 responses also require reconciliation: an internal server error
+does not establish whether a merge went through.
 Rate-limit pauses accept `Retry-After` as seconds or an HTTP date; pauses
 over two minutes stop further writes for that run.
 A PR whose merge or rebase request failed stops holding the rebase queue

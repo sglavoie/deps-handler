@@ -774,10 +774,10 @@ func repoNotFound(err error) bool {
 }
 
 // Transient reports whether a failed call may succeed if made again:
-// GitHub answers a heavy query it could not finish in time with a 502 or
-// 504, or with a GraphQL error saying something went wrong, and a
-// connection can time out, or be closed or reset, on the way. For a merge
-// or comment, it means the write may have gone through all the same. A
+// GitHub can answer with a 500, 502, 503 or 504, or with a GraphQL error
+// saying something went wrong, and a connection can time out, or be closed
+// or reset, on the way. For a merge or comment, it means the write may have
+// gone through all the same. A
 // call cut short by the run being cancelled can fail in these ways too:
 // callers rule that out first.
 func Transient(err error) bool {
@@ -788,7 +788,7 @@ func Transient(err error) bool {
 		return true
 	}
 	if he, ok := errors.AsType[*api.HTTPError](err); ok {
-		return he.StatusCode == http.StatusBadGateway || he.StatusCode == http.StatusServiceUnavailable || he.StatusCode == http.StatusGatewayTimeout
+		return he.StatusCode == http.StatusInternalServerError || he.StatusCode == http.StatusBadGateway || he.StatusCode == http.StatusServiceUnavailable || he.StatusCode == http.StatusGatewayTimeout
 	}
 	// The connection was closed or reset before the whole response came
 	// back: the request may have reached GitHub, and nothing says it failed.
@@ -992,7 +992,7 @@ func Sleep(ctx context.Context, d time.Duration) error {
 }
 
 // Refused reports whether GitHub answered a call with an error status that
-// says it was not carried out: any but the 502, 503 and 504 Transient
+// says it was not carried out: any but the 500, 502, 503 and 504 Transient
 // counts, after which a write may have gone through all the same.
 func Refused(err error) bool {
 	_, ok := errors.AsType[*api.HTTPError](err)

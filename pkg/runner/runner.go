@@ -252,8 +252,8 @@ var errWritesBlocked = fmt.Errorf("%w: an earlier write hit GitHub's rate limit;
 
 // interruptedInFlight reports whether the run was interrupted while the
 // write that failed with err was on its way, so it may have gone through:
-// it was sent, and GitHub did not answer that it refused it. A 502, 503 or
-// 504 is no such answer: the write may have gone through all the same.
+// it was sent, and GitHub did not answer that it refused it. A 500, 502,
+// 503 or 504 is no such answer: the write may have gone through all the same.
 func interruptedInFlight(ctx context.Context, err error) bool {
 	return ctx.Err() != nil && !errors.Is(err, errNotSent) && !github.Refused(err)
 }

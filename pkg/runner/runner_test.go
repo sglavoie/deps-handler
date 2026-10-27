@@ -756,6 +756,25 @@ func TestTimedOutMergeThatWentThroughIsReportedMerged(t *testing.T) {
 	}
 }
 
+func TestInternalServerErrorMergeIsReconciled(t *testing.T) {
+	for _, merged := range []bool{false, true} {
+		t.Run(fmt.Sprintf("merged=%t", merged), func(t *testing.T) {
+			fc := &fakeClient{
+				repo:         testutil.Repo(testutil.PR(1)),
+				mergeErrs:    map[int][]error{1: {&api.HTTPError{StatusCode: 500}}},
+				mergedAnyway: map[int]bool{1: merged},
+			}
+			res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+			if fmt.Sprint(fc.merges) != "[1]" || len(res.Events) != 1 || res.Events[0].Kind != EventMerged || res.Failed() {
+				t.Fatalf("merges %v, events %+v; reconcile success or retry an open PR", fc.merges, res.Events)
+			}
+			if merged && !strings.Contains(res.Events[0].Detail, "after HTTP 500") {
+				t.Fatalf("reconciled success must describe the failed response: %+v", res.Events[0])
+			}
+		})
+	}
+}
+
 func TestTimedOutMergeThatDidNotGoThroughIsRetried(t *testing.T) {
 	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), mergeErrs: map[int][]error{1: {&api.HTTPError{StatusCode: 504}}}}
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
@@ -1138,6 +1157,7 @@ func TestMergeAnsweredAsTheRunIsInterrupted(t *testing.T) {
 		&api.HTTPError{StatusCode: 422, Message: "Head branch was modified"}:      "interrupted",
 		&api.HTTPError{StatusCode: 405, Message: "Pull Request is not mergeable"}: "interrupted",
 		// GitHub gave up on it, which may have merged it all the same.
+		&api.HTTPError{StatusCode: 500}: "interrupted; may have merged",
 		&api.HTTPError{StatusCode: 502}: "interrupted; may have merged",
 	} {
 		ctx, cancel := context.WithCancel(context.Background())

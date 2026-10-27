@@ -31,8 +31,11 @@ A PR is merged only when all of these hold:
   `merge_without_checks_after: 1h`, a commit that has gone an hour without
   any check merges anyway, for repos whose CI only runs for some paths; it
   never waits less than those 30 minutes, so a shorter setting acts as
-  `30m` (and the resolved policy says so). A check run counts as superseded
-  only by a newer run of the same name from the same workflow, app and
+  `30m` (and the resolved policy says so). This wait uses the head commit's
+  timestamp, regardless of its position in the commit list. If that
+  timestamp is missing, the PR waits instead of qualifying for the timeout
+  exemption, and is not diagnosed as having no CI yet. A check run counts
+  as superseded only by a newer run of the same name from the same workflow, app and
   event, as when concurrency cancels it: a `test` job failing in one
   workflow is not excused by a `test` job passing in another, nor a `push`
   run failing by the `pull_request` run of the same workflow passing, nor
@@ -77,7 +80,7 @@ command: Dependabot rebases it on its own.
 Merges happen one at a time per repository, with the head SHA pinned,
 re-reading state after each. A merge GitHub rejects with 405 or 409, as it
 can right after another merge, is retried once. So is one that fails with
-a 502, 503, 504, a timeout or a connection closed or reset before GitHub
+a 500, 502, 503, 504, a timeout or a connection closed or reset before GitHub
 answered, which may have merged anyway: if the PR is no longer open when
 the repository is read again, GitHub is asked whether it merged, and it is
 reported merged, with the error GitHub gave, or failed if it was closed
@@ -95,13 +98,13 @@ GitHub cannot say, it is reported failed, with a note that it may have
 merged unless GitHub refused every try with a 405 or 409. A merge in flight
 when the run is interrupted is reported failed with `interrupted; may have
 merged`, since there is no asking GitHub then, unless GitHub had already
-answered it with an error status other than 502, 503 or 504. One the
+answered it with an error status other than 500, 502, 503 or 504. One the
 interruption keeps from its retry, after a failure that may have merged
 it, reads `interrupted; may have merged after` that failure. A rebase
 request in flight is reported requested, with a warning. Every request to
 GitHub times out after a minute, so a hung merge cannot hold up the other
 repositories' writes; a merge that times out is handled like a 504. A rebase request that fails
-with a 502, 503, 504, a timeout or a broken connection may have been posted all the same: it is
+with a 500, 502, 503, 504, a timeout or a broken connection may have been posted all the same: it is
 reported requested, with a warning, rather than failed, and a later run
 asks again if it was not. A merge or comment GitHub refuses for a rate limit
 is made again after the pause GitHub asks for, up to two minutes; other
@@ -329,7 +332,7 @@ run's review approved without asking the agent again. For
   failed, or an agent review could not be done (the report says which).
   Failure to write the report also exits 1, in text, Markdown or JSON;
   writes to GitHub may still have succeeded.
-  A read GitHub fails with a 502, 503 or 504, a timeout, a connection
+  A read GitHub fails with a 500, 502, 503 or 504, a timeout, a connection
   closed or reset before it answered, or "Something went wrong" is tried
   once more before the repository counts as failed,
   as is one refused for a rate limit that lifts within two minutes (for

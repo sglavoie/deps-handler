@@ -393,7 +393,11 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		if len(checks) > 0 {
 			none = "only skipped checks reported yet"
 		}
-		age := repo.FetchedAt.Sub(pushedAt(pr))
+		pushed := pushedAt(pr)
+		if pushed.IsZero() {
+			return wait(upToDate, "%s; head commit timestamp not reported", none)
+		}
+		age := repo.FetchedAt.Sub(pushed)
 		// The config already waits at least checksGrace; a policy built
 		// another way must not merge before CI has had time to start.
 		after := p.MergeWithoutChecksAfter
@@ -507,13 +511,16 @@ func conflictHint(pr *github.PullRequest) string {
 	return ""
 }
 
-// pushedAt is when the PR's latest commit was made, or the zero time when
-// it has none.
+// pushedAt is when the PR's head commit was made, or the zero time when
+// its timestamp is unavailable. The commit list's order must not let an
+// older commit stand in for a freshly pushed head.
 func pushedAt(pr *github.PullRequest) time.Time {
-	if len(pr.Commits) == 0 {
-		return time.Time{}
+	for _, c := range pr.Commits {
+		if c.OID == pr.HeadOID {
+			return c.CommittedDate
+		}
 	}
-	return pr.Commits[len(pr.Commits)-1].CommittedDate
+	return time.Time{}
 }
 
 // rebaseRequested returns when viewer first asked for a rebase since the

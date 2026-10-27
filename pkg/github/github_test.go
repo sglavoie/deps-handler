@@ -75,6 +75,7 @@ func TestRetryable(t *testing.T) {
 
 func TestTransient(t *testing.T) {
 	for err, want := range map[error]bool{
+		&api.HTTPError{StatusCode: 500}: true,
 		nil:                             false,
 		&api.HTTPError{StatusCode: 502}: true,
 		fmt.Errorf("wrap: %w", &api.HTTPError{StatusCode: 504}): true,
@@ -102,6 +103,7 @@ func TestTransient(t *testing.T) {
 
 func TestRefused(t *testing.T) {
 	for err, want := range map[error]bool{
+		&api.HTTPError{StatusCode: 500}:                         false,
 		&api.HTTPError{StatusCode: 422}:                         true,
 		fmt.Errorf("wrap: %w", &api.HTTPError{StatusCode: 403}): true,
 		&api.HTTPError{StatusCode: 504}:                         false,
