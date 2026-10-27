@@ -168,7 +168,9 @@ func Verdict(a Answer) (policy.Verdict, error) {
 	switch a.Decision {
 	case "approve", "reject":
 	default:
-		return policy.Verdict{}, fmt.Errorf("agent answered %q instead of approve or reject", a.Decision)
+		// Cleaned before quoting: %q would spell an invisible character
+		// splitting a token as visible text that Clean no longer drops.
+		return policy.Verdict{}, fmt.Errorf("agent answered %q instead of approve or reject", Clean(a.Decision))
 	}
 	concerns := make([]string, 0, len(a.BreakingChanges)+len(a.Concerns))
 	for _, c := range append(append([]string{}, a.BreakingChanges...), a.Concerns...) {

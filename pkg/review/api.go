@@ -284,7 +284,7 @@ func parseAnswer(content string) (Answer, error) {
 		return Answer{}, errors.New("more than one JSON value")
 	}
 	if a.Decision != "approve" && a.Decision != "reject" {
-		return Answer{}, fmt.Errorf("decision %q is neither approve nor reject", a.Decision)
+		return Answer{}, fmt.Errorf("decision %q is neither approve nor reject", Clean(a.Decision))
 	}
 	return a, nil
 }

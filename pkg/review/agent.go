@@ -221,9 +221,11 @@ func run(cmd *exec.Cmd) ([]byte, error) {
 }
 
 // clip keeps the last few hundred bytes of an agent's message, where the
-// cause of a failure usually is, without splitting a character.
+// cause of a failure usually is, without splitting a character. It cleans
+// the whole message first: a cut through a token's prefix would hide the
+// rest of it from the redaction.
 func clip(s string) string {
-	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(Clean(s))
 	const keep = 300
 	if len(s) > keep {
 		s = "…" + strings.ToValidUTF8(s[len(s)-keep:], "")

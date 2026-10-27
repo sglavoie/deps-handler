@@ -132,6 +132,13 @@ func TestVerdictDropsControlCharacters(t *testing.T) {
 	}
 }
 
+func TestVerdictRedactsAnInvalidDecision(t *testing.T) {
+	_, err := Verdict(Answer{Decision: "ghp_A1b2A1b2A1b2A1b2\u200b" + strings.Repeat("C3d4", 5)})
+	if err == nil || strings.Contains(err.Error(), "A1b2") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestPrompt(t *testing.T) {
 	p, err := Prompt(request(), &github.PullRequestDetails{Body: "## Breaking\nremoved foo()", Diff: "+lib 2.0.0", Truncated: true})
 	if err != nil {
@@ -212,6 +219,9 @@ func TestPromptCutsOnCharacters(t *testing.T) {
 	}
 	if !utf8.ValidString(p) || !strings.Contains(p, strings.Repeat("a", maxBodyBytes-1)+"\n[description truncated]") {
 		t.Error("the description must be cut before a split character")
+	}
+	if s := clip("ghp_" + strings.Repeat("A1b2", 9) + " " + strings.Repeat("t", 260)); strings.Contains(s, "A1b2") {
+		t.Fatalf("clip cut a token's prefix before redacting it: %q", s)
 	}
 	if s := clip(strings.Repeat("é", 400)); !utf8.ValidString(s) {
 		t.Errorf("clip split a character: %q", s)
