@@ -93,6 +93,21 @@ func TestTools(t *testing.T) {
 	}
 }
 
+// A minified bundle is one huge line: reading it gives the start of the
+// line, numbered as the others, rather than megabytes or an error.
+func TestReadFileCutsLongLines(t *testing.T) {
+	root := t.TempDir()
+	bundle := "first\n" + strings.Repeat("x", 2<<20) + "\nlast"
+	if err := os.WriteFile(filepath.Join(root, "dist.js"), []byte(bundle), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := runTool(root, "read_file", `{"path": "dist.js"}`)
+	want := "1\tfirst\n2\t" + strings.Repeat("x", maxLineBytes) + " … [line cut at 2000 bytes]\n3\tlast\n"
+	if got != want {
+		t.Errorf("read = %.200q… (%d bytes), want %d bytes", got, len(got), len(want))
+	}
+}
+
 // fakeModel is an OpenAI-compatible endpoint answering with replies, in
 // order, and keeping the requests.
 type fakeModel struct {

@@ -65,6 +65,7 @@ const (
 	maxListEntries  = 500
 	maxReadLines    = 400
 	maxReadBytes    = 64 << 10
+	maxLineBytes    = 2000
 	maxSearchHits   = 200
 	maxSearchedFile = 1 << 20
 )
@@ -408,10 +409,15 @@ func readFile(root, rel string, offset, limit int) (string, error) {
 		limit = maxReadLines
 	}
 	var b strings.Builder
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	r := bufio.NewReaderSize(f, 64<<10)
 	line, shown := 0, 0
-	for sc.Scan() {
+	for {
+		text, clipped, err := readLine(r, maxLineBytes)
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return "", err
+		}
 		line++
 		if line < offset {
 			continue
@@ -420,20 +426,39 @@ func readFile(root, rel string, offset, limit int) (string, error) {
 			fmt.Fprintf(&b, "... more lines follow; read from offset %d\n", line)
 			break
 		}
-		text := sc.Text()
 		if strings.ContainsRune(text, 0) {
 			return "", errors.New("binary file")
 		}
+		if clipped {
+			text += fmt.Sprintf(" … [line cut at %d bytes]", maxLineBytes)
+		}
 		fmt.Fprintf(&b, "%d\t%s\n", line, text)
 		shown++
-	}
-	if err := sc.Err(); err != nil {
-		return "", err
 	}
 	if shown == 0 {
 		return fmt.Sprintf("(no lines from offset %d; the file has %d)", offset, line), nil
 	}
 	return b.String(), nil
+}
+
+// readLine reads the next line of r, without its line ending, keeping at
+// most limit bytes of it, and reports whether it held more. A minified
+// bundle, as an action's dist/index.js, is one line of megabytes: whole,
+// it would fill a local model's context, or fail to read at all.
+func readLine(r *bufio.Reader, limit int) (text string, clipped bool, err error) {
+	var b []byte
+	for {
+		chunk, more, err := r.ReadLine()
+		if err != nil {
+			return "", false, err
+		}
+		keep := min(len(chunk), limit-len(b))
+		clipped = clipped || keep < len(chunk)
+		b = append(b, chunk[:keep]...)
+		if !more {
+			return strings.ToValidUTF8(string(b), ""), clipped, nil
+		}
+	}
 }
 
 func search(root, rel, pattern string) (string, error) {
