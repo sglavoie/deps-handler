@@ -62,7 +62,7 @@ func TestNewRequest(t *testing.T) {
 func TestKey(t *testing.T) {
 	a, b := request(), request()
 	b.HeadOID = "rebased"
-	if a.Key() != b.Key() || a.Key() != "o/r#7 lib@2.0.0" {
+	if a.Key() != b.Key() || a.Key() != `o/r#7 base="main" lib@2.0.0` {
 		t.Errorf("a rebase should keep the key: %q vs %q", a.Key(), b.Key())
 	}
 	b.Owner, b.Name = "O", "R"
@@ -82,8 +82,19 @@ func TestKey(t *testing.T) {
 		t.Errorf("a commit without metadata must pin the head commit: %q", b.Key())
 	}
 	b.Dependencies, b.Unread = nil, false
-	if b.Key() != "o/r#7 rebased" {
+	if b.Key() != `o/r#7 base="main" rebased` {
 		t.Errorf("key without dependencies = %q", b.Key())
+	}
+}
+
+func TestKeyDistinguishesTargetBranches(t *testing.T) {
+	a := request()
+	for _, base := range []string{"release", "Main", ""} {
+		b := request()
+		b.BaseRef = base
+		if a.Key() == b.Key() {
+			t.Errorf("target branch %q reused the key for %q", base, a.BaseRef)
+		}
 	}
 }
 
@@ -762,11 +773,22 @@ func TestCacheNormalisesRepositoryCase(t *testing.T) {
 	if got := c.Entries(); len(got) != 1 || got[0].Key != "acme/repo#1 Lib@2.0.0" || got[0].Verdict.Summary != "new" {
 		t.Fatalf("entries = %+v; want the newer verdict under the lower-cased key", got)
 	}
-	req := request()
-	req.Owner, req.Name, req.Number = "ACME", "Repo", 1
-	req.Dependencies[0].Name = "Lib"
-	if c.Get(req.Key(), "sha") == nil || c.Get("Acme/REPO#1 Lib@2.0.0", "sha") == nil {
+	if c.Get("ACME/Repo#1 Lib@2.0.0", "sha") == nil || c.Get("Acme/REPO#1 Lib@2.0.0", "sha") == nil {
 		t.Error("a verdict must be found whatever the repository's case")
+	}
+}
+
+func TestCacheDoesNotReuseVerdictWithoutTargetBranch(t *testing.T) {
+	c, err := OpenCache(filepath.Join(t.TempDir(), "verdicts.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := request()
+	if err := c.Put("o/r#7 lib@2.0.0", req.HeadOID, "claude", policy.Verdict{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Get(req.Key(), req.HeadOID) != nil {
+		t.Fatal("a legacy approval records no target branch and needs a fresh review")
 	}
 }
 

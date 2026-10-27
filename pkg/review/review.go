@@ -65,8 +65,9 @@ func NewRequest(rc config.Repo, d policy.Decision) Request {
 	}
 }
 
-// Key identifies the update under review: the PR and the versions it moves
-// to. A rebase changes the head commit but not the update, so an approval
+// Key identifies the update under review: the PR, its target branch and
+// the versions it moves to. Retargeting a PR requires a fresh review. A
+// rebase changes the head commit but not the update, so an approval
 // still holds (the cache drops a rejection then); when Dependabot does not
 // record versions, or a commit records no dependencies at all, the head
 // commit stands in for them, so not even an approval survives a rebase
@@ -81,7 +82,7 @@ func (r Request) Key() string {
 		versioned = versioned && d.Version != ""
 	}
 	slices.Sort(deps)
-	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number)}
+	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number), fmt.Sprintf("base=%q", r.BaseRef)}
 	if len(deps) > 0 {
 		parts = append(parts, strings.Join(deps, ","))
 	}

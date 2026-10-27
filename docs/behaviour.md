@@ -228,9 +228,11 @@ Reviews run after their repository's other merges, four at a time
 repository reviews its PRs one after another, so more reviews than
 `--parallel` never run at once. Verdicts are kept for 14 days in
 `~/.local/state/deps-merger/verdicts.json`, keyed by the PR (ignoring the
-case of `owner/name`) and the versions it moves to: a new version is
-always reviewed again. The key leaves out the agent, so a verdict one
-agent gave is reused when another runs. An approval survives a rebase; a
+case of `owner/name`), the target branch (case-sensitive), and the versions
+it moves to: a new version or a change of target branch is always reviewed
+again. Older cached verdicts that do not record a target branch are not
+reused. The key leaves out the agent, so a verdict one agent gave is
+reused when another runs. An approval survives a rebase; a
 rejection does not, since the base branch the PR now sits on may have
 dealt with what the agent objected to. The exception is an update whose
 versions Dependabot does not record (a Docker digest, an action pinned by
@@ -387,8 +389,9 @@ before: the built-in defaults, your `defaults`, the owner's file, the
 repo's file, then your entry for the repo. A file that is missing, or in
 a repository the token cannot see, is skipped. An empty file sets nothing.
 A file that is invalid (an unknown field, a bad value or none, a second YAML
-document, a directory, a binary or a file too large), or that cannot be
-read, fails that repo: nothing in it is judged or written. The report
+document, a recursive merge alias, a directory, a binary or a file too
+large), or that cannot be read, fails that repo: nothing in it is judged
+or written. The report
 names the files used under the repo's header (`policy from ...`), and
 `run --json` lists them in `config_files`. `deps-merger repos` reads
 nothing from GitHub and shows the policy from your config alone.
@@ -437,7 +440,8 @@ under `repos` is an error rather than skipped, and
 `codex.home` must be absolute or start with `~/`: a relative path would
 depend on the directory deps-merger runs from, which under cron is rarely
 the config's. A repo entry can borrow another's settings with a YAML merge
-key, and the merged fields are checked like any other:
+key, and the merged fields are checked like any other. Recursive merge
+aliases are rejected:
 
 ```yaml
 repos:

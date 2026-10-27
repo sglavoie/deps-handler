@@ -594,6 +594,46 @@ func TestAgentVerdictsAreCached(t *testing.T) {
 	}
 }
 
+func TestRetargetedPRNeedsAnotherReview(t *testing.T) {
+	for _, cached := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cached=%t", cached), func(t *testing.T) {
+			pr := testutil.PR(1, "lib:major")
+			pr.BaseRef = "main"
+			c := &fakeClient{repo: testutil.Repo(pr)}
+			rv := &fakeReviewer{}
+			r := reviewRunner(c, rv, true)
+			r.MaxReviews = 1
+			wantAction, wantReviews := policy.ActionReview, 1
+			if cached {
+				cache, err := review.OpenCache(t.TempDir() + "/verdicts.json")
+				if err != nil {
+					t.Fatal(err)
+				}
+				r.Verdicts = cache
+				r.Apply = false
+				if res := r.RunRepo(context.Background(), repoCfg); res.Failed() {
+					t.Fatalf("initial review failed: %+v", res)
+				}
+				c.repo.PullRequests[0].BaseRef = "release"
+				rv.verdicts = map[int]policy.Verdict{1: {Summary: "incompatible with the release branch"}}
+				r = reviewRunner(c, rv, true)
+				r.Verdicts = cache
+				wantAction, wantReviews = policy.ActionSkip, 2
+			} else {
+				rv.onReview = func(review.Request) {
+					// Retargeting need not change the head SHA or versions.
+					c.repo.PullRequests[0].BaseRef = "release"
+				}
+			}
+			// The approval of main must not authorize a merge into release.
+			res := r.RunRepo(context.Background(), repoCfg)
+			if len(c.merges) != 0 || len(rv.calls) != wantReviews || res.Failed() || len(res.Decisions) != 1 || res.Decisions[0].Action != wantAction {
+				t.Fatalf("merges %v, reviews %v, result %+v", c.merges, rv.calls, res)
+			}
+		})
+	}
+}
+
 func TestTimedOutMergeThatWentThroughIsReportedMerged(t *testing.T) {
 	fc := &fakeClient{
 		repo:         testutil.Repo(testutil.PR(1)),

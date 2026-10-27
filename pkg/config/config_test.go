@@ -118,6 +118,47 @@ func TestParseFollowsMergeKeys(t *testing.T) {
 	}
 }
 
+func TestPolicyRejectsRecursiveMergeKeys(t *testing.T) {
+	for name, input := range map[string]string{
+		"mapping":  "&loop {<<: *loop}",
+		"sequence": "&loop {<<: [*loop]}",
+		"nested":   "&loop {<<: {<<: *loop}}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, in := range []string{
+				"defaults: " + input + "\nrepos: [o/r]",
+				"repos: [" + input + "]",
+			} {
+				if _, err := Parse([]byte(in)); err == nil || !strings.Contains(err.Error(), "recursive") {
+					t.Errorf("Parse(%q) = %v; want a recursive alias error", in, err)
+				}
+			}
+			for _, org := range []bool{false, true} {
+				var ownerFile, repoFile []byte
+				if org {
+					ownerFile = []byte(input)
+				} else {
+					repoFile = []byte(input)
+				}
+				if _, err := NewRepo("o", "r", Builtin).WithFiles(ownerFile, repoFile); err == nil || !strings.Contains(err.Error(), "recursive") {
+					t.Errorf("WithFiles(org=%t) = %v; want a recursive alias error", org, err)
+				}
+			}
+		})
+	}
+}
+
+func TestPolicyAcceptsRepeatedMergeAliases(t *testing.T) {
+	in := "defaults: {<<: [&shared {max_update_type: patch}, *shared]}\nrepos: [o/r]"
+	cfg, err := Parse([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Repos[0].Policy.MaxUpdateType != UpdatePatch {
+		t.Fatalf("policy = %+v", cfg.Repos[0].Policy)
+	}
+}
+
 func TestFilter(t *testing.T) {
 	cfg, err := Parse([]byte("repos: [acme/Billing, acme/Storefront]"))
 	if err != nil {

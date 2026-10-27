@@ -130,9 +130,9 @@ again before it merges. Reviews run after their repository's other
 merges, four at a time (`--review-parallel`), at most 10 per run
 (`--max-reviews`). Verdicts
 are cached for 14 days in `~/.local/state/deps-merger/verdicts.json`, so a
-scheduled run does not pay twice for the same update; a new version is
-always reviewed again, and a rejection lasts only until Dependabot
-rebases the PR. `deps-merger verdicts` lists them and
+scheduled run does not pay twice for the same update; a new version or a
+change of target branch is always reviewed again, and a rejection lasts
+only until Dependabot rebases the PR. `deps-merger verdicts` lists them and
 `deps-merger verdicts forget acme/Storefront#42` drops them. Set
 `agent_review: false` on a repo to keep the agent out of it.
 
@@ -232,6 +232,9 @@ The owner's file overrides your `defaults`, the repository's file
 overrides its owner's, and your entry for the repository overrides both.
 `deps-merger repos` shows your config alone; a run reads the files, and
 its report names those it used.
+
+Recursive YAML merge aliases are rejected in both local config and
+repository policy files.
 
 ## As a library
 

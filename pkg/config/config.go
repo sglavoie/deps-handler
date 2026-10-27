@@ -289,13 +289,27 @@ func checkEntryKeys(n *yaml.Node) error { return checkKeys(n, entryKeys, " in re
 // It follows YAML merge keys ("<<: *shared") into the mappings they pull
 // in. where follows "unknown field" in an error.
 func checkKeys(n *yaml.Node, keys map[string]bool, where string) error {
+	return checkKeysVisited(n, keys, where, make(map[*yaml.Node]bool))
+}
+
+// visited records nodes on the current path as false and fully checked
+// nodes as true. Reject cycles before Node.Decode can see them, and check
+// shared mappings only once even when many merge aliases reference them.
+func checkKeysVisited(n *yaml.Node, keys map[string]bool, where string, visited map[*yaml.Node]bool) error {
 	if n.Kind == yaml.AliasNode {
 		n = n.Alias
 	}
+	if done, seen := visited[n]; seen {
+		if !done {
+			return fmt.Errorf("line %d: recursive YAML merge alias", n.Line)
+		}
+		return nil
+	}
+	visited[n] = false
 	switch n.Kind {
 	case yaml.SequenceNode: // <<: [*a, *b]
 		for _, c := range n.Content {
-			if err := checkKeys(c, keys, where); err != nil {
+			if err := checkKeysVisited(c, keys, where, visited); err != nil {
 				return err
 			}
 		}
@@ -307,7 +321,7 @@ func checkKeys(n *yaml.Node, keys map[string]bool, where string) error {
 			}
 			switch {
 			case k.Tag == "!!merge":
-				if err := checkKeys(v, keys, where); err != nil {
+				if err := checkKeysVisited(v, keys, where, visited); err != nil {
 					return err
 				}
 			case !keys[k.Value]:
@@ -317,6 +331,7 @@ func checkKeys(n *yaml.Node, keys map[string]bool, where string) error {
 			}
 		}
 	}
+	visited[n] = true
 	return nil
 }
 
