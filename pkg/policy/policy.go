@@ -110,6 +110,13 @@ func approveAll(Decision) *Verdict { return &Verdict{Approved: true} }
 // the authenticated login, used to avoid repeating our own rebase requests.
 // judge supplies agent verdicts and may be nil.
 func Evaluate(repo *github.Repo, p config.Policy, viewer string, judge Judge) []Decision {
+	return EvaluateAfter(repo, p, viewer, judge, nil)
+}
+
+// EvaluateAfter is Evaluate later in a run that already failed to merge
+// the PRs in refused: they still read as merges, but will not merge
+// before the next run, so they no longer hold the rebase queue.
+func EvaluateAfter(repo *github.Repo, p config.Policy, viewer string, judge Judge, refused map[int]bool) []Decision {
 	out := make([]Decision, 0, len(repo.PullRequests))
 	for i := range repo.PullRequests {
 		pr := &repo.PullRequests[i]
@@ -120,18 +127,19 @@ func Evaluate(repo *github.Repo, p config.Policy, viewer string, judge Judge) []
 		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
-	queueRebases(out)
+	queueRebases(out, refused)
 	return out
 }
 
 // queueRebases keeps at most one PR moving towards the base branch at a
 // time. When the base must be up to date, each merge puts every other PR
 // behind again, so rebasing them all at once reruns CI on each of them for
-// every merge. The rest wait behind the next merge or rebase.
-func queueRebases(ds []Decision) {
+// every merge. The rest wait behind the next merge or rebase; a merge in
+// refused is not next.
+func queueRebases(ds []Decision, refused map[int]bool) {
 	ahead := 0
 	for _, d := range ds {
-		if d.Action == ActionMerge || d.inFlight {
+		if d.Action == ActionMerge && !refused[d.Number] || d.inFlight {
 			ahead = d.Number
 			break
 		}
@@ -246,7 +254,8 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		d.inFlight = inFlight && (oversized == "" || d.Verdict != nil && d.Verdict.Approved)
 		return d
 	}
-	upToDate := pr.MergeState != "BEHIND"
+	// A PR in conflict will not merge next either, whatever its checks do.
+	upToDate := pr.MergeState != "BEHIND" && pr.MergeState != "DIRTY" && pr.Mergeable != "CONFLICTING"
 	// conflicts skips a PR that cannot merge cleanly, unless the base
 	// branch moved since its latest commit, as when a sibling PR touching
 	// the same lockfile just merged: Dependabot rebases it shortly.

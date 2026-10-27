@@ -383,6 +383,11 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 		t.Errorf("merge pending:\n got %s\nwant %s", got, want)
 	}
 
+	ds = EvaluateAfter(testutil.Repo(testutil.PR(1), behind(2)), defaultPolicy, "me", nil, map[int]bool{1: true})
+	if got, want := actions(ds), "merge checks green, within policy; rebase behind base branch"; got != want {
+		t.Errorf("merge refused:\n got %s\nwant %s", got, want)
+	}
+
 	requested := behind(1)
 	requested.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
 	ds = Evaluate(testutil.Repo(requested, behind(2)), defaultPolicy, "me", nil)
@@ -411,6 +416,14 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 	ds = Evaluate(testutil.Repo(pushed, behind(2)), defaultPolicy, "me", nil)
 	if got, want := actions(ds), "wait checks not yet reported for head commit sha1; wait queued behind #1"; got != want {
 		t.Errorf("checks not reported:\n got %s\nwant %s", got, want)
+	}
+
+	conflicting := testutil.PR(1)
+	conflicting.Checks[0].State = github.CheckPending
+	conflicting.Mergeable, conflicting.MergeState = "CONFLICTING", "DIRTY"
+	ds = Evaluate(testutil.Repo(conflicting, behind(2)), defaultPolicy, "me", nil)
+	if got, want := actions(ds), "wait 1 check(s) still running; rebase behind base branch"; got != want {
+		t.Errorf("in conflict:\n got %s\nwant %s", got, want)
 	}
 
 	// Neither a held major nor a PR that is itself behind will merge next.

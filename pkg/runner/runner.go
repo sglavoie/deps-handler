@@ -415,7 +415,11 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		res.Permission = repo.Permission
 		method, methodErr := policy.MergeMethod(repo, rc.Policy.MergeMethod)
 		res.MergeMethod = method
-		decisions := policy.Evaluate(repo, rc.Policy, r.Viewer, judge)
+		refused := map[int]bool{}
+		for _, ev := range res.Events {
+			refused[ev.Number] = refused[ev.Number] || ev.Kind == EventMergeFailed
+		}
+		decisions := policy.EvaluateAfter(repo, rc.Policy, r.Viewer, judge, refused)
 		res.Decisions = decisions
 		res.Findings = policy.Diagnose(repo, rc.Policy, decisions)
 

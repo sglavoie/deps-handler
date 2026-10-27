@@ -264,6 +264,20 @@ func TestApplyContinuesAfterMergeFailure(t *testing.T) {
 	}
 }
 
+func TestApplyRebasesBehindARefusedMerge(t *testing.T) {
+	behind := testutil.PR(2)
+	behind.MergeState = "BEHIND"
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), behind), failMerge: map[int]bool{1: true}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	kinds := []EventKind{}
+	for _, ev := range res.Events {
+		kinds = append(kinds, ev.Kind)
+	}
+	if want := []EventKind{EventMergeFailed, EventRebaseRequested}; !slices.Equal(kinds, want) || res.Events[1].Number != 2 {
+		t.Fatalf("events = %+v; a refused merge must not hold the rebase queue", res.Events)
+	}
+}
+
 func TestApplyRetriesTransientMergeFailureOnce(t *testing.T) {
 	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), transient: map[int]int{1: 1}}
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
