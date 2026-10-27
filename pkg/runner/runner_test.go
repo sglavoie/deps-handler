@@ -278,6 +278,20 @@ func TestApplyRebasesBehindARefusedMerge(t *testing.T) {
 	}
 }
 
+func TestApplyRebasesBehindARefusedRebase(t *testing.T) {
+	first, second := testutil.PR(1), testutil.PR(2)
+	first.MergeState, second.MergeState = "BEHIND", "BEHIND"
+	fc := &fakeClient{repo: testutil.Repo(first, second), commentErrs: map[int]error{1: &api.HTTPError{StatusCode: 403, Message: "issue is locked"}}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	kinds := []EventKind{}
+	for _, ev := range res.Events {
+		kinds = append(kinds, ev.Kind)
+	}
+	if want := []EventKind{EventRebaseFailed, EventRebaseRequested}; !slices.Equal(kinds, want) || res.Events[1].Number != 2 {
+		t.Fatalf("events = %+v; a refused rebase request must not hold the rebase queue", res.Events)
+	}
+}
+
 func TestApplyRetriesTransientMergeFailureOnce(t *testing.T) {
 	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), transient: map[int]int{1: 1}}
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)

@@ -417,13 +417,14 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		res.MergeMethod = method
 		refused := map[int]bool{}
 		for _, ev := range res.Events {
-			refused[ev.Number] = refused[ev.Number] || ev.Kind == EventMergeFailed
+			refused[ev.Number] = refused[ev.Number] || ev.Kind == EventMergeFailed || ev.Kind == EventRebaseFailed
 		}
 		decisions := policy.EvaluateAfter(repo, rc.Policy, r.Viewer, judge, refused)
 		res.Decisions = decisions
 		res.Findings = policy.Diagnose(repo, rc.Policy, decisions)
 
 		var next *policy.Decision
+		rebaseRefused := false
 		if apply {
 			for _, d := range decisions {
 				if d.Action != policy.ActionRebase || rebased[d.Number] {
@@ -446,6 +447,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 					res.Warnings = append(res.Warnings, fmt.Sprintf("#%d: the rebase request may not have been posted: interrupted", d.Number))
 				default:
 					ev.Kind, ev.Detail = EventRebaseFailed, errText(ctx, err)
+					rebaseRefused = true
 				}
 				res.Events = append(res.Events, ev)
 			}
@@ -458,6 +460,10 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			}
 		}
 
+		if next == nil && rebaseRefused && ctx.Err() == nil && !r.writesBlocked.Load() {
+			// The PR queued behind the refused one may ask in its place.
+			continue
+		}
 		if next != nil {
 			attempted[next.Number] = true
 			// This try supersedes an earlier one that may have gone through:

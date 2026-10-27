@@ -388,6 +388,11 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 		t.Errorf("merge refused:\n got %s\nwant %s", got, want)
 	}
 
+	ds = EvaluateAfter(testutil.Repo(behind(1), behind(2)), defaultPolicy, "me", nil, map[int]bool{1: true})
+	if got, want := actions(ds), "rebase behind base branch; rebase behind base branch"; got != want {
+		t.Errorf("rebase refused:\n got %s\nwant %s", got, want)
+	}
+
 	requested := behind(1)
 	requested.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
 	ds = Evaluate(testutil.Repo(requested, behind(2)), defaultPolicy, "me", nil)

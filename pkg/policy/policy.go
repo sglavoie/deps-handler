@@ -113,9 +113,10 @@ func Evaluate(repo *github.Repo, p config.Policy, viewer string, judge Judge) []
 	return EvaluateAfter(repo, p, viewer, judge, nil)
 }
 
-// EvaluateAfter is Evaluate later in a run that already failed to merge
-// the PRs in refused: they still read as merges, but will not merge
-// before the next run, so they no longer hold the rebase queue.
+// EvaluateAfter is Evaluate later in a run that already failed to merge,
+// or to ask to rebase, the PRs in refused: they still read as merges or
+// rebases, but will not move before the next run, so they no longer hold
+// the rebase queue.
 func EvaluateAfter(repo *github.Repo, p config.Policy, viewer string, judge Judge, refused map[int]bool) []Decision {
 	out := make([]Decision, 0, len(repo.PullRequests))
 	for i := range repo.PullRequests {
@@ -134,8 +135,8 @@ func EvaluateAfter(repo *github.Repo, p config.Policy, viewer string, judge Judg
 // queueRebases keeps at most one PR moving towards the base branch at a
 // time. When the base must be up to date, each merge puts every other PR
 // behind again, so rebasing them all at once reruns CI on each of them for
-// every merge. The rest wait behind the next merge or rebase; a merge in
-// refused is not next.
+// every merge. The rest wait behind the next merge or rebase; a merge or
+// rebase in refused is not next.
 func queueRebases(ds []Decision, refused map[int]bool) {
 	ahead := 0
 	for _, d := range ds {
@@ -145,7 +146,7 @@ func queueRebases(ds []Decision, refused map[int]bool) {
 		}
 	}
 	for i := range ds {
-		if ds[i].Action != ActionRebase {
+		if ds[i].Action != ActionRebase || refused[ds[i].Number] {
 			continue
 		}
 		if ahead == 0 {
