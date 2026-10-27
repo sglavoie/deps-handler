@@ -740,6 +740,12 @@ func Transient(err error) bool {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) {
 		return true
 	}
+	// The same over HTTP/2, as GitHub speaks it: a stream reset, or the
+	// connection gone away under it. net/http keeps these errors' types
+	// to itself, so only their text tells them apart.
+	if msg := err.Error(); strings.Contains(msg, "stream error: stream ID") || strings.Contains(msg, "http2: server sent GOAWAY") || strings.Contains(msg, "http2: client connection lost") {
+		return true
+	}
 	if ge, ok := errors.AsType[*api.GraphQLError](err); ok {
 		for _, e := range ge.Errors {
 			if strings.Contains(e.Message, "Something went wrong") {

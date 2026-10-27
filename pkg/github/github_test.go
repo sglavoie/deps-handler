@@ -78,6 +78,10 @@ func TestTransient(t *testing.T) {
 		&url.Error{Op: "Put", URL: "u", Err: &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}}: true,
 		io.ErrUnexpectedEOF: true,
 		&url.Error{Op: "Put", URL: "u", Err: context.Canceled}: false,
+		// The same over HTTP/2, whose errors net/http does not export.
+		&url.Error{Op: "Put", URL: "u", Err: errors.New("stream error: stream ID 1; INTERNAL_ERROR; received from peer")}:                                   true,
+		&url.Error{Op: "Put", URL: "u", Err: errors.New(`http2: server sent GOAWAY and closed the connection; LastStreamID=1, ErrCode=NO_ERROR, debug=""`)}: true,
+		&url.Error{Op: "Put", URL: "u", Err: errors.New("http2: client connection lost")}:                                                                   true,
 	} {
 		if got := Transient(err); got != want {
 			t.Errorf("Transient(%v) = %t, want %t", err, got, want)
