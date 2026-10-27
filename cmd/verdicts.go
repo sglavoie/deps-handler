@@ -106,7 +106,9 @@ update as "verdicts" lists it. Exits 1 if a target matched nothing.`,
 					unmatched++
 					continue
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s: forgot %d verdict(s)\n", t, n)
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s: forgot %d verdict(s)\n", t, n); err != nil {
+					return err
+				}
 			}
 			if unmatched > 0 {
 				return exitError{code: 1}
@@ -155,8 +157,8 @@ func printVerdicts(cmd *cobra.Command, entries []review.Entry, asJSON bool) erro
 		return verdictsJSON(cmd, entries)
 	}
 	if len(entries) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "no cached verdicts")
-		return nil
+		_, err := fmt.Fprintln(cmd.OutOrStdout(), "no cached verdicts")
+		return err
 	}
 	tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "UPDATE\tVERDICT\tAGENT\tHEAD\tREVIEWED\tEXPIRES\tSUMMARY")

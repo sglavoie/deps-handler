@@ -198,6 +198,8 @@ verdicts for a later `--apply`). The exit status is:
 
 A failed review still makes the run exit `1` if the PR closes or changes
 before the next repository read; its failure remains in the report.
+`init`, `repos` and `verdicts` also exit `1` if their output cannot be
+written, including confirmations after a config or cache change.
 
 `run`, `repos` and `verdicts` take `--json`. `run --json` prints
 `{"apply": bool, "results": [...]}`, one result per repository with its
@@ -266,6 +268,9 @@ Custom clients must normalize check states to the `github.CheckState`
 constants; empty or unrecognized states block merging even when checks
 are optional, an agent approved the update, or a newer check would otherwise
 supersede the unrecognized one.
+The review cache copies verdict concerns on storage and retrieval, so callers
+can edit their own copies independently. Codex reviews accept absolute or
+relative checkout paths.
 
 ## Contributing
 

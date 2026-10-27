@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -23,7 +24,8 @@ const CacheTTL = 14 * 24 * time.Hour
 // Cache keeps verdicts between runs in a JSON file so a scheduled run does
 // not pay for the same review again. It is safe for concurrent use, and
 // each write starts from the file as it is then, so it keeps what another
-// process stored or forgot meanwhile.
+// process stored or forgot meanwhile. Stored and returned verdicts own
+// their concerns slices; callers can change their copies independently.
 type Cache struct {
 	path    string
 	now     func() time.Time
@@ -172,6 +174,7 @@ func (c *Cache) Get(key, head string) *policy.Verdict {
 	if !ok || c.expired(e) || !e.Verdict.Approved && e.HeadOID != "" && e.HeadOID != head {
 		return nil
 	}
+	e.Verdict.Concerns = slices.Clone(e.Verdict.Concerns)
 	return &e.Verdict
 }
 
@@ -182,6 +185,7 @@ func (c *Cache) Entries() []Entry {
 	var out []Entry
 	for k, e := range c.entries {
 		if !c.expired(e) {
+			e.Verdict.Concerns = slices.Clone(e.Verdict.Concerns)
 			out = append(out, Entry{Key: k, Agent: e.Agent, HeadOID: e.HeadOID, ReviewedAt: e.ReviewedAt, Expires: e.ReviewedAt.Add(CacheTTL), Verdict: e.Verdict})
 		}
 	}
@@ -193,6 +197,7 @@ func (c *Cache) Entries() []Entry {
 func (c *Cache) Put(key, head, agent string, v policy.Verdict) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	v.Concerns = slices.Clone(v.Concerns)
 	return c.update(func(entries map[string]cacheEntry) {
 		entries[normKey(key)] = cacheEntry{Verdict: v, Agent: agent, HeadOID: head, ReviewedAt: c.now()}
 	})

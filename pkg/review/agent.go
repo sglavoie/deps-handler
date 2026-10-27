@@ -123,6 +123,13 @@ type Codex struct {
 func (c Codex) Name() string { return "codex" }
 
 func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
+	// --cd is resolved by the child after cmd.Dir has already changed its
+	// working directory. Make it absolute so a relative checkout is not
+	// resolved a second time inside itself.
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return Answer{}, err
+	}
 	tmp, err := os.MkdirTemp("", "deps-merger-codex-")
 	if err != nil {
 		return Answer{}, err

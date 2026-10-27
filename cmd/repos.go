@@ -59,8 +59,8 @@ repository, which can override it.`,
 			if err := tw.Flush(); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "\nagent for --review: "+agentSummary(cfg.Agent))
-			return nil
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "\nagent for --review: "+agentSummary(cfg.Agent))
+			return err
 		},
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "print the repositories and the agent as JSON")

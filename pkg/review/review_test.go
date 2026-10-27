@@ -332,6 +332,27 @@ echo '{"decision":"reject","summary":"breaks","breaking_changes":["x"],"concerns
 	}
 }
 
+func TestCodexRelativeCheckout(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir("checkout", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("checkout/marker", []byte("reviewed checkout"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd, _ := fakeAgent(t, `while [ $# -gt 0 ]; do
+  [ "$1" = --output-last-message ] && out=$2
+  [ "$1" = --cd ] && work=$2
+  shift
+done
+cd "$work" || exit 1
+[ "$(cat marker)" = "reviewed checkout" ] || exit 1
+echo '{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":[]}' > "$out"`)
+	if _, err := (Codex{Command: cmd}).Run(context.Background(), "checkout", "review"); err != nil {
+		t.Fatalf("relative checkout: %v", err)
+	}
+}
+
 func TestCodexErrors(t *testing.T) {
 	for name, c := range map[string]struct{ body, err string }{
 		"no answer":  {`exit 0`, "codex: no answer"},

@@ -110,15 +110,20 @@ With --stdout, the config is printed rather than written.`,
 			}
 			out := cmd.OutOrStdout()
 			if backup != "" {
-				fmt.Fprintf(out, "moved the existing config to %s\n", backup)
+				if _, err := fmt.Fprintf(out, "moved the existing config to %s\n", backup); err != nil {
+					return err
+				}
 			}
-			fmt.Fprintf(out, "wrote %s\n", path)
+			if _, err := fmt.Fprintf(out, "wrote %s\n", path); err != nil {
+				return err
+			}
+			var err error
 			if discover {
-				fmt.Fprintf(out, "check the repositories it lists under repos: with `%s`, then try a dry run with `%s`\n", command("repos"), command("run"))
+				_, err = fmt.Fprintf(out, "check the repositories it lists under repos: with `%s`, then try a dry run with `%s`\n", command("repos"), command("run"))
 			} else {
-				fmt.Fprintf(out, "list your repositories under repos:, then check them with `%s`\n", command("repos"))
+				_, err = fmt.Fprintf(out, "list your repositories under repos:, then check them with `%s`\n", command("repos"))
 			}
-			return nil
+			return err
 		},
 	}
 	c.Flags().BoolVar(&toStdout, "stdout", false, "print the config instead of writing it")
