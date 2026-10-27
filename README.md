@@ -200,6 +200,11 @@ Under each repo the report lists, without acting on them:
 - **agent rejected** / **agent failed**: an update the agent judged unsafe,
   with its concerns, or could not review.
 
+Failure diagnosis compares checks by name and their available app, workflow
+and event identities, keeping commit status contexts separate from check runs.
+A same-named job from another source cannot establish or hide a shared
+failure, and a shared failure does not hide an update's separate failing job.
+
 ## Scripting
 
 A dry run never writes to GitHub, so `deps-merger run` is safe to

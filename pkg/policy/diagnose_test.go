@@ -111,6 +111,59 @@ func TestDiagnoseRepoWideFailureBesideAPendingRun(t *testing.T) {
 	}
 }
 
+func TestDiagnoseRepoWideCheckSources(t *testing.T) {
+	check := func(workflow int64, state github.CheckState) github.Check {
+		return github.Check{Name: "test", State: state, Suite: 1, App: 10, Workflow: workflow, Event: "pull_request"}
+	}
+	pr := func(number int, checks ...github.Check) github.PullRequest {
+		p := testutil.PR(number)
+		p.Checks = checks
+		return p
+	}
+	for _, field := range []string{"workflow", "app", "event", "status context"} {
+		t.Run("unrelated failures from different "+field, func(t *testing.T) {
+			a, b := check(1, github.CheckFailed), check(1, github.CheckFailed)
+			switch field {
+			case "workflow":
+				b.Workflow++
+			case "app":
+				b.App++
+			case "event":
+				b.Event = "push"
+			case "status context":
+				b = github.Check{Name: "test", State: github.CheckFailed, Status: true}
+			}
+			f := findings(testutil.Repo(pr(1, a), pr(2, b)))
+			if len(f[FindingRepoCheck]) != 0 || len(f[FindingIncompatible]) != 2 {
+				t.Fatalf("unrelated checks were treated as a shared failure: %+v", f)
+			}
+		})
+	}
+	t.Run("another workflow passing does not hide a shared failure", func(t *testing.T) {
+		f := findings(testutil.Repo(pr(1, check(1, github.CheckFailed)),
+			pr(2, check(1, github.CheckFailed)), pr(3, check(2, github.CheckPassed))))
+		if len(f[FindingRepoCheck]) != 1 || len(f[FindingRepoCheck][0].PRs) != 2 || len(f[FindingIncompatible]) != 0 {
+			t.Fatalf("findings = %+v", f)
+		}
+	})
+	t.Run("shared failure does not hide an isolated same-named failure", func(t *testing.T) {
+		f := findings(testutil.Repo(pr(1, check(1, github.CheckFailed), check(2, github.CheckFailed)),
+			pr(2, check(1, github.CheckFailed), check(2, github.CheckPassed))))
+		shared, own := f[FindingRepoCheck], f[FindingIncompatible]
+		if len(shared) != 1 || len(shared[0].PRs) != 2 || len(own) != 1 || own[0].PRs[0] != 1 {
+			t.Fatalf("findings = %+v", f)
+		}
+	})
+	t.Run("suites differ between PRs and repeated jobs count once", func(t *testing.T) {
+		a, b := check(1, github.CheckFailed), check(1, github.CheckFailed)
+		b.Suite = 2
+		f := findings(testutil.Repo(pr(1, a, a), pr(2, b, b)))
+		if len(f[FindingRepoCheck]) != 1 || len(f[FindingRepoCheck][0].PRs) != 2 || len(f[FindingIncompatible]) != 0 {
+			t.Fatalf("findings = %+v", f)
+		}
+	})
+}
+
 func TestDiagnoseCancelledRunIsNotRepoWide(t *testing.T) {
 	// Like ExcelAddIn: concurrency cancels CI on every PR in favour of a
 	// later run that passes.

@@ -115,12 +115,13 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	for _, d := range decisions {
 		byBase[d.PR.BaseRef] = append(byBase[d.PR.BaseRef], d)
 	}
-	repoWide := map[string]map[string][]int{}
+	repoWide := map[string]map[checkSource]bool{}
 	for _, base := range sortedKeys(byBase) {
 		checks := repoWideChecks(byBase[base])
-		repoWide[base] = checks
-		for _, name := range sortedKeys(checks) {
-			prs := checks[name]
+		repoWide[base] = map[checkSource]bool{}
+		for _, check := range checks {
+			repoWide[base][check.source] = true
+			prs := check.prs
 			all := fmt.Sprintf("all %d", len(prs))
 			if len(prs) == 2 {
 				all = "both"
@@ -131,7 +132,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 			}
 			out = append(out, Finding{
 				Kind:    FindingRepoCheck,
-				Summary: fmt.Sprintf("check %q fails on %s Dependabot PRs that ran it targeting %s; fix it on that branch", name, all, target),
+				Summary: fmt.Sprintf("check %q fails on %s Dependabot PRs that ran it targeting %s; fix it on that branch", check.source.name, all, target),
 				PRs:     prs,
 			})
 		}
@@ -231,53 +232,88 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	return out
 }
 
+// checkSource identifies the producer of a check across PRs. Suite IDs
+// differ between PRs, but the available app, workflow and event identities
+// must match. A status context is separate from a same-named check run.
+type checkSource struct {
+	name          string
+	app, workflow int64
+	event         string
+	status        bool
+}
+
+func sourceOf(c github.Check) checkSource {
+	if c.Status {
+		return checkSource{name: c.Name, status: true}
+	}
+	return checkSource{name: c.Name, app: c.App, workflow: c.Workflow, event: c.Event}
+}
+
+type sharedCheck struct {
+	source checkSource
+	prs    []int
+}
+
 // repoWideChecks compares decisions targeting a single base branch. It
-// returns check names that failed on every PR that ran them, on at least
-// two PRs, mapped to those PR numbers. The check must also have
+// returns checks that failed on every PR that ran them, on at least
+// two PRs, with those PR numbers. The check must also have
 // run on at least half of the PRs, so a job only stale PRs still carry is not
 // mistaken for a broken base branch. Only PRs judged on Dependabot's own head
 // commit count, for both: a check failing where a human pushed, or on an
 // older commit, says nothing about the base branch, and such PRs must not
 // dilute the half either.
-func repoWideChecks(decisions []Decision) map[string][]int {
-	ran := map[string]int{}
-	failed := map[string][]int{}
+func repoWideChecks(decisions []Decision) []sharedCheck {
+	ran := map[checkSource]int{}
+	failed := map[checkSource][]int{}
+	var sources []checkSource
 	judged := 0
 	for _, d := range decisions {
 		if !d.assessed {
 			continue
 		}
 		judged++
-		seen := map[string]bool{}
+		seen, seenFailed := map[checkSource]bool{}, map[checkSource]bool{}
 		for _, c := range LatestChecks(d.PR.Checks) {
 			// Only a passed or failed job counts: a skipped one did not run
 			// here, and one pending or stale has no say yet. Counting those
 			// would hide a broken base branch behind a job still running,
 			// and suggest ignoring every update that failed it.
-			if c.Name == "" || seen[c.Name] || (c.State != github.CheckPassed && c.State != github.CheckFailed) {
+			if c.Name == "" || (c.State != github.CheckPassed && c.State != github.CheckFailed) {
 				continue
 			}
-			seen[c.Name] = true
-			ran[c.Name]++
-		}
-		for _, name := range d.FailedChecks {
-			failed[name] = append(failed[name], d.Number)
+			source := sourceOf(c)
+			if !seen[source] {
+				seen[source] = true
+				ran[source]++
+			}
+			if c.State == github.CheckFailed && !seenFailed[source] {
+				seenFailed[source] = true
+				if len(failed[source]) == 0 {
+					sources = append(sources, source)
+				}
+				failed[source] = append(failed[source], d.Number)
+			}
 		}
 	}
-	out := map[string][]int{}
-	for name, prs := range failed {
-		if len(prs) >= 2 && len(prs) == ran[name] && 2*ran[name] >= judged {
-			out[name] = prs
+	var out []sharedCheck
+	for _, source := range sources {
+		prs := failed[source]
+		if len(prs) >= 2 && len(prs) == ran[source] && 2*ran[source] >= judged {
+			out = append(out, sharedCheck{source, prs})
 		}
 	}
+	// Preserve the order of first occurrence for same-named sources.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].source.name < out[j].source.name })
 	return out
 }
 
-func ownFailures(d Decision, repoWide map[string][]int) []string {
+func ownFailures(d Decision, repoWide map[checkSource]bool) []string {
 	var own []string
-	for _, name := range d.FailedChecks {
-		if _, ok := repoWide[name]; !ok {
-			own = append(own, name)
+	seen := map[string]bool{}
+	for _, c := range LatestChecks(d.PR.Checks) {
+		if c.State == github.CheckFailed && !repoWide[sourceOf(c)] && !seen[c.Name] {
+			own = append(own, c.Name)
+			seen[c.Name] = true
 		}
 	}
 	return own
