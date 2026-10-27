@@ -217,6 +217,10 @@ Under each repo the report lists, without acting on them:
 - **agent rejected** / **agent failed**: an update the agent judged unsafe,
   with its concerns, or could not review.
 
+Truncation findings remain visible with `--open`, even when every PR on
+the fetched search page has closed since GitHub indexed it. An incomplete
+search is not reported as having no open PRs.
+
 Failure diagnosis compares checks by name and their available app, workflow
 and event identities, keeping commit status contexts separate from check runs.
 A same-named job from another source cannot establish or hide a shared

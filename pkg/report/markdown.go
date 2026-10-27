@@ -40,7 +40,7 @@ func markdown(w io.Writer, apply bool, res runner.RepoResult) {
 		fmt.Fprintf(w, "**Error:** %s\n\n", mdText(res.Error))
 	} else {
 		decisions = pending(res)
-		if len(res.Decisions) == 0 && len(res.Events) == 0 {
+		if len(res.Decisions) == 0 && len(res.Events) == 0 && len(res.Findings) == 0 {
 			fmt.Fprint(w, "No open Dependabot PRs.\n\n")
 		}
 	}

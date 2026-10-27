@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -158,6 +159,35 @@ func TestRunOpenSummaryCountsHiddenRepos(t *testing.T) {
 	_, cfg := runFixture(t)
 	if _, out, _ := run("run", "-c", cfg, "--open"); !strings.Contains(out, "1 repo (1 without open PRs hidden): 1 would merge, 1 skipped") {
 		t.Fatalf("output:\n%s", out)
+	}
+}
+
+func TestRunKeepsTruncatedReposWithoutCurrentSearchHits(t *testing.T) {
+	for _, format := range []string{"text", "--markdown", "--json"} {
+		for _, onlyOpen := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/open=%t", format, onlyOpen), func(t *testing.T) {
+				fc, cfg := runFixture(t)
+				// The search index can return 100 recently closed PRs while
+				// counting more hits beyond the page. FetchRepo discards the
+				// closed PRs; that does not establish that no open PRs remain.
+				r := fc.repos["o/quiet"]
+				r.OpenPRCount, r.SearchCount = 120, 100
+				args := []string{"run", "-c", cfg, "-r", "quiet"}
+				if format != "text" {
+					args = append(args, format)
+				}
+				if onlyOpen {
+					args = append(args, "--open")
+				}
+				code, out, stderr := run(args...)
+				if code != 0 || !strings.Contains(out, "o/quiet") || !strings.Contains(out, "newer ones wait") {
+					t.Fatalf("truncation finding lost: code %d, stderr %q:\n%s", code, stderr, out)
+				}
+				if strings.Contains(strings.ToLower(out), "no open dependabot prs") {
+					t.Fatalf("incomplete search reported as empty:\n%s", out)
+				}
+			})
+		}
 	}
 }
 

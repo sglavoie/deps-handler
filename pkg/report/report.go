@@ -104,7 +104,7 @@ func repoBody(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		fmt.Fprintf(w, "  %s %s\n", s.paint(red, "error:"), s.paint("", res.Error))
 	} else {
 		decisions = pending(res)
-		if len(res.Decisions) == 0 && len(res.Events) == 0 {
+		if len(res.Decisions) == 0 && len(res.Events) == 0 && len(res.Findings) == 0 {
 			fmt.Fprintln(w, "  "+s.paint(dim, "no open Dependabot PRs"))
 		}
 	}
@@ -154,9 +154,11 @@ func listsPRs(k policy.FindingKind) bool {
 // HasPRs reports whether a repository had open Dependabot PRs to report,
 // or failed before it could tell. One with a warning counts too: the
 // warning may be the run's, such as a verdict cache found unreadable as it
-// started, and must not be hidden with the repository.
+// started, and must not be hidden with the repository. Findings count too:
+// a truncated search can leave unread PRs even when every returned hit
+// has closed since it was indexed.
 func HasPRs(res runner.RepoResult) bool {
-	return res.Error != "" || len(res.Decisions) > 0 || len(res.Events) > 0 || len(res.Warnings) > 0
+	return res.Error != "" || len(res.Decisions) > 0 || len(res.Events) > 0 || len(res.Warnings) > 0 || len(res.Findings) > 0
 }
 
 // Progress writes a one-line note that a repository is done, for runs whose
