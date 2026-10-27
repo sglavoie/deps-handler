@@ -127,6 +127,13 @@ type Repo struct {
 	entry overrides
 }
 
+// MayReview reports whether r's policy can allow agent reviews once its
+// owner's and its own files are applied: only its config entry, the last
+// layer, rules them out for certain.
+func (r Repo) MayReview() bool {
+	return r.Policy.AgentReview || r.entry.AgentReview == nil
+}
+
 // NewRepo returns a repository with policy base, as a config listing it
 // with no overrides would, for callers that build their own defaults.
 func NewRepo(owner, name string, base Policy) Repo {
@@ -430,7 +437,7 @@ func Parse(data []byte) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("repos: line %d: %s: %w", n.Line, e.Repo, err)
 		}
-		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: p, Skip: e.Skip, layered: true, base: defaults, entry: e.overrides})
+		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: settle(p), Skip: e.Skip, layered: true, base: defaults, entry: e.overrides})
 	}
 	if len(cfg.Repos) == 0 {
 		return nil, ErrNoRepos
@@ -476,7 +483,8 @@ func isAlnum(r rune) bool {
 // alongside require_checks: false, or inherited from the defaults), is an
 // error rather than silently ignored. One inherited from the defaults by a
 // repo that turns checks off is not: the default is meant for the others,
-// and the repo's policy drops it so that it shows nothing it does not use.
+// and settle drops it from the repo's policy once every layer is applied,
+// so that a later layer turning checks back on still has it.
 // A setting shorter than ChecksGrace waits ChecksGrace, and the policy says
 // so, since merging sooner could beat CI that has yet to start.
 func apply(base Policy, o overrides) (Policy, error) {
@@ -524,10 +532,17 @@ func apply(base Policy, o overrides) (Policy, error) {
 		}
 		p.MergeWithoutChecksAfter = d
 	}
+	return p, nil
+}
+
+// settle finishes a repo's policy, once every layer is applied: one that
+// turns checks off drops the merge_without_checks_after it inherited, so
+// that it shows nothing it does not use.
+func settle(p Policy) Policy {
 	if !p.RequireChecks {
 		p.MergeWithoutChecksAfter = 0
 	}
-	return p, nil
+	return p
 }
 
 func parseAgent(e agentEntry) (Agent, error) {
@@ -704,7 +719,7 @@ func (r Repo) WithFiles(org, repo []byte) (Repo, error) {
 	if err != nil {
 		return r, fmt.Errorf("config entry for %s, over its files: %w", r.FullName(), err)
 	}
-	r.Policy = p
+	r.Policy = settle(p)
 	return r, nil
 }
 

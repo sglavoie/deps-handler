@@ -396,6 +396,29 @@ repos:
 	}
 }
 
+func TestWithFilesKeepsNoChecksWaitThroughAnOrgThatTurnsChecksOff(t *testing.T) {
+	cfg, err := Parse([]byte("defaults: {merge_without_checks_after: 1h}\nrepos: [a/b, {repo: a/c, require_checks: true}]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	org := []byte("require_checks: false\n")
+	// The repo's file turns checks back on: the default's wait applies.
+	r, err := cfg.Repos[0].WithFiles(org, []byte("require_checks: true\n"))
+	if err != nil || !r.Policy.RequireChecks || r.Policy.MergeWithoutChecksAfter != time.Hour {
+		t.Errorf("repo file over org = %+v, %v", r.Policy, err)
+	}
+	// So does the repo's entry.
+	r, err = cfg.Repos[1].WithFiles(org, nil)
+	if err != nil || !r.Policy.RequireChecks || r.Policy.MergeWithoutChecksAfter != time.Hour {
+		t.Errorf("entry over org = %+v, %v", r.Policy, err)
+	}
+	// With checks left off, the policy drops the wait it does not use.
+	r, err = cfg.Repos[0].WithFiles(org, nil)
+	if err != nil || r.Policy.RequireChecks || r.Policy.MergeWithoutChecksAfter != 0 {
+		t.Errorf("org alone = %+v, %v", r.Policy, err)
+	}
+}
+
 func TestNewRepoTakesFiles(t *testing.T) {
 	base := Builtin
 	base.Mode = ModeReport
