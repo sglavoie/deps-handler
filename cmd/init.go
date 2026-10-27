@@ -103,8 +103,9 @@ With --stdout, the config is printed rather than written.`,
 			}
 			if err := writeNew(path, content, retry); err != nil {
 				if backup != "" {
-					// Put the old config back rather than leave none.
-					_ = os.Rename(backup, path)
+					if restoreErr := restoreBackup(path, backup); restoreErr != nil {
+						return errors.Join(err, fmt.Errorf("could not restore config from %s: %w", backup, restoreErr))
+					}
 				}
 				return err
 			}
@@ -132,6 +133,16 @@ With --stdout, the config is printed rather than written.`,
 	c.Flags().StringSliceVar(&owners, "owner", nil, "with --discover, only look at the repositories of these owners (repeatable)")
 	keepEmpty(c, "owner")
 	return c
+}
+
+// restoreBackup restores a config after a failed replacement without
+// overwriting a file another process created meanwhile. Linking installs
+// the old file only if path is absent; a failed restore keeps the backup.
+func restoreBackup(path, backup string) error {
+	if err := os.Link(backup, path); err != nil {
+		return err
+	}
+	return os.Remove(backup)
 }
 
 // writeNew writes data to path, which must not exist yet: O_EXCL, so a

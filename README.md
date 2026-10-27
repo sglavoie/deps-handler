@@ -97,6 +97,9 @@ The waiting period for `merge_without_checks_after` uses the head commit's
 timestamp. When that timestamp is missing, the PR waits and is not diagnosed
 as having no CI yet.
 
+Missing mergeability or merge-state values get the same bounded retries as
+`UNKNOWN`. If they remain unresolved, the PR waits without merging.
+
 A safe PR that is only behind its base branch gets one `@dependabot rebase`
 comment, one PR at a time per target branch, so that merges do not rerun CI
 on every other PR targeting that branch. PRs targeting independent branches
@@ -293,6 +296,11 @@ its report names those it used.
 
 Recursive YAML merge aliases are rejected in both local config and
 repository policy files.
+
+`init --force` backs up the existing config before replacing it. If writing
+the replacement fails, it restores the backup only when the destination is
+still absent. A config created by another process is preserved, and the
+error names the retained backup if restoration fails.
 
 ## As a library
 

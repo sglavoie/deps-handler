@@ -837,7 +837,8 @@ func errText(ctx context.Context, err error) string {
 // can merge, which typically follows a merge into the base branch.
 func recomputing(decisions []policy.Decision) bool {
 	for _, d := range decisions {
-		if d.Action == policy.ActionWait && (d.PR.Mergeable == "UNKNOWN" || d.PR.MergeState == "UNKNOWN") {
+		// The policy treats absent values as still being computed too.
+		if d.Action == policy.ActionWait && (d.PR.Mergeable == "UNKNOWN" || d.PR.Mergeable == "" || d.PR.MergeState == "UNKNOWN" || d.PR.MergeState == "") {
 			return true
 		}
 	}

@@ -369,6 +369,55 @@ func TestDryRunPollsUnknownMergeability(t *testing.T) {
 	}
 }
 
+func TestPollsMissingMergeability(t *testing.T) {
+	for _, field := range []string{"mergeable", "merge state", "both"} {
+		for _, apply := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/apply=%t", field, apply), func(t *testing.T) {
+				pr := testutil.PR(1)
+				if field != "merge state" {
+					pr.Mergeable = ""
+				}
+				if field != "mergeable" {
+					pr.MergeState = ""
+				}
+				fc := &fakeClient{repo: testutil.Repo(pr)}
+				r := newRunner(fc, apply)
+				r.Sleep = func(context.Context, time.Duration) error {
+					fc.repo.PullRequests[0].Mergeable = "MERGEABLE"
+					fc.repo.PullRequests[0].MergeState = "CLEAN"
+					return nil
+				}
+				res := r.RunRepo(context.Background(), repoCfg)
+				if res.Failed() || fc.fetches < 2 {
+					t.Fatalf("fetches = %d, result = %+v; want a successful retry", fc.fetches, res)
+				}
+				if apply {
+					if !slices.Equal(fc.merges, []int{1}) {
+						t.Fatalf("merges = %v; want [1]", fc.merges)
+					}
+				} else if len(res.Decisions) != 1 || res.Decisions[0].Action != policy.ActionMerge || len(fc.merges) != 0 {
+					t.Fatalf("dry run = %+v, merges = %v", res.Decisions, fc.merges)
+				}
+			})
+		}
+	}
+}
+
+func TestMissingMergeabilityPollingIsBounded(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.Mergeable, pr.MergeState = "", ""
+	fc := &fakeClient{repo: testutil.Repo(pr)}
+	r := newRunner(fc, true)
+	r.PollAttempts = 2
+	res := r.RunRepo(context.Background(), repoCfg)
+	if fc.fetches != 3 || len(fc.merges) != 0 || len(fc.comments) != 0 {
+		t.Fatalf("fetches = %d, merges = %v, comments = %v", fc.fetches, fc.merges, fc.comments)
+	}
+	if res.Failed() || len(res.Decisions) != 1 || res.Decisions[0].Action != policy.ActionWait {
+		t.Fatalf("unresolved mergeability should still wait: %+v", res)
+	}
+}
+
 func TestApplyRequestsOneRebaseAtATime(t *testing.T) {
 	var prs []github.PullRequest
 	for n := 1; n <= 3; n++ {

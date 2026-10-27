@@ -43,6 +43,42 @@ func writeConfig(t *testing.T, yaml string) string {
 	return path
 }
 
+func TestRestoreBackupPreservesConcurrentConfig(t *testing.T) {
+	path := writeConfig(t, "original config")
+	backup, err := moveAside(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeNew(path, []byte("concurrent config"), "init --force"); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreBackup(path, backup); err == nil {
+		t.Error("restoring over another process's config must fail")
+	}
+	for file, want := range map[string]string{path: "concurrent config", backup: "original config"} {
+		if got, err := os.ReadFile(file); err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v; want %q", file, got, err, want)
+		}
+	}
+}
+
+func TestRestoreBackup(t *testing.T) {
+	path := writeConfig(t, "original config")
+	backup, err := moveAside(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreBackup(path, backup); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "original config" {
+		t.Fatalf("restored config = %q, %v", got, err)
+	}
+	if _, err := os.Lstat(backup); !os.IsNotExist(err) {
+		t.Fatalf("backup should have been removed: %v", err)
+	}
+}
+
 func run(args ...string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 	code := execute(args, &stdout, &stderr)
