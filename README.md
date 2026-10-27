@@ -96,6 +96,8 @@ do not hold each other's rebase queues. Merges are made one at a time with
 the head SHA pinned, re-reading the repository after each; a merge GitHub
 fails in a way that may hide a success is checked before it is reported. Writes are never sent
 concurrently, and a rate limit stops them rather than push through it.
+Rate-limit pauses accept `Retry-After` as seconds or an HTTP date; pauses
+over two minutes stop further writes for that run.
 A PR whose merge or rebase request failed stops holding the rebase queue
 for that run, even if it later waits on CI or GitHub to compute mergeability.
 
@@ -155,6 +157,9 @@ change of target branch is always reviewed again, and a rejection lasts
 only until Dependabot rebases the PR. `deps-merger verdicts` lists them and
 `deps-merger verdicts forget acme/Storefront#42` drops them. Set
 `agent_review: false` on a repo to keep the agent out of it.
+
+Overlapping review runs cannot share checkouts, even when they use different
+state directories for their verdict caches.
 
 Cache keys quote dependency names and versions so separators in either
 cannot reuse another update's approval. Older keys are not reused, so

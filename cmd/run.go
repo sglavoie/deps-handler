@@ -346,7 +346,7 @@ func newAPIAgent(cfg config.API) (review.Agent, error) {
 var newClient = github.New
 
 // setupReviews gives r an agent reviewer with its checkouts and verdict
-// cache in the XDG cache and state directories. It holds a lock until
+// cache in the XDG cache and state directories. It holds locks until
 // release is called, so a second review run cannot share the checkouts,
 // and removes the checkouts of repositories not in the config that no
 // review used for 30 days. A checkout it cannot remove is a warning of
@@ -362,6 +362,19 @@ func setupReviews(r *runner.Runner, cfg *config.Config, agent review.Agent, clie
 	}
 	if release, err = review.Lock(filepath.Join(stateDir, "review.lock")); err != nil {
 		return nil, err
+	}
+	// Checkouts live under the cache directory, which can be shared by
+	// runs using different state directories. Keep the state lock too,
+	// for compatibility with runs started by earlier versions.
+	releaseCheckouts, err := review.Lock(filepath.Join(cacheDir, "checkouts.lock"))
+	if err != nil {
+		release()
+		return nil, err
+	}
+	releaseState := release
+	release = func() {
+		releaseCheckouts()
+		releaseState()
 	}
 	verdicts, err := review.OpenCache(verdictsPath(stateDir))
 	if err != nil {

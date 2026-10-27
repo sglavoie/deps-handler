@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"slices"
@@ -794,8 +795,8 @@ func RateLimited(err error) (time.Duration, bool) {
 		if he.StatusCode != http.StatusForbidden && he.StatusCode != http.StatusTooManyRequests {
 			return 0, false
 		}
-		if s, err := strconv.Atoi(he.Headers.Get("Retry-After")); err == nil {
-			return time.Duration(s) * time.Second, true
+		if d, ok := retryAfter(he.Headers.Get("Retry-After")); ok {
+			return d, true
 		}
 		// GitHub sends the quota on every response: one refused for another
 		// reason may also have used up the last of it, and is no rate limit.
@@ -819,6 +820,24 @@ func RateLimited(err error) (time.Duration, bool) {
 		// GraphQL's limit is an hourly budget, and its error does not say
 		// when it lifts: assume the worst rather than retry blindly.
 		return time.Hour, true
+	}
+	return 0, false
+}
+
+// retryAfter accepts the HTTP date and non-negative decimal seconds forms
+// of Retry-After. Saturate large delays before converting to nanoseconds:
+// wrapping a long pause into a negative duration would retry immediately.
+func retryAfter(value string) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value != "" && !strings.ContainsFunc(value, func(r rune) bool { return r < '0' || r > '9' }) {
+		seconds, err := strconv.ParseUint(value, 10, 64)
+		if err != nil || seconds > uint64(math.MaxInt64/int64(time.Second)) {
+			return time.Duration(math.MaxInt64), true
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	if reset, err := http.ParseTime(value); err == nil {
+		return max(0, time.Until(reset)), true
 	}
 	return 0, false
 }

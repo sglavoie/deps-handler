@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"slices"
@@ -1067,6 +1068,24 @@ func TestLongRateLimitStopsLaterWrites(t *testing.T) {
 	}
 	if fc.fetches != 1 {
 		t.Fatalf("%d fetches; merges that cannot be sent need no fresh read", fc.fetches)
+	}
+}
+
+func TestLongRetryAfterDateOrOverflowStopsWrites(t *testing.T) {
+	for _, value := range []string{time.Now().Add(time.Hour).UTC().Format(http.TimeFormat), "18446744074"} {
+		t.Run(value, func(t *testing.T) {
+			limited := &api.HTTPError{StatusCode: 429, Headers: http.Header{"Retry-After": {value}}}
+			fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2)), mergeErrs: map[int][]error{1: {limited}}}
+			r := newRunner(fc, true)
+			r.Sleep = func(context.Context, time.Duration) error {
+				t.Fatal("a rate limit over the wait cap must not be retried")
+				return nil
+			}
+			res := r.RunRepo(context.Background(), repoCfg)
+			if !res.Failed() || len(fc.merges) != 0 || len(res.Events) != 2 || !strings.HasPrefix(res.Events[1].Detail, "not sent") {
+				t.Fatalf("merges %v, events %+v; no retry or later write may pass the rate limit", fc.merges, res.Events)
+			}
+		})
 	}
 }
 

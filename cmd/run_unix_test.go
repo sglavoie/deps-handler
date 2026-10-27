@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sglavoie/deps-merger/pkg/config"
 	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-merger/pkg/runner"
 )
 
 // reviewEnv gives a --review run its own state and cache directories and
@@ -39,6 +41,64 @@ func TestRunReviewFailsWhileAnotherHoldsTheLock(t *testing.T) {
 	if code != 1 || out != "" || !strings.Contains(stderr, "another deps-merger run is reviewing updates") {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
 	}
+}
+
+func TestReviewsCannotShareCheckoutsWithDifferentStateDirectories(t *testing.T) {
+	reviewEnv(t)
+	setup := func() (func(), error) {
+		return setupReviews(runner.New(nil, "me", false), &config.Config{}, review.Claude{}, nil, 10)
+	}
+	release, err := setup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+	// Separate verdict caches still use the same checkout directory.
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	secondRelease, err := setup()
+	if err == nil {
+		secondRelease()
+		t.Fatal("two review runs acquired the same checkouts with different state directories")
+	}
+	if !strings.Contains(err.Error(), "another deps-merger run is reviewing updates") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// A failed acquisition must release the second state's lock, and
+	// ending the first review must free the shared checkouts.
+	release()
+	thirdRelease, err := setup()
+	if err != nil {
+		t.Fatalf("locks remained held after release: %v", err)
+	}
+	thirdRelease()
+}
+
+func TestReviewSetupReleasesLocksWhenCacheCannotOpen(t *testing.T) {
+	state, _ := reviewEnv(t)
+	// XDG permits using the same directory for cache and state. The two
+	// locks must still be distinct, and both must be released on failure.
+	t.Setenv("XDG_CACHE_HOME", os.Getenv("XDG_STATE_HOME"))
+	path := verdictsPath(state)
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	setup := func() (func(), error) {
+		return setupReviews(runner.New(nil, "me", false), &config.Config{}, review.Claude{}, nil, 10)
+	}
+	if release, err := setup(); err == nil {
+		release()
+		t.Fatal("expected an unreadable verdict cache error")
+	} else if strings.Contains(err.Error(), "another deps-merger run") {
+		t.Fatalf("setup tried to acquire its own lock twice: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	release, err := setup()
+	if err != nil {
+		t.Fatalf("failed setup left locks held: %v", err)
+	}
+	release()
 }
 
 func TestRunReviewWarnsWhenPruneFails(t *testing.T) {

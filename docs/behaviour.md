@@ -111,6 +111,11 @@ repository again for each. Up to ten repositories are
 processed at once (`--parallel`), but merges and comments are never sent
 concurrently.
 
+`Retry-After` accepts either seconds or an HTTP date. A date in the past
+needs no pause. Invalid values fall back to the other rate-limit signals;
+numeric values too large to represent are treated as over the wait cap,
+so they cannot overflow into an immediate retry.
+
 PRs not opened by Dependabot are never fetched: the query asks GitHub only
 for `author:app/dependabot`, and the author is checked again locally.
 
@@ -283,7 +288,12 @@ An update target matches the full key exactly, including the case of its
 branch, dependencies and versions; only the repository name ignores case.
 Both complete the repositories and PRs that have verdicts. Only one
 `--review` run works at a time: a second one, such as an overlapping cron
-job, fails at once rather than share the checkouts. Each `--review` run
+job, fails at once rather than share the checkouts. The checkout lock lives
+beside them at `$XDG_CACHE_HOME/deps-merger/checkouts.lock` (by default
+`~/.cache/deps-merger/checkouts.lock`), so separate state directories cannot
+allow concurrent reviews of the same checkout. The state directory's
+`review.lock` is also held for compatibility with earlier versions.
+Each `--review` run
 removes the checkouts of repositories not in its config that no review
 used for 30 days, so runs with different configs can share them; one it
 cannot remove is reported as a warning, and the run goes on.

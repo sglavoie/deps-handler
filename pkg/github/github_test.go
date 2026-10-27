@@ -162,6 +162,39 @@ func TestBackoff(t *testing.T) {
 	}
 }
 
+func TestRetryAfterDates(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusTooManyRequests} {
+		for _, delay := range []time.Duration{-time.Hour, 30 * time.Second, time.Hour} {
+			reset := time.Now().Add(delay).UTC().Truncate(time.Second)
+			err := &api.HTTPError{StatusCode: status, Headers: http.Header{"Retry-After": {reset.Format(http.TimeFormat)}}}
+			before := time.Now()
+			got, limited := RateLimited(err)
+			after := time.Now()
+			if !limited || got < max(0, reset.Sub(after)) || got > max(0, reset.Sub(before)) {
+				t.Errorf("status %d, delay %s: RateLimited = %s, %t; want the delay until %s", status, delay, got, limited, reset)
+			}
+			if _, retry := Backoff(err, time.Second); retry != (delay <= MaxRateLimitWait) {
+				t.Errorf("status %d, delay %s: retry = %t", status, delay, retry)
+			}
+		}
+	}
+}
+
+func TestRetryAfterCannotOverflowOrBecomeNegative(t *testing.T) {
+	for _, value := range []string{"9223372037", "18446744074", "9223372036854775807", strings.Repeat("9", 100)} {
+		err := &api.HTTPError{StatusCode: 429, Headers: http.Header{"Retry-After": {value}}}
+		if delay, retry := Backoff(err, time.Second); delay <= MaxRateLimitWait || retry {
+			t.Errorf("Retry-After %q: delay %s, retry %t; a huge delay must prevent retry", value, delay, retry)
+		}
+	}
+	for _, value := range []string{"-1", "+1", "invalid"} {
+		err := &api.HTTPError{StatusCode: 429, Headers: http.Header{"Retry-After": {value}}}
+		if delay, limited := RateLimited(err); !limited || delay != time.Minute {
+			t.Errorf("Retry-After %q: delay %s, limited %t; want the default rate-limit pause", value, delay, limited)
+		}
+	}
+}
+
 func TestAgain(t *testing.T) {
 	var slept []time.Duration
 	sleep := func(_ context.Context, d time.Duration) error { slept = append(slept, d); return nil }
