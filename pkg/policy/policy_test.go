@@ -557,4 +557,11 @@ func TestEvaluateWithoutDependabotCommands(t *testing.T) {
 	if len(f[FindingHeldMajor]) != 1 || f[FindingHeldMajor][0].PRs[0] != 3 {
 		t.Errorf("held-major = %+v", f[FindingHeldMajor])
 	}
+	// One the agent approved is left to a human too, who is told the
+	// approval holds once it is rebased.
+	approve := func(Decision) *Verdict { return &Verdict{Approved: true} }
+	d := Evaluate(testutil.Repo(behind(3, "lib:major")), p, "me", approve)[0]
+	if d.Action != ActionSkip || !d.behind || !strings.Contains(d.Reason, "left to a human") || !strings.Contains(d.Reason, "major update approved by agent") {
+		t.Errorf("approved major behind = %s, %q", d.Action, d.Reason)
+	}
 }

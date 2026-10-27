@@ -419,6 +419,10 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		safe.Action, safe.Reason = ActionSkip, fmt.Sprintf("would %s, but %s", safe.Action, lacksWrite(repo))
 	} else if safe.Action == ActionRebase && !p.DependabotCommands {
 		safe.Action, safe.Reason = ActionSkip, "behind base branch; rebase left to a human (dependabot_commands: false)"
+		if oversized != "" {
+			// Whoever rebases it should know the approval carries over.
+			safe.Reason += fmt.Sprintf("; %s update approved by agent", safe.Grade)
+		}
 		safe.behind = true
 	}
 	return safe
