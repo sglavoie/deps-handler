@@ -171,9 +171,10 @@ key removes only that exact update; only repository names ignore case.
 Under each repo the report lists, without acting on them:
 
 - **repo-wide failures**: a check failing on every Dependabot PR that ran
-  it (and that ran on at least half of them), which points at the base
-  branch rather than the updates; only PRs Dependabot alone wrote, whose
-  checks ran on their head commit, count towards either;
+  it targeting the same base branch (and that ran on at least half of
+  that branch's PRs), which points at the base branch rather than the
+  updates; the report names that branch. Only PRs Dependabot alone wrote,
+  whose checks ran on their head commit, count towards either;
 - **incompatible updates**: a PR failing its own checks, with the
   `@dependabot ignore …` command that would stop it coming back (only for
   PRs Dependabot alone wrote, whose checks ran on their head commit);

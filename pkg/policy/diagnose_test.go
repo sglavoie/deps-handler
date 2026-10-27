@@ -44,6 +44,61 @@ func TestDiagnoseRepoWideFailure(t *testing.T) {
 	}
 }
 
+func TestDiagnoseRepoWideFailuresByBaseBranch(t *testing.T) {
+	pr := func(number int, base string, fails bool) github.PullRequest {
+		p := testutil.PR(number)
+		p.BaseRef = base
+		if fails {
+			p = failing(p, "build")
+		}
+		return p
+	}
+	t.Run("passing branch does not hide a broken branch", func(t *testing.T) {
+		f := findings(testutil.Repo(pr(1, "release", true), pr(2, "release", true), pr(3, "main", false)))
+		shared := f[FindingRepoCheck]
+		if len(shared) != 1 || len(shared[0].PRs) != 2 || !strings.Contains(shared[0].Summary, `"release"`) {
+			t.Fatalf("branch failure = %+v", shared)
+		}
+		if len(f[FindingIncompatible]) != 0 {
+			t.Fatalf("broken branch blamed on updates: %+v", f[FindingIncompatible])
+		}
+	})
+	t.Run("unrelated failures do not establish a broken branch", func(t *testing.T) {
+		f := findings(testutil.Repo(pr(1, "release", true), pr(2, "main", true)))
+		if len(f[FindingRepoCheck]) != 0 || len(f[FindingIncompatible]) != 2 {
+			t.Fatalf("findings = %+v", f)
+		}
+	})
+	t.Run("coverage threshold counts only the same branch", func(t *testing.T) {
+		other := func(number int) github.PullRequest {
+			p := pr(number, "main", false)
+			p.Checks[0].Name = "other"
+			return p
+		}
+		f := findings(testutil.Repo(pr(1, "release", true), pr(2, "release", true),
+			other(3), other(4), other(5)))
+		if len(f[FindingRepoCheck]) != 1 || len(f[FindingIncompatible]) != 0 {
+			t.Fatalf("findings = %+v", f)
+		}
+	})
+	t.Run("shared failure does not hide an isolated failure on another branch", func(t *testing.T) {
+		f := findings(testutil.Repo(pr(1, "release", true), pr(2, "release", true), pr(3, "main", true)))
+		shared, own := f[FindingRepoCheck], f[FindingIncompatible]
+		if len(shared) != 1 || len(shared[0].PRs) != 2 || len(own) != 1 || own[0].PRs[0] != 3 {
+			t.Fatalf("findings = %+v", f)
+		}
+	})
+	t.Run("separate broken branches have separate findings", func(t *testing.T) {
+		f := findings(testutil.Repo(pr(1, "release", true), pr(2, "release", true),
+			pr(3, "Release", true), pr(4, "Release", true)))
+		shared := f[FindingRepoCheck]
+		if len(shared) != 2 || shared[0].PRs[0] != 3 || shared[1].PRs[0] != 1 ||
+			len(shared[0].PRs) != 2 || len(shared[1].PRs) != 2 || len(f[FindingIncompatible]) != 0 {
+			t.Fatalf("findings = %+v", f)
+		}
+	})
+}
+
 func TestDiagnoseRepoWideFailureBesideAPendingRun(t *testing.T) {
 	pending := testutil.PR(3)
 	pending.Checks = []github.Check{{Name: "i18n", State: github.CheckPending}}

@@ -108,23 +108,38 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		})
 	}
 
-	repoWide := repoWideChecks(decisions)
-	for _, name := range sortedKeys(repoWide) {
-		prs := repoWide[name]
-		all := fmt.Sprintf("all %d", len(prs))
-		if len(prs) == 2 {
-			all = "both"
+	// Different target branches have different code and CI. A passing
+	// check on one cannot disprove a shared failure on another, and two
+	// isolated failures on different branches cannot establish one either.
+	byBase := map[string][]Decision{}
+	for _, d := range decisions {
+		byBase[d.PR.BaseRef] = append(byBase[d.PR.BaseRef], d)
+	}
+	repoWide := map[string]map[string][]int{}
+	for _, base := range sortedKeys(byBase) {
+		checks := repoWideChecks(byBase[base])
+		repoWide[base] = checks
+		for _, name := range sortedKeys(checks) {
+			prs := checks[name]
+			all := fmt.Sprintf("all %d", len(prs))
+			if len(prs) == 2 {
+				all = "both"
+			}
+			target := "the base branch"
+			if base != "" {
+				target = fmt.Sprintf("base branch %q", base)
+			}
+			out = append(out, Finding{
+				Kind:    FindingRepoCheck,
+				Summary: fmt.Sprintf("check %q fails on %s Dependabot PRs that ran it targeting %s; fix it on that branch", name, all, target),
+				PRs:     prs,
+			})
 		}
-		out = append(out, Finding{
-			Kind:    FindingRepoCheck,
-			Summary: fmt.Sprintf("check %q fails on %s Dependabot PRs that ran it; fix it on the base branch", name, all),
-			PRs:     prs,
-		})
 	}
 
 	noChecks, needsReview, behind := []int{}, []int{}, []int{}
 	for _, d := range decisions {
-		own := ownFailures(d, repoWide)
+		own := ownFailures(d, repoWide[d.PR.BaseRef])
 		switch {
 		case !d.assessed:
 			// A PR someone else changed, or whose checks ran on another
@@ -216,8 +231,9 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	return out
 }
 
-// repoWideChecks returns check names that failed on every PR that ran them,
-// on at least two PRs, mapped to those PR numbers. The check must also have
+// repoWideChecks compares decisions targeting a single base branch. It
+// returns check names that failed on every PR that ran them, on at least
+// two PRs, mapped to those PR numbers. The check must also have
 // run on at least half of the PRs, so a job only stale PRs still carry is not
 // mistaken for a broken base branch. Only PRs judged on Dependabot's own head
 // commit count, for both: a check failing where a human pushed, or on an
@@ -311,7 +327,7 @@ func ignoreSuggestions(d Decision) []string {
 	return out
 }
 
-func sortedKeys(m map[string][]int) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
