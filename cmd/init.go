@@ -116,6 +116,7 @@ With --stdout, the config is printed rather than written.`,
 	c.Flags().BoolVar(&force, "force", false, "move an existing config aside, to a timestamped .bak file, and write a new one")
 	c.Flags().BoolVar(&discover, "discover", false, "list the repositories you can write to that hold a Dependabot config")
 	c.Flags().StringSliceVar(&owners, "owner", nil, "with --discover, only look at the repositories of these owners (repeatable)")
+	keepEmpty(c, "owner")
 	return c
 }
 
@@ -144,10 +145,13 @@ func writeNew(path string, data []byte) error {
 // after the time, and returns the backup's path: empty when there was
 // nothing to move.
 func moveAside(path string) (string, error) {
-	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+	if fi, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	} else if err != nil {
 		return "", err
+	} else if fi.IsDir() {
+		// As -c naming the config's directory by mistake would.
+		return "", fmt.Errorf("%s is a directory, not a config file", path)
 	}
 	backup := fmt.Sprintf("%s.%s.bak", path, time.Now().Format("20060102-150405"))
 	if _, err := os.Lstat(backup); err == nil {

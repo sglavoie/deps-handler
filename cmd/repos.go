@@ -66,6 +66,7 @@ repository, which can override it.`,
 	c.Flags().BoolVar(&asJSON, "json", false, "print the repositories and the agent as JSON")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only list these repos (owner/name or name; repeatable)")
 	c.Flags().StringSliceVar(&owners, "owner", nil, "only list the configured repos of these owners (repeatable)")
+	keepEmpty(c, "repo", "owner")
 	completeSelection(c)
 	return c
 }

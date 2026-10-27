@@ -21,6 +21,7 @@ import (
 	"github.com/sglavoie/deps-merger/pkg/review"
 	"github.com/sglavoie/deps-merger/pkg/runner"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func newRunCmd() *cobra.Command {
@@ -213,6 +214,7 @@ no repository of; and 130 when interrupted.`,
 	c.Flags().BoolVar(&markdown, "markdown", false, "print each repository's section as GitHub Markdown")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
 	c.Flags().StringSliceVar(&owners, "owner", nil, "only handle the configured repos of these owners (repeatable)")
+	keepEmpty(c, "repo", "owner")
 	c.Flags().BoolVar(&allRepos, "include-skipped", false, "also handle repos set to skip: true")
 	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge updates over max_update_type and of unknown size")
 	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+config.AgentList()+" (default from config; implies --review)")
@@ -233,6 +235,9 @@ func checkSelection(cmd *cobra.Command, repos, owners []string) error {
 		if len(repos) == 0 {
 			return usageError{errors.New("--repo needs a repo name")}
 		}
+		if gaveEmpty(cmd, "repo") {
+			return usageError{errors.New("--repo has an empty repo name")}
+		}
 		for i := range repos {
 			if repos[i] = strings.TrimSpace(repos[i]); repos[i] == "" {
 				return usageError{errors.New("--repo has an empty repo name")}
@@ -242,6 +247,9 @@ func checkSelection(cmd *cobra.Command, repos, owners []string) error {
 	if cmd.Flags().Changed("owner") {
 		if len(owners) == 0 {
 			return usageError{errors.New("--owner needs an owner name")}
+		}
+		if gaveEmpty(cmd, "owner") {
+			return usageError{errors.New("--owner has an empty owner name")}
 		}
 		for i := range owners {
 			switch owners[i] = strings.TrimSpace(owners[i]); {
@@ -253,6 +261,35 @@ func checkSelection(cmd *cobra.Command, repos, owners []string) error {
 		}
 	}
 	return nil
+}
+
+// emptyName is a --repo or --owner flag that remembers being given an
+// empty value: pflag's string slice drops one given beside others, as in
+// -r "" -r a, which would then mean the other repos alone.
+type emptyName struct {
+	pflag.Value
+	given bool
+}
+
+func (e *emptyName) Set(s string) error {
+	e.given = e.given || strings.TrimSpace(s) == ""
+	return e.Value.Set(s)
+}
+
+// keepEmpty has c's flags of these names remember an empty value, for
+// checkSelection to reject.
+func keepEmpty(c *cobra.Command, names ...string) {
+	for _, name := range names {
+		f := c.Flags().Lookup(name)
+		f.Value = &emptyName{Value: f.Value}
+		// Help would otherwise show "(default [])", not knowing the type.
+		f.DefValue = ""
+	}
+}
+
+func gaveEmpty(cmd *cobra.Command, name string) bool {
+	e, ok := cmd.Flags().Lookup(name).Value.(*emptyName)
+	return ok && e.given
 }
 
 // newAgent builds the agent named by --agent, or the configured one; the

@@ -183,6 +183,11 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"limit before config": {[]string{"run", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
 		"repo before config":  {[]string{"run", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},
 		"owner before config": {[]string{"run", "-c", missing, "--owner", ""}, 2, "--owner needs an owner name"},
+		// pflag drops an empty value given beside others.
+		"empty repo among others":  {[]string{"run", "-c", missing, "-r", "", "-r", "a"}, 2, "--repo has an empty repo name"},
+		"empty owner among others": {[]string{"run", "-c", missing, "--owner", "o", "--owner", ""}, 2, "--owner has an empty owner name"},
+		"repos empty repo":         {[]string{"repos", "-c", missing, "-r", "a", "-r", ""}, 2, "--repo has an empty repo name"},
+		"unknown help topic":       {[]string{"help", "nope"}, 2, `unknown help topic "nope"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, _, stderr := run(c.args...)
@@ -277,6 +282,17 @@ func TestInitForceMovesConfigAside(t *testing.T) {
 	if data, _ := os.ReadFile(backups[0]); string(data) != "repos: [o/mine]\n" {
 		t.Fatalf("backup = %q", data)
 	}
+	// A directory named by mistake is no config to move aside.
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(filepath.Join(sub, "keep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := run("init", "-c", sub, "--force"); code != 1 || !strings.Contains(stderr, "is a directory") {
+		t.Fatalf("directory: code %d, stderr %q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(sub, "keep")); err != nil {
+		t.Fatalf("directory moved aside: %v", err)
+	}
 	// With nothing to move aside, --force just writes.
 	fresh := filepath.Join(dir, "fresh.yaml")
 	if code, out, _ := run("init", "-c", fresh, "--force"); code != 0 || strings.Contains(out, "moved") {
@@ -313,9 +329,10 @@ func TestInitDiscoverFillsRepos(t *testing.T) {
 
 func TestInitFlagMistakes(t *testing.T) {
 	for args, want := range map[string]string{
-		"--stdout --force":       "--force needs a file to replace",
-		"--owner o":              "--owner needs --discover",
-		"--discover --owner o/r": "--owner takes an owner",
+		"--stdout --force":              "--force needs a file to replace",
+		"--owner o":                     "--owner needs --discover",
+		"--discover --owner o/r":        "--owner takes an owner",
+		"--discover --owner o --owner=": "--owner has an empty owner name",
 	} {
 		if code, _, stderr := run(append([]string{"init"}, strings.Fields(args)...)...); code != 2 || !strings.Contains(stderr, want) {
 			t.Errorf("%s: code %d, stderr %q", args, code, stderr)

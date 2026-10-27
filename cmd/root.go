@@ -37,6 +37,17 @@ by anyone else, are never changed.`,
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-merger/config.yaml, or ~/.config/deps-merger/config.yaml when XDG_CONFIG_HOME is unset)")
 	root.AddCommand(newInitCmd(), newRunCmd(), newReposCmd(), newVerdictsCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
+	// Cobra's help prints the usage for an unknown topic and succeeds:
+	// a topic that names no command is a usage error like any other.
+	root.InitDefaultHelpCmd()
+	if help, _, err := root.Find([]string{"help"}); err == nil {
+		help.Args = func(cmd *cobra.Command, args []string) error {
+			if _, _, err := cmd.Root().Find(args); err != nil {
+				return fmt.Errorf("unknown help topic %q", strings.Join(args, " "))
+			}
+			return nil
+		}
+	}
 	usageArgs(root)
 	return root
 }
