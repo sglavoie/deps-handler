@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sglavoie/deps-merger/pkg/config"
@@ -92,7 +93,15 @@ With --stdout, the config is printed rather than written.`,
 					return err
 				}
 			}
-			if err := writeNew(path, content); err != nil {
+			// Replacing it must write what this init would have.
+			retry := "init --force"
+			if discover {
+				retry += " --discover"
+				for _, o := range owners {
+					retry += " --owner " + strings.TrimSpace(o)
+				}
+			}
+			if err := writeNew(path, content, retry); err != nil {
 				if backup != "" {
 					// Put the old config back rather than leave none.
 					_ = os.Rename(backup, path)
@@ -121,11 +130,12 @@ With --stdout, the config is printed rather than written.`,
 }
 
 // writeNew writes data to path, which must not exist yet: O_EXCL, so a
-// config created since any check cannot be lost either.
-func writeNew(path string, data []byte) error {
+// config created since any check cannot be lost either. retry is the init
+// command to suggest that would replace it.
+func writeNew(path string, data []byte, retry string) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
-		return fmt.Errorf("%s already exists; edit it, or replace it with `%s`", path, command("init --force"))
+		return fmt.Errorf("%s already exists; edit it, or replace it with `%s`", path, command(retry))
 	} else if err != nil {
 		return err
 	}

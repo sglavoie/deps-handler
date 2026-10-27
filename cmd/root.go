@@ -201,5 +201,17 @@ func command(sub string) string {
 	if configPath == "" {
 		return "deps-merger " + sub
 	}
-	return "deps-merger " + sub + " -c " + configPath
+	return "deps-merger " + sub + " -c " + shellQuote(configPath)
+}
+
+// shellQuote quotes s for a POSIX shell when it holds anything but the
+// characters of a plain path.
+func shellQuote(s string) string {
+	plain := strings.IndexFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/._-+=:,@%", r))
+	}) < 0
+	if plain && s != "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

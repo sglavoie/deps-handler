@@ -249,6 +249,19 @@ func TestInitWritesExampleOnce(t *testing.T) {
 	}
 }
 
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"/home/me/.config/deps-merger/config.yaml": "/home/me/.config/deps-merger/config.yaml",
+		"/home/me/my configs/c.yaml":               "'/home/me/my configs/c.yaml'",
+		"it's.yaml":                                `'it'\''s.yaml'`,
+		"$HOME/c.yaml":                             "'$HOME/c.yaml'",
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
 func TestInitStdoutWritesNothing(t *testing.T) {
 	old := ExampleConfig
 	t.Cleanup(func() { ExampleConfig = old })
@@ -322,6 +335,10 @@ func TestInitDiscoverFillsRepos(t *testing.T) {
 	}
 	if code, out, _ := run("repos", "-c", path); code != 0 || !strings.Contains(out, "o/b") {
 		t.Fatalf("repos: code %d:\n%s", code, out)
+	}
+	// The advice to replace it must discover again, not write the example.
+	if code, _, stderr := run("init", "-c", path, "--discover", "--owner", " o "); code != 1 || !strings.Contains(stderr, "`deps-merger init --force --discover --owner o -c "+path+"`") {
+		t.Fatalf("again: code %d, stderr %q", code, stderr)
 	}
 
 	discoverRepos = func(context.Context, []string) ([]string, error) { return nil, nil }
