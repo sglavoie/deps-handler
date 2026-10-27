@@ -223,7 +223,7 @@ token, so they cannot fake their own end. It says the same of files in the
 checkout that come from the dependency, such as vendored code and
 lockfiles.
 
-Reviews run after the run's other merges, four at a time
+Reviews run after their repository's other merges, four at a time
 (`--review-parallel`), at most `--max-reviews` (default 10) per run. A
 repository reviews its PRs one after another, so more reviews than
 `--parallel` never run at once. Verdicts are kept for 14 days in

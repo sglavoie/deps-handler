@@ -126,8 +126,9 @@ model provider (for `api`, wherever `api.url` points).
 agent can reach.
 
 The agent never merges anything: an approved PR goes through every check
-again before it merges. Reviews run after the other merges, four at a
-time (`--review-parallel`), at most 10 per run (`--max-reviews`). Verdicts
+again before it merges. Reviews run after their repository's other
+merges, four at a time (`--review-parallel`), at most 10 per run
+(`--max-reviews`). Verdicts
 are cached for 14 days in `~/.local/state/deps-merger/verdicts.json`, so a
 scheduled run does not pay twice for the same update; a new version is
 always reviewed again, and a rejection lasts only until Dependabot
