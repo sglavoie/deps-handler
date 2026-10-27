@@ -192,10 +192,12 @@ func redact(s string) string { return githubToken.ReplaceAllString(s, "[redacted
 // and control characters other than newlines and tabs dropped. The agent
 // reads untrusted release notes, and a prompt injection could have it
 // answer with escape sequences that rewrite the terminal, such as links
-// or clipboard writes.
+// or clipboard writes. Invisible format characters are dropped before
+// redacting too: one splitting a token would hide it from the match, and
+// the report, which drops them, would print it whole.
 func Clean(s string) string {
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) && r != '\n' && r != '\t' {
+		if (unicode.IsControl(r) && r != '\n' && r != '\t') || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r

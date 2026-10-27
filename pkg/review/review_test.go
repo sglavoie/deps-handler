@@ -107,12 +107,13 @@ func TestVerdictRedactsTokens(t *testing.T) {
 	classic := "ghp_" + strings.Repeat("A1b2", 9)
 	pat := "github_pat_" + strings.Repeat("x_Y9", 20)
 	v, err := Verdict(Answer{Decision: "reject", Summary: "token " + classic + " found",
-		BreakingChanges: []string{"gho_" + strings.Repeat("z", 36)}, Concerns: []string{"hosts.yml has " + pat + ".", "ghp_short stays", "glued x" + classic + " and 9" + pat}})
+		BreakingChanges: []string{"gho_" + strings.Repeat("z", 36)}, Concerns: []string{"hosts.yml has " + pat + ".", "ghp_short stays", "glued x" + classic + " and 9" + pat,
+			"split " + classic[:20] + "\u200b" + classic[20:] + " and " + pat[:25] + "\u2060\u202e" + pat[25:]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v.Summary != "token [redacted token] found" || v.Concerns[0] != "[redacted token]" || v.Concerns[1] != "hosts.yml has [redacted token]." || v.Concerns[2] != "ghp_short stays" ||
-		v.Concerns[3] != "glued x[redacted token] and 9[redacted token]" {
+		v.Concerns[3] != "glued x[redacted token] and 9[redacted token]" || v.Concerns[4] != "split [redacted token] and [redacted token]" {
 		t.Fatalf("verdict = %+v", v)
 	}
 }
