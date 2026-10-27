@@ -60,19 +60,19 @@ func TestToolsStayInTheCheckout(t *testing.T) {
 		{"nope", `{}`, "no tool"},
 		{"read_file", `not json`, "not JSON"},
 	} {
-		if got := runTool(root, c.tool, c.args); !strings.HasPrefix(got, "error:") || !strings.Contains(got, c.wantErr) {
+		if got := runTool(context.Background(), root, c.tool, c.args); !strings.HasPrefix(got, "error:") || !strings.Contains(got, c.wantErr) {
 			t.Errorf("%s %s = %q, want an error containing %q", c.tool, c.args, got, c.wantErr)
 		}
 	}
 	// Searching the whole checkout reaches neither .git nor the key.
-	if got := runTool(root, "search", `{"pattern": "ghs_|PRIVATE"}`); got != "(no matches)" {
+	if got := runTool(context.Background(), root, "search", `{"pattern": "ghs_|PRIVATE"}`); got != "(no matches)" {
 		t.Errorf("search found secrets: %q", got)
 	}
 }
 
 func TestTools(t *testing.T) {
 	root := checkout(t)
-	list := runTool(root, "list_files", `{"path": "."}`)
+	list := runTool(context.Background(), root, "list_files", `{"path": "."}`)
 	for _, want := range []string{"package.json\n", "src/\n", "key.pem (symlink)\n"} {
 		if !strings.Contains(list, want) {
 			t.Errorf("list missing %q:\n%s", want, list)
@@ -81,35 +81,47 @@ func TestTools(t *testing.T) {
 	if strings.Contains(list, ".git") {
 		t.Errorf("list shows .git:\n%s", list)
 	}
-	if got := runTool(root, "read_file", `{"path": "src/app.js", "offset": 2, "limit": 1}`); got != "2\tconst app = express();\n... more lines follow; read from offset 3\n" {
+	if got := runTool(context.Background(), root, "read_file", `{"path": "src/app.js", "offset": 2, "limit": 1}`); got != "2\tconst app = express();\n... more lines follow; read from offset 3\n" {
 		t.Errorf("read = %q", got)
 	}
 	// A symlink to a file inside the checkout reads like the file.
-	if got := runTool(root, "read_file", `{"path": "app-link.js"}`); !strings.Contains(got, "app.del") {
+	if got := runTool(context.Background(), root, "read_file", `{"path": "app-link.js"}`); !strings.Contains(got, "app.del") {
 		t.Errorf("read through link = %q", got)
 	}
-	got := runTool(root, "search", `{"pattern": "express\\(|app\\.del"}`)
+	got := runTool(context.Background(), root, "search", `{"pattern": "express\\(|app\\.del"}`)
 	if got != "src/app.js:2: const app = express();\nsrc/app.js:3: app.del('/x', h);\n" {
 		t.Errorf("search = %q", got)
 	}
 	// The newline ending a file starts no line of its own to match.
-	if got := runTool(root, "search", `{"pattern": "^$", "path": "src"}`); got != "(no matches)" {
+	if got := runTool(context.Background(), root, "search", `{"pattern": "^$", "path": "src"}`); got != "(no matches)" {
 		t.Errorf("search for an empty line = %q", got)
 	}
-	if got := runTool(root, "search", `{"pattern": "("}`); !strings.Contains(got, "bad pattern") {
+	if got := runTool(context.Background(), root, "search", `{"pattern": "("}`); !strings.Contains(got, "bad pattern") {
 		t.Errorf("bad pattern = %q", got)
 	}
 }
 
 // A minified bundle is one huge line: reading it gives the start of the
 // line, numbered as the others, rather than megabytes or an error.
+func TestSearchStopsWhenTheReviewTimesOut(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("needle\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := runTool(ctx, root, "search", `{"pattern": "needle"}`); !strings.Contains(got, "context canceled") {
+		t.Fatalf("search = %q; a cancelled review must not keep reading files", got)
+	}
+}
+
 func TestReadFileCutsLongLines(t *testing.T) {
 	root := t.TempDir()
 	bundle := "first\n" + strings.Repeat("x", 2<<20) + "\nlast"
 	if err := os.WriteFile(filepath.Join(root, "dist.js"), []byte(bundle), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := runTool(root, "read_file", `{"path": "dist.js"}`)
+	got := runTool(context.Background(), root, "read_file", `{"path": "dist.js"}`)
 	want := "1\tfirst\n2\t" + strings.Repeat("x", maxLineBytes) + " … [line cut at 2000 bytes]\n3\tlast\n"
 	if got != want {
 		t.Errorf("read = %.200q… (%d bytes), want %d bytes", got, len(got), len(want))
@@ -119,7 +131,7 @@ func TestReadFileCutsLongLines(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "dist.js"), []byte("first\n"+strings.Repeat("x", 64<<10)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got = runTool(root, "read_file", `{"path": "dist.js"}`)
+	got = runTool(context.Background(), root, "read_file", `{"path": "dist.js"}`)
 	want = "1\tfirst\n2\t" + strings.Repeat("x", maxLineBytes) + " … [line cut at 2000 bytes]\n"
 	if got != want {
 		t.Errorf("last line of 64 KiB: read = %.200q… (%d bytes), want %d bytes", got, len(got), len(want))

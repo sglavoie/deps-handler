@@ -118,7 +118,7 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 			break
 		}
 		for _, call := range reply.ToolCalls {
-			msgs = append(msgs, message{Role: "tool", ToolCallID: call.ID, Content: runTool(dir, call.Function.Name, call.Function.Arguments)})
+			msgs = append(msgs, message{Role: "tool", ToolCallID: call.ID, Content: runTool(ctx, dir, call.Function.Name, call.Function.Arguments)})
 		}
 	}
 	// Out of turns, or a reply that was not the answer: ask for it, held
@@ -291,7 +291,7 @@ func parseAnswer(content string) (Answer, error) {
 
 // runTool runs one tool call and returns what the model is told: the
 // result, or why there is none.
-func runTool(root, name, arguments string) string {
+func runTool(ctx context.Context, root, name, arguments string) string {
 	var args struct {
 		Path    string `json:"path"`
 		Offset  int    `json:"offset"`
@@ -309,7 +309,7 @@ func runTool(root, name, arguments string) string {
 	case "read_file":
 		out, err = readFile(root, args.Path, args.Offset, args.Limit)
 	case "search":
-		out, err = search(root, args.Path, args.Pattern)
+		out, err = search(ctx, root, args.Path, args.Pattern)
 	default:
 		err = fmt.Errorf("no tool %q", name)
 	}
@@ -480,7 +480,9 @@ func readLine(r *bufio.Reader, limit int) (text string, clipped bool, err error)
 	}
 }
 
-func search(root, rel, pattern string) (string, error) {
+// search stops when ctx is done: walking a large checkout must not hold
+// the review past its timeout.
+func search(ctx context.Context, root, rel, pattern string) (string, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return "", fmt.Errorf("bad pattern: %w", err)
@@ -494,6 +496,9 @@ func search(root, rel, pattern string) (string, error) {
 	hits := 0
 	stop := errors.New("enough")
 	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err != nil {
 			return nil
 		}
