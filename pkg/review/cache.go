@@ -204,7 +204,7 @@ func (c *Cache) Put(key, head, agent string, v policy.Verdict) error {
 }
 
 // Forget drops the verdicts of a repository ("owner/name"), of one PR
-// ("owner/name#7") or under one full key, ignoring case, and returns how
+// ("owner/name#7") or under one full key, ignoring repository case, and returns how
 // many it dropped. Expired verdicts, which Entries leaves out, are not
 // counted: they are dropped on any write anyway.
 func (c *Cache) Forget(target string) (int, error) {
@@ -222,10 +222,15 @@ func (c *Cache) Forget(target string) (int, error) {
 	return n, err
 }
 
-// Matches reports whether key ("owner/name#7 lib@2.0.0") is target or
-// starts with it up to a "#" or a space, ignoring case.
+// Matches compares repositories and PRs ignoring repository case. A full
+// update key must match exactly: branches, dependencies and versions can
+// differ only in case, and a key is not a prefix of another update.
 func Matches(key, target string) bool {
-	if len(key) < len(target) || !strings.EqualFold(key[:len(target)], target) {
+	key, target = normKey(key), normKey(target)
+	if strings.Contains(target, " ") {
+		return key == target
+	}
+	if !strings.HasPrefix(key, target) {
 		return false
 	}
 	return len(key) == len(target) || key[len(target)] == '#' || key[len(target)] == ' '

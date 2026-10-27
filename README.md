@@ -155,6 +155,11 @@ only until Dependabot rebases the PR. `deps-merger verdicts` lists them and
 `deps-merger verdicts forget acme/Storefront#42` drops them. Set
 `agent_review: false` on a repo to keep the agent out of it.
 
+Cache keys quote dependency names and versions so separators in either
+cannot reuse another update's approval. Older keys are not reused, so
+upgrading requires one fresh review per update. Forgetting a full update
+key removes only that exact update; only repository names ignore case.
+
 ## What needs attention
 
 Under each repo the report lists, without acting on them:

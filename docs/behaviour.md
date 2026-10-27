@@ -254,8 +254,10 @@ repository reviews its PRs one after another, so more reviews than
 `~/.local/state/deps-merger/verdicts.json`, keyed by the PR (ignoring the
 case of `owner/name`), the target branch (case-sensitive), and the versions
 it moves to: a new version or a change of target branch is always reviewed
-again. Older cached verdicts that do not record a target branch are not
-reused. The key leaves out the agent, so a verdict one agent gave is
+again. Keys carry a `v2` marker and quote each dependency name and version,
+so embedded separators cannot identify a different update. Older cached
+verdicts are not reused: each update needs one fresh review after upgrading.
+The key leaves out the agent, so a verdict one agent gave is
 reused when another runs. An approval survives a rebase; a
 rejection does not, since the base branch the PR now sits on may have
 dealt with what the agent objected to. The exception is an update whose
@@ -275,6 +277,8 @@ update without versions, holds for, and `any` for other approvals; an
 expired verdict is neither listed nor forgotten. `deps-merger verdicts forget acme/Storefront#42` (or a whole
 `owner/name`, or one update as `verdicts` lists it) has those updates
 reviewed again on the next run; anything else is a usage error (exit 2).
+An update target matches the full key exactly, including the case of its
+branch, dependencies and versions; only the repository name ignores case.
 Both complete the repositories and PRs that have verdicts. Only one
 `--review` run works at a time: a second one, such as an overlapping cron
 job, fails at once rather than share the checkouts. Each `--review` run

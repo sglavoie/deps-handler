@@ -62,7 +62,7 @@ func TestNewRequest(t *testing.T) {
 func TestKey(t *testing.T) {
 	a, b := request(), request()
 	b.HeadOID = "rebased"
-	if a.Key() != b.Key() || a.Key() != `o/r#7 base="main" lib@2.0.0` {
+	if a.Key() != b.Key() || a.Key() != `o/r#7 v2 base="main" "lib"@"2.0.0"` {
 		t.Errorf("a rebase should keep the key: %q vs %q", a.Key(), b.Key())
 	}
 	b.Owner, b.Name = "O", "R"
@@ -82,7 +82,7 @@ func TestKey(t *testing.T) {
 		t.Errorf("a commit without metadata must pin the head commit: %q", b.Key())
 	}
 	b.Dependencies, b.Unread = nil, false
-	if b.Key() != `o/r#7 base="main" rebased` {
+	if b.Key() != `o/r#7 v2 base="main" rebased` {
 		t.Errorf("key without dependencies = %q", b.Key())
 	}
 }

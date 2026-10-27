@@ -78,11 +78,15 @@ func (r Request) Key() string {
 	deps := make([]string, 0, len(r.Dependencies))
 	versioned := len(r.Dependencies) > 0 && !r.Unread
 	for _, d := range r.Dependencies {
-		deps = append(deps, d.Name+"@"+d.Version)
+		// Quote each component so separators inside names or versions
+		// cannot impersonate another dependency or its version boundary.
+		deps = append(deps, fmt.Sprintf("%q@%q", d.Name, d.Version))
 		versioned = versioned && d.Version != ""
 	}
 	slices.Sort(deps)
-	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number), fmt.Sprintf("base=%q", r.BaseRef)}
+	// Old keys did not escape dependencies and may already hold an
+	// approval for a different update. Do not reuse any of those keys.
+	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number), "v2", fmt.Sprintf("base=%q", r.BaseRef)}
 	if len(deps) > 0 {
 		parts = append(parts, strings.Join(deps, ","))
 	}
