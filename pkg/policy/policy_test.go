@@ -58,6 +58,14 @@ func TestEvaluate(t *testing.T) {
 					{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
 				}
 			}},
+		{name: "a newer run that was skipped does not hide a failure", action: ActionSkip, reason: "failing checks: test",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.Checks = []github.Check{
+					{Name: "lint", State: github.CheckPassed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+					{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+					{Name: "test", State: github.CheckSkipped, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
+				}
+			}},
 		{name: "same job name in another workflow is not a rerun", action: ActionSkip, reason: "failing checks: test",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{

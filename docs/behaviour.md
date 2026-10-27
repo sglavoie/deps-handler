@@ -35,7 +35,8 @@ A PR is merged only when all of these hold:
   only by a newer run of the same name from the same workflow, app and
   event, as when concurrency cancels it: a `test` job failing in one
   workflow is not excused by a `test` job passing in another, nor a `push`
-  run failing by the `pull_request` run of the same workflow passing, and a
+  run failing by the `pull_request` run of the same workflow passing, nor
+  any run by a newer one that was skipped or neutral, and a
   commit status and a check run never stand in for each other;
 - GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`);
 - nothing was cut off: a PR with more than 100 commits or 100 checks is

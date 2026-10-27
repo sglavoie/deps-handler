@@ -157,7 +157,10 @@ func queueRebases(ds []Decision) {
 // checks, and a failing "test" in one is never hidden by a passing "test" in
 // another. So are the runs of one workflow for different events: one that
 // listens to both push and pull_request runs twice on the same commit, and
-// the newer run passing says nothing about the other failing.
+// the newer run passing says nothing about the other failing. Nor does a
+// newer run that was skipped or neutral, as one a label added after the PR
+// opened can trigger: it judged nothing, so it hides nothing, and is kept
+// beside the run it would otherwise have replaced.
 func LatestChecks(checks []github.Check) []github.Check {
 	type origin struct {
 		app, workflow int64
@@ -165,14 +168,14 @@ func LatestChecks(checks []github.Check) []github.Check {
 	}
 	newest := map[origin]int64{}
 	for _, c := range checks {
-		if !c.Status {
+		if !c.Status && c.State != github.CheckSkipped {
 			o := origin{c.App, c.Workflow, c.Event, c.Name}
 			newest[o] = max(newest[o], c.Suite)
 		}
 	}
 	out := make([]github.Check, 0, len(checks))
 	for _, c := range checks {
-		if c.Status || c.Suite == newest[origin{c.App, c.Workflow, c.Event, c.Name}] {
+		if c.Status || c.State == github.CheckSkipped || c.Suite == newest[origin{c.App, c.Workflow, c.Event, c.Name}] {
 			out = append(out, c)
 		}
 	}
