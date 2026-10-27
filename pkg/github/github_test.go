@@ -86,7 +86,8 @@ func TestTransient(t *testing.T) {
 		// The connection broke before the whole answer came back.
 		&url.Error{Op: "Put", URL: "u", Err: io.EOF}: true,
 		&url.Error{Op: "Put", URL: "u", Err: &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}}: true,
-		io.ErrUnexpectedEOF: true,
+		io.ErrUnexpectedEOF:                                    true,
+		fmt.Errorf("wrapped: %w", errMergeUnconfirmed):         true,
 		&url.Error{Op: "Put", URL: "u", Err: context.Canceled}: false,
 		// The same over HTTP/2, whose errors net/http does not export.
 		&url.Error{Op: "Put", URL: "u", Err: errors.New("stream error: stream ID 1; INTERNAL_ERROR; received from peer")}:                                   true,
@@ -503,6 +504,43 @@ func TestCommentPostsBody(t *testing.T) {
 	}
 	if got := rt.bodies["POST /repos/o/r/issues/5/comments"]; got != `{"body":"@dependabot rebase"}` {
 		t.Fatalf("body = %s", got)
+	}
+}
+
+func TestMergeRequiresConfirmation(t *testing.T) {
+	for _, body := range []string{
+		`{"merged": false, "message": "Pull Request is not mergeable"}`,
+		`{}`, `null`, `{"merged": null}`, `{"merged": "true"}`, `{"merged":`, "",
+	} {
+		t.Run(body, func(t *testing.T) {
+			rt := &routes{answers: map[string]*http.Response{"PUT /repos/o/r/pulls/5/merge": reply(200, body)}, bodies: map[string]string{}}
+			err := restClient(t, rt).Merge(context.Background(), "o", "r", 5, "squash", "abc")
+			if err == nil {
+				t.Fatal("merge reported success without confirmation")
+			}
+			// A response we cannot interpret may hide a successful write;
+			// the runner must reconcile it with the PR's actual state.
+			if !strings.Contains(body, `"merged": false`) && !Transient(err) {
+				t.Fatalf("ambiguous merge must be reconciled: %v", err)
+			}
+			if strings.Contains(body, `"merged": false`) && (Transient(err) || !strings.Contains(err.Error(), "Pull Request is not mergeable")) {
+				t.Fatalf("explicit refusal must preserve GitHub's reason: %v", err)
+			}
+		})
+	}
+}
+
+func TestPullRequestStateRejectsUnknownState(t *testing.T) {
+	for _, state := range []string{"", "FUTURE_STATE", "MERGED"} {
+		body := fmt.Sprintf(`{"data":{"repository":{"pullRequest":{"state":%q,"merged":false}}}}`, state)
+		gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(body)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := (&client{gql: gql}).PullRequestState(context.Background(), "o", "r", 5)
+		if err == nil || got != "" || !strings.HasPrefix(err.Error(), "o/r#5: ") {
+			t.Errorf("state %q became %q, %v; want an error, not a closed PR", state, got, err)
+		}
 	}
 }
 

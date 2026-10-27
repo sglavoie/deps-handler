@@ -81,7 +81,11 @@ a 502, 503, 504, a timeout or a connection closed or reset before GitHub
 answered, which may have merged anyway: if the PR is no longer open when
 the repository is read again, GitHub is asked whether it merged, and it is
 reported merged, with the error GitHub gave, or failed if it was closed
-without being merged. GitHub can show such a PR open a
+without being merged. A successful HTTP response must explicitly report
+`merged: true`; `merged: false` is a failed merge. A missing or malformed
+confirmation is reconciled like a timeout, and an unknown or inconsistent
+PR state fails the state lookup rather than counting as a closed PR.
+GitHub can show such a PR open a
 moment longer, so when its retry fails too, the repository is read once
 more before the merge is reported failed. A PR that is still open but not
 mergeable when it would be retried, after any of these failures, is never

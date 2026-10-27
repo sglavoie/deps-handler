@@ -96,6 +96,9 @@ do not hold each other's rebase queues. Merges are made one at a time with
 the head SHA pinned, re-reading the repository after each; a merge GitHub
 fails in a way that may hide a success is checked before it is reported. Writes are never sent
 concurrently, and a rate limit stops them rather than push through it.
+Merge responses must explicitly confirm success. Missing or malformed
+confirmations are reconciled against the PR's state; an unknown state is
+reported as an error rather than assumed to mean the PR was closed.
 Rate-limit pauses accept `Retry-After` as seconds or an HTTP date; pauses
 over two minutes stop further writes for that run.
 A PR whose merge or rebase request failed stops holding the rebase queue

@@ -600,7 +600,11 @@ func statusState(state string) CheckState {
 func (c *client) Merge(ctx context.Context, owner, name string, number int, method, headOID string) error {
 	body, _ := json.Marshal(map[string]string{"merge_method": method, "sha": headOID})
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/merge", owner, name, number)
-	err := c.rest.DoWithContext(ctx, "PUT", path, bytes.NewReader(body), nil)
+	var result struct {
+		Merged  *bool
+		Message string
+	}
+	err := c.rest.DoWithContext(ctx, "PUT", path, bytes.NewReader(body), &result)
 	if he, ok := errors.AsType[*api.HTTPError](err); ok && he.StatusCode == http.StatusForbidden {
 		// GitHub words it as a scope for a user's token, and as a
 		// permission for a GitHub App's.
@@ -611,8 +615,29 @@ func (c *client) Merge(ctx context.Context, owner, name string, number int, meth
 			return &WorkflowScopeError{Err: err, App: true}
 		}
 	}
-	return err
+	if err != nil {
+		// A successful HTTP response with unreadable JSON does not say
+		// whether the write went through. Reconcile it like a timeout.
+		if errors.As(err, new(*json.SyntaxError)) || errors.As(err, new(*json.UnmarshalTypeError)) {
+			return fmt.Errorf("%w: %w", errMergeUnconfirmed, err)
+		}
+		return err
+	}
+	if result.Merged == nil {
+		return errMergeUnconfirmed
+	}
+	if !*result.Merged {
+		if result.Message == "" {
+			result.Message = "GitHub reported merged=false"
+		}
+		return fmt.Errorf("merge refused: %s", result.Message)
+	}
+	return nil
 }
+
+// errMergeUnconfirmed asks the runner to check the PR's state before
+// reporting the outcome of a write whose response supplied no answer.
+var errMergeUnconfirmed = errors.New("GitHub did not confirm the merge outcome")
 
 func (c *client) Comment(ctx context.Context, owner, name string, number int, text string) error {
 	body, _ := json.Marshal(map[string]string{"body": text})
@@ -686,8 +711,10 @@ func (c *client) PullRequestState(ctx context.Context, owner, name string, numbe
 		return PRMerged, nil
 	case pr.State == "OPEN":
 		return PROpen, nil
+	case pr.State == "CLOSED":
+		return PRClosed, nil
 	}
-	return PRClosed, nil
+	return "", fmt.Errorf("%s/%s#%d: unrecognized or inconsistent pull request state %q", owner, name, number, resp.Repository.PullRequest.State)
 }
 
 const fileQuery = `
@@ -756,6 +783,9 @@ func repoNotFound(err error) bool {
 func Transient(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, errMergeUnconfirmed) {
+		return true
 	}
 	if he, ok := errors.AsType[*api.HTTPError](err); ok {
 		return he.StatusCode == http.StatusBadGateway || he.StatusCode == http.StatusServiceUnavailable || he.StatusCode == http.StatusGatewayTimeout
