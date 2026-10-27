@@ -25,6 +25,9 @@ import (
 type CheckState string
 
 const (
+	// CheckUnknown preserves missing or unrecognized API states so policy
+	// blocks the PR even if a newer check would otherwise supersede it.
+	CheckUnknown CheckState = "unknown"
 	CheckPassed  CheckState = "passed"
 	CheckPending CheckState = "pending"
 	CheckFailed  CheckState = "failed"
@@ -492,9 +495,10 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			}
 			pr.CheckCount = ln.Commit.StatusCheckRollup.Contexts.TotalCount
 			for _, cx := range ln.Commit.StatusCheckRollup.Contexts.Nodes {
-				if cx.Typename == "StatusContext" {
+				switch cx.Typename {
+				case "StatusContext":
 					pr.Checks = append(pr.Checks, Check{Name: cx.Context, State: statusState(cx.State), Status: true})
-				} else {
+				case "CheckRun":
 					c := Check{Name: cx.Name, State: checkRunState(cx.Status, cx.Conclusion)}
 					if s := cx.CheckSuite; s != nil {
 						c.Suite = s.DatabaseID
@@ -507,6 +511,8 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 						}
 					}
 					pr.Checks = append(pr.Checks, c)
+				default:
+					pr.Checks = append(pr.Checks, Check{Name: cx.Name, State: CheckUnknown})
 				}
 			}
 		}
@@ -558,8 +564,12 @@ func trailers(msg string) []string {
 }
 
 func checkRunState(status, conclusion string) CheckState {
-	if status != "COMPLETED" {
+	switch status {
+	case "IN_PROGRESS", "PENDING", "QUEUED", "REQUESTED", "WAITING":
 		return CheckPending
+	case "COMPLETED":
+	default:
+		return CheckUnknown
 	}
 	switch conclusion {
 	case "SUCCESS":
@@ -568,8 +578,10 @@ func checkRunState(status, conclusion string) CheckState {
 		return CheckSkipped
 	case "STALE":
 		return CheckStale
+	case "ACTION_REQUIRED", "CANCELLED", "FAILURE", "STARTUP_FAILURE", "TIMED_OUT":
+		return CheckFailed
 	}
-	return CheckFailed
+	return CheckUnknown
 }
 
 func statusState(state string) CheckState {
@@ -578,8 +590,10 @@ func statusState(state string) CheckState {
 		return CheckPassed
 	case "PENDING", "EXPECTED":
 		return CheckPending
+	case "ERROR", "FAILURE":
+		return CheckFailed
 	}
-	return CheckFailed
+	return CheckUnknown
 }
 
 func (c *client) Merge(ctx context.Context, owner, name string, number int, method, headOID string) error {

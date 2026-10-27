@@ -83,7 +83,9 @@ A PR is merged only when all of these hold:
 - GitHub reports it mergeable and clean, and nothing about it was cut off
   (over 100 commits or checks).
 
-An unrecognized mergeability value blocks action. A newer check can replace
+An unrecognized mergeability value blocks action. Missing or unrecognized
+check types, statuses and completed-check conclusions also block action,
+even when a newer check passed. A newer check can replace
 an older one only when both identify their name, suite, app, workflow and
 event; checks with missing identifiers remain part of the decision.
 

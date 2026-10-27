@@ -30,9 +30,17 @@ func TestCheckRunState(t *testing.T) {
 		{"COMPLETED", "CANCELLED", CheckFailed},
 		{"COMPLETED", "TIMED_OUT", CheckFailed},
 		{"COMPLETED", "ACTION_REQUIRED", CheckFailed},
+		{"COMPLETED", "STARTUP_FAILURE", CheckFailed},
 		{"COMPLETED", "STALE", CheckStale},
 		{"IN_PROGRESS", "", CheckPending},
 		{"QUEUED", "", CheckPending},
+		{"PENDING", "", CheckPending},
+		{"REQUESTED", "", CheckPending},
+		{"WAITING", "", CheckPending},
+		{"", "SUCCESS", "unknown"},
+		{"UNRECOGNIZED", "SUCCESS", "unknown"},
+		{"COMPLETED", "", "unknown"},
+		{"COMPLETED", "UNRECOGNIZED", "unknown"},
 	} {
 		if got := checkRunState(c.status, c.conclusion); got != c.want {
 			t.Errorf("checkRunState(%s, %s) = %s, want %s", c.status, c.conclusion, got, c.want)
@@ -44,6 +52,7 @@ func TestStatusState(t *testing.T) {
 	for state, want := range map[string]CheckState{
 		"SUCCESS": CheckPassed, "PENDING": CheckPending, "EXPECTED": CheckPending,
 		"FAILURE": CheckFailed, "ERROR": CheckFailed,
+		"": "unknown", "UNRECOGNIZED": "unknown",
 	} {
 		if got := statusState(state); got != want {
 			t.Errorf("statusState(%s) = %s, want %s", state, got, want)
@@ -254,6 +263,37 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 	}
 	if len(pr.Comments) != 1 || pr.Comments[0].Author != "me" || pr.CommentCount != 64 {
 		t.Fatalf("comments = %+v of %d", pr.Comments, pr.CommentCount)
+	}
+}
+
+func TestFetchRepoPreservesUnknownChecks(t *testing.T) {
+	for _, tc := range []struct {
+		name, old, replacement string
+		index                  int
+	}{
+		{"missing status", `"status": "COMPLETED"`, `"status": null`, 0},
+		{"unknown status", `"status": "COMPLETED"`, `"status": "FUTURE_STATE"`, 0},
+		{"missing conclusion", `"conclusion": "SUCCESS"`, `"conclusion": null`, 0},
+		{"unknown conclusion", `"conclusion": "SUCCESS"`, `"conclusion": "FUTURE_STATE"`, 0},
+		{"missing type", `"__typename": "CheckRun"`, `"__typename": null`, 0},
+		{"unknown type", `"__typename": "CheckRun"`, `"__typename": "FutureCheck"`, 0},
+		{"missing context state", `"state": "PENDING"`, `"state": null`, 2},
+		{"unknown context state", `"state": "PENDING"`, `"state": "FUTURE_STATE"`, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.Replace(fetchResponse, tc.old, tc.replacement, 1)
+			gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(body)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := (&client{gql: gql}).FetchRepo(context.Background(), "o", "r")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := r.PullRequests[0].Checks[tc.index]; got.State != CheckUnknown {
+				t.Fatalf("malformed check lost its unknown state: %+v", got)
+			}
+		})
 	}
 }
 
