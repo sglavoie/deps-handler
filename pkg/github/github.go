@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
+	"github.com/cli/go-gh/v2/pkg/auth"
 )
 
 // CheckState is the normalised outcome of one check run or status context.
@@ -236,13 +237,30 @@ type client struct {
 // treated like a 504.
 const RequestTimeout = time.Minute
 
-// New builds a client from the gh CLI's stored credentials or GH_TOKEN.
+// New builds a github.com client from the gh CLI's stored credentials or
+// GH_TOKEN. Other hosts are rejected: checkouts and verdict keys assume
+// github.com, so accepting another host could reuse an unrelated approval.
 func New() (Client, error) {
-	c, err := newClient(api.ClientOptions{Timeout: RequestTimeout})
+	opts, err := githubComOptions()
+	if err != nil {
+		return nil, err
+	}
+	c, err := newClient(opts)
 	if err != nil {
 		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
 	}
 	return c, nil
+}
+
+// githubComOptions keeps discovery and runs on the same supported host as
+// review checkouts. Reject an unsupported selection instead of silently
+// acting on a same-named repository on github.com.
+func githubComOptions() (api.ClientOptions, error) {
+	host, source := auth.DefaultHost()
+	if !strings.EqualFold(host, "github.com") {
+		return api.ClientOptions{}, fmt.Errorf("unsupported GitHub host %q from %s: deps-merger supports only github.com; set GH_HOST=github.com to use it", host, source)
+	}
+	return api.ClientOptions{Host: "github.com", Timeout: RequestTimeout}, nil
 }
 
 // NewWithToken builds a github.com client that authenticates with token,

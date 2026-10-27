@@ -32,6 +32,11 @@ or `GH_TOKEN` set. Agent review also needs
 [Claude Code](https://docs.claude.com/en/docs/claude-code) or
 [Codex](https://github.com/openai/codex) on `PATH`, on Linux or macOS.
 
+Only github.com is supported. If `GH_HOST` or your sole `gh` login selects
+another host, runs and repository discovery stop before making requests:
+review checkouts and cached verdicts assume github.com. Set
+`GH_HOST=github.com` to select your github.com account explicitly.
+
 The Homebrew cask installs shell completions for bash, zsh and fish,
 which complete `-r` and `--owner` with your configured repos. Otherwise,
 load `deps-merger completion bash` (or `zsh`, `fish`, `powershell`);
@@ -170,8 +175,9 @@ Overlapping review runs cannot share checkouts, even when they use different
 state directories for their verdict caches.
 
 Cache keys quote dependency names and versions so separators in either
-cannot reuse another update's approval. Older keys are not reused, so
-upgrading requires one fresh review per update. Forgetting a full update
+cannot reuse another update's approval. Older keys, including those created
+before github.com host validation, are not reused, so upgrading requires
+one fresh review per update. Forgetting a full update
 key removes only that exact update; only repository names ignore case.
 
 ## What needs attention
@@ -237,6 +243,9 @@ are always arrays, never `null`. [Scripting](docs/behaviour.md#scripting)
 describes every field and what each exit status covers. `run --markdown`
 prints each repository's section as GitHub Markdown instead, ready for an
 issue or a CI job summary.
+
+The library's JSON report also writes an empty result set as `"results": []`,
+including when the caller supplies a nil slice.
 
 On a terminal the report is colored; `NO_COLOR=1` or `CLICOLOR=0` turns
 color off and `CLICOLOR_FORCE=1` keeps it when piped.

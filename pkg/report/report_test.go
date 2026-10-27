@@ -215,6 +215,22 @@ func TestJSON(t *testing.T) {
 	}
 }
 
+func TestJSONEmptyResults(t *testing.T) {
+	for _, results := range [][]runner.RepoResult{nil, {}} {
+		var b bytes.Buffer
+		if err := JSON(&b, false, results); err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]json.RawMessage
+		if err := json.Unmarshal(b.Bytes(), &doc); err != nil {
+			t.Fatal(err)
+		}
+		if got := string(doc["results"]); got != "[]" {
+			t.Errorf("results = %s, want []", got)
+		}
+	}
+}
+
 func TestRepoHeaderShowsFallbackMergeMethod(t *testing.T) {
 	var b bytes.Buffer
 	Repo(&b, false, runner.RepoResult{Repo: "o/r", Policy: config.Builtin, MergeMethod: "merge"})

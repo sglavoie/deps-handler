@@ -62,7 +62,11 @@ type repoPage struct {
 // can write to, leaving out archived repositories and forks. The list is
 // sorted, case aside, each repository once.
 func DependabotRepos(ctx context.Context, owners []string) ([]string, error) {
-	gql, err := api.NewGraphQLClient(api.ClientOptions{Timeout: RequestTimeout})
+	opts, err := githubComOptions()
+	if err != nil {
+		return nil, err
+	}
+	gql, err := api.NewGraphQLClient(opts)
 	if err != nil {
 		return nil, fmt.Errorf("github auth (run `gh auth login`): %w", err)
 	}

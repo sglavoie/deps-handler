@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
+	ghconfig "github.com/cli/go-gh/v2/pkg/config"
 )
 
 func TestCheckRunState(t *testing.T) {
@@ -780,6 +781,8 @@ func TestNewWithToken(t *testing.T) {
 	if _, err := NewWithToken(""); err == nil {
 		t.Error("NewWithToken(\"\") succeeded, want an error")
 	}
+	// An explicit github.com token is independent of gh's selected host.
+	t.Setenv("GH_HOST", "github.example.com")
 	rec := &authRecorder{canned: canned(`{"data": {"viewer": {"login": "deps-merger[bot]"}}}`)}
 	orig := http.DefaultTransport
 	http.DefaultTransport = rec
@@ -800,6 +803,74 @@ func TestNewWithToken(t *testing.T) {
 	}
 	if rec.host != "api.github.com" {
 		t.Errorf("request went to %q, want api.github.com", rec.host)
+	}
+}
+
+func TestRejectUnsupportedHosts(t *testing.T) {
+	for _, source := range []string{"GH_HOST", "gh config"} {
+		t.Run(source, func(t *testing.T) {
+			cfg := ghconfig.ReadFromString("hosts:\n  github.example.com:\n    user: test\n")
+			originalRead := ghconfig.Read
+			ghconfig.Read = func(*ghconfig.Config) (*ghconfig.Config, error) { return cfg, nil }
+			t.Cleanup(func() { ghconfig.Read = originalRead })
+			t.Setenv("GH_HOST", "")
+			for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"} {
+				t.Setenv(name, "test-token")
+			}
+			if source == "GH_HOST" {
+				t.Setenv("GH_HOST", "github.example.com")
+			}
+			rec := &authRecorder{canned: canned(`{"data":{"viewer":{"repositories":{"nodes":[]}}}}`)}
+			originalTransport := http.DefaultTransport
+			http.DefaultTransport = rec
+			t.Cleanup(func() { http.DefaultTransport = originalTransport })
+			// Reject before credential lookup or any request: neither runs
+			// nor discovery may mix Enterprise repos with github.com reviews.
+			_, err := New()
+			if err == nil || !strings.Contains(err.Error(), "unsupported GitHub host") {
+				t.Errorf("New() error = %v, want unsupported host", err)
+			}
+			_, err = DependabotRepos(context.Background(), nil)
+			if err == nil || !strings.Contains(err.Error(), "unsupported GitHub host") {
+				t.Errorf("DependabotRepos() error = %v, want unsupported host", err)
+			}
+			if rec.host != "" {
+				t.Errorf("sent a request to %s before rejecting the host", rec.host)
+			}
+		})
+	}
+}
+
+func TestNewSelectsGitHubComExplicitly(t *testing.T) {
+	// A github.com selection must work even when the sole stored login
+	// belongs to Enterprise, and must use the github.com token.
+	cfg := ghconfig.ReadFromString("hosts:\n  github.example.com:\n    user: test\n")
+	originalRead := ghconfig.Read
+	ghconfig.Read = func(*ghconfig.Config) (*ghconfig.Config, error) { return cfg, nil }
+	t.Cleanup(func() { ghconfig.Read = originalRead })
+	t.Setenv("GH_HOST", "GITHUB.COM")
+	t.Setenv("GH_TOKEN", "public-test-token")
+	t.Setenv("GH_ENTERPRISE_TOKEN", "enterprise-test-token")
+	rec := &authRecorder{canned: canned(`{"data":{"viewer":{"login":"test","repositories":{"nodes":[]}}}}`)}
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = rec
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+	c, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Viewer(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, discover := range []bool{false, true} {
+		if discover {
+			if _, err := DependabotRepos(context.Background(), nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if rec.host != "api.github.com" || rec.header.Get("Authorization") != "token public-test-token" {
+			t.Errorf("discovery=%t: host=%q, authorization=%q", discover, rec.host, rec.header.Get("Authorization"))
+		}
 	}
 }
 

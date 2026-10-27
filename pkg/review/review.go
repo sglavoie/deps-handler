@@ -84,9 +84,10 @@ func (r Request) Key() string {
 		versioned = versioned && d.Version != ""
 	}
 	slices.Sort(deps)
-	// Old keys did not escape dependencies and may already hold an
-	// approval for a different update. Do not reuse any of those keys.
-	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number), "v2", fmt.Sprintf("base=%q", r.BaseRef)}
+	// Older keys could be created against hosts other than github.com,
+	// before the client rejected those; the earliest also did not escape
+	// dependencies. Neither can safely establish approval for this update.
+	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number), "v3", fmt.Sprintf("base=%q", r.BaseRef)}
 	if len(deps) > 0 {
 		parts = append(parts, strings.Join(deps, ","))
 	}

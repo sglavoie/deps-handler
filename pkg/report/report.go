@@ -16,6 +16,9 @@ const titleWidth = 60
 
 // JSON writes results as an indented JSON document.
 func JSON(w io.Writer, apply bool, results []runner.RepoResult) error {
+	if results == nil {
+		results = []runner.RepoResult{}
+	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(struct {

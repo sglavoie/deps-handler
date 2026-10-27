@@ -57,6 +57,28 @@ func TestCacheDoesNotReuseUnescapedDependencyKeys(t *testing.T) {
 	}
 }
 
+func TestCacheDoesNotReuseKeysFromUnverifiedHosts(t *testing.T) {
+	c, err := OpenCache(filepath.Join(t.TempDir(), "verdicts.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := request()
+	// Before host validation, this key could hold an Enterprise approval
+	// for the same repository, PR number, branch and dependency versions.
+	if err := c.Put(`o/r#7 v2 base="main" "lib"@"2.0.0"`, r.HeadOID, "agent", policy.Verdict{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Get(r.Key(), r.HeadOID) != nil {
+		t.Fatal("reused approval whose GitHub host was not verified")
+	}
+	if err := c.Put(r.Key(), r.HeadOID, "agent", policy.Verdict{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Get(r.Key(), r.HeadOID) == nil {
+		t.Fatal("did not reuse a fresh approval")
+	}
+}
+
 func TestCacheKeysDistinguishDependencySeparators(t *testing.T) {
 	for name, pair := range map[string][2][]dependabot.Dependency{
 		"dependency boundary": {
