@@ -37,8 +37,12 @@ A PR is merged only when all of these hold:
   workflow is not excused by a `test` job passing in another, nor a `push`
   run failing by the `pull_request` run of the same workflow passing, nor
   any run by a newer one that was skipped or neutral, and a
-  commit status and a check run never stand in for each other;
-- GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`);
+  commit status and a check run never stand in for each other. Both runs
+  must identify their name, suite, app, workflow and event before one can
+  supersede the other. Checks missing any of these, including checks from
+  apps that supply no workflow identity, are all kept;
+- GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`); an
+  unrecognized mergeability value blocks both merging and rebase requests;
 - nothing was cut off: a PR with more than 100 commits or 100 checks is
   skipped rather than judged on partial data. A PR with no commits to
   verify is also skipped, even if an agent approved it. If the current

@@ -31,8 +31,8 @@ func request() Request {
 
 func TestNewRequest(t *testing.T) {
 	pr := github.PullRequest{HeadOID: "abc", BaseRef: "main", Checks: []github.Check{
-		{Name: "build", State: github.CheckFailed, Suite: 1},
-		{Name: "build", State: github.CheckPassed, Suite: 2},
+		{Name: "build", State: github.CheckFailed, Suite: 1, App: 15368, Workflow: 7, Event: "pull_request"},
+		{Name: "build", State: github.CheckPassed, Suite: 2, App: 15368, Workflow: 7, Event: "pull_request"},
 	}}
 	d := policy.Decision{PR: &pr, Number: 3, Grade: config.UpdateMajor, Reason: "major update exceeds limit (minor)" + policy.AwaitingReview}
 	req := NewRequest(config.Repo{Owner: "o", Name: "r", Policy: config.Builtin}, d)

@@ -170,22 +170,27 @@ func queueRebases(ds []Decision, refused map[int]bool) {
 // the newer run passing says nothing about the other failing. Nor does a
 // newer run that was skipped or neutral, as one a label added after the PR
 // opened can trigger: it judged nothing, so it hides nothing, and is kept
-// beside the run it would otherwise have replaced.
+// beside the run it would otherwise have replaced. A check missing its
+// name, suite, app, workflow or event is kept too: missing identities cannot
+// establish that two runs came from the same source.
 func LatestChecks(checks []github.Check) []github.Check {
 	type origin struct {
 		app, workflow int64
 		event, name   string
 	}
+	identified := func(c github.Check) bool {
+		return !c.Status && c.Name != "" && c.Suite > 0 && c.App > 0 && c.Workflow > 0 && c.Event != ""
+	}
 	newest := map[origin]int64{}
 	for _, c := range checks {
-		if !c.Status && c.State != github.CheckSkipped {
+		if identified(c) && c.State != github.CheckSkipped {
 			o := origin{c.App, c.Workflow, c.Event, c.Name}
 			newest[o] = max(newest[o], c.Suite)
 		}
 	}
 	out := make([]github.Check, 0, len(checks))
 	for _, c := range checks {
-		if c.Status || c.State == github.CheckSkipped || c.Suite == newest[origin{c.App, c.Workflow, c.Event, c.Name}] {
+		if !identified(c) || c.State == github.CheckSkipped || c.Suite == newest[origin{c.App, c.Workflow, c.Event, c.Name}] {
 			out = append(out, c)
 		}
 	}
@@ -410,10 +415,13 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	}
 
 	switch pr.Mergeable {
+	case "MERGEABLE":
 	case "CONFLICTING":
 		return conflicts(conflictHint(pr))
 	case "UNKNOWN", "":
 		return wait(upToDate, "GitHub is still computing mergeability")
+	default:
+		return skip("unknown mergeability %q; left for a human", pr.Mergeable)
 	}
 
 	var safe Decision

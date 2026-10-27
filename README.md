@@ -83,6 +83,10 @@ A PR is merged only when all of these hold:
 - GitHub reports it mergeable and clean, and nothing about it was cut off
   (over 100 commits or checks).
 
+An unrecognized mergeability value blocks action. A newer check can replace
+an older one only when both identify their name, suite, app, workflow and
+event; checks with missing identifiers remain part of the decision.
+
 A safe PR that is only behind its base branch gets one `@dependabot rebase`
 comment, one PR at a time per repository, so that merges do not rerun CI
 on every other PR. Merges are made one at a time with the head SHA pinned,

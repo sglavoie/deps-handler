@@ -61,8 +61,8 @@ func TestDiagnoseCancelledRunIsNotRepoWide(t *testing.T) {
 	// later run that passes.
 	rerun := func(pr github.PullRequest) github.PullRequest {
 		pr.Checks = []github.Check{
-			{Name: "Quality", State: github.CheckFailed, Suite: 1},
-			{Name: "Quality", State: github.CheckPassed, Suite: 2},
+			{Name: "Quality", State: github.CheckFailed, Suite: 1, App: 15368, Workflow: 7, Event: "pull_request"},
+			{Name: "Quality", State: github.CheckPassed, Suite: 2, App: 15368, Workflow: 7, Event: "pull_request"},
 		}
 		return pr
 	}

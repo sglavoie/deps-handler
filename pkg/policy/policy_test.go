@@ -63,13 +63,65 @@ func TestUnknownCheckStateCannotMerge(t *testing.T) {
 	}
 }
 
+func TestUnknownMergeabilityCannotAuthorizeAction(t *testing.T) {
+	for _, state := range []string{"CLEAN", "HAS_HOOKS", "BEHIND"} {
+		for _, size := range []string{"patch", "major"} {
+			t.Run(state+"/"+size, func(t *testing.T) {
+				pr := testutil.PR(1, "lib:"+size)
+				pr.Mergeable, pr.MergeState = "UNRECOGNIZED", state
+				d := Evaluate(testutil.Repo(pr), defaultPolicy, "me", approveAll)[0]
+				if d.Action != ActionSkip || !strings.Contains(d.Reason, "unknown mergeability") {
+					t.Fatalf("unrecognized mergeability authorized an action: %+v", d)
+				}
+			})
+		}
+	}
+}
+
+func TestIncompleteCheckIdentityCannotHideFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		omit func(*github.Check)
+	}{
+		{"suite", func(c *github.Check) { c.Suite = 0 }},
+		{"app", func(c *github.Check) { c.App = 0 }},
+		{"workflow", func(c *github.Check) { c.Workflow = 0 }},
+		{"event", func(c *github.Check) { c.Event = "" }},
+		{"name", func(c *github.Check) { c.Name = "" }},
+	}
+	for _, tc := range cases {
+		for _, size := range []string{"patch", "major"} {
+			t.Run(tc.name+"/"+size, func(t *testing.T) {
+				pr := testutil.PR(1, "lib:"+size)
+				pr.Checks = []github.Check{
+					{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
+				}
+				tc.omit(&pr.Checks[0])
+				if tc.name != "suite" {
+					tc.omit(&pr.Checks[1])
+				}
+				p := defaultPolicy
+				p.RequireChecks = false
+				d := Evaluate(testutil.Repo(pr), p, "me", approveAll)[0]
+				if d.Action != ActionSkip || !strings.Contains(d.Reason, "failing checks") {
+					t.Fatalf("incomplete check identity hid a failure: %+v", d)
+				}
+				if got := LatestChecks(pr.Checks); len(got) != 2 {
+					t.Fatalf("review and diagnosis also need both checks: %+v", got)
+				}
+			})
+		}
+	}
+}
+
 func TestNewerCheckCannotHideUnknownState(t *testing.T) {
 	for _, state := range []github.CheckState{"", "unknown"} {
 		for _, size := range []string{"patch", "major"} {
 			pr := testutil.PR(1, "lib:"+size)
 			pr.Checks = []github.Check{
-				{Name: "build", State: state, Suite: 1, App: actions, Workflow: 7},
-				{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+				{Name: "build", State: state, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+				{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
 			}
 			p := defaultPolicy
 			p.RequireChecks = false
@@ -121,8 +173,8 @@ func TestEvaluate(t *testing.T) {
 		{name: "check cancelled in favour of a newer run merges", action: ActionMerge,
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
-					{Name: "build", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7},
-					{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+					{Name: "build", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+					{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
 				}
 			}},
 		{name: "a newer run that was skipped does not hide a failure", action: ActionSkip, reason: "failing checks: test",
@@ -136,15 +188,15 @@ func TestEvaluate(t *testing.T) {
 		{name: "same job name in another workflow is not a rerun", action: ActionSkip, reason: "failing checks: test",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
-					{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7},
-					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 8},
+					{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 8, Event: "pull_request"},
 				}
 			}},
 		{name: "same job name pending in another workflow waits", action: ActionWait, reason: "1 check(s) still running",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
-					{Name: "test", State: github.CheckPending, Suite: 1, App: actions, Workflow: 7},
-					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 8},
+					{Name: "test", State: github.CheckPending, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+					{Name: "test", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 8, Event: "pull_request"},
 				}
 			}},
 		{name: "the same workflow run for another event is not a rerun", action: ActionSkip, reason: "failing checks: test",
@@ -158,21 +210,21 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
 					{Name: "lint", State: github.CheckFailed, Suite: 1, App: 99},
-					{Name: "lint", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+					{Name: "lint", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
 				}
 			}},
 		{name: "a check run does not supersede a status of the same name", action: ActionSkip, reason: "failing checks: ci",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
 					{Name: "ci", State: github.CheckFailed, Status: true},
-					{Name: "ci", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+					{Name: "ci", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
 				}
 			}},
 		{name: "a pending status is not superseded either", action: ActionWait, reason: "1 check(s) still running",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Checks = []github.Check{
 					{Name: "ci", State: github.CheckPending, Status: true},
-					{Name: "ci", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+					{Name: "ci", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7, Event: "pull_request"},
 				}
 			}},
 		{name: "check failing in the newer run", action: ActionSkip, reason: "failing checks: build",
@@ -606,12 +658,12 @@ func TestEvaluateUnapprovedDoesNotHoldRebaseQueue(t *testing.T) {
 
 func TestLatestChecks(t *testing.T) {
 	checks := []github.Check{
-		{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7},
-		{Name: "test", State: github.CheckPassed, Suite: 3, App: actions, Workflow: 7},
-		{Name: "test", State: github.CheckPending, Suite: 2, App: actions, Workflow: 8},
+		{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"},
+		{Name: "test", State: github.CheckPassed, Suite: 3, App: actions, Workflow: 7, Event: "pull_request"},
+		{Name: "test", State: github.CheckPending, Suite: 2, App: actions, Workflow: 8, Event: "pull_request"},
 		{Name: "test", State: github.CheckFailed, Status: true},
-		{Name: "matrix", State: github.CheckPassed, Suite: 3, App: actions, Workflow: 7},
-		{Name: "matrix", State: github.CheckFailed, Suite: 3, App: actions, Workflow: 7},
+		{Name: "matrix", State: github.CheckPassed, Suite: 3, App: actions, Workflow: 7, Event: "pull_request"},
+		{Name: "matrix", State: github.CheckFailed, Suite: 3, App: actions, Workflow: 7, Event: "pull_request"},
 		{Name: "both", State: github.CheckFailed, Suite: 4, App: actions, Workflow: 9, Event: "push"},
 		{Name: "both", State: github.CheckPassed, Suite: 5, App: actions, Workflow: 9, Event: "pull_request"},
 		{Name: "both", State: github.CheckFailed, Suite: 4, App: actions, Workflow: 9, Event: "pull_request"},
