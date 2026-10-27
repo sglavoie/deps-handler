@@ -568,8 +568,6 @@ func (r *Runner) prState(ctx context.Context, rc config.Repo, number int) (githu
 	})
 }
 
-// fetch reads the repository, once more when GitHub fails in a way that
-// may pass.
 // withFiles layers the policy files of rc's owner and of rc itself over
 // its config, and names the files found.
 func (r *Runner) withFiles(ctx context.Context, rc config.Repo) (config.Repo, []string, error) {
@@ -615,6 +613,8 @@ func (r *Runner) orgFile(ctx context.Context, owner string) ([]byte, error) {
 	return read()
 }
 
+// fetch reads the repository, once more when GitHub fails in a way that
+// may pass.
 func (r *Runner) fetch(ctx context.Context, rc config.Repo) (*github.Repo, error) {
 	return github.Again(ctx, r.PollInterval, r.sleep, func() (*github.Repo, error) {
 		return r.Client.FetchRepo(ctx, rc.Owner, rc.Name)
