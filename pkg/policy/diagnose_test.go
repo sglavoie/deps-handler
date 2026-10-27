@@ -44,6 +44,18 @@ func TestDiagnoseRepoWideFailure(t *testing.T) {
 	}
 }
 
+func TestDiagnoseRepoWideFailureBesideAPendingRun(t *testing.T) {
+	pending := testutil.PR(3)
+	pending.Checks = []github.Check{{Name: "i18n", State: github.CheckPending}}
+	f := findings(testutil.Repo(failing(testutil.PR(1), "i18n"), failing(testutil.PR(2), "i18n"), pending))
+	if len(f[FindingRepoCheck]) != 1 || len(f[FindingRepoCheck][0].PRs) != 2 {
+		t.Fatalf("repo-wide = %+v", f[FindingRepoCheck])
+	}
+	if len(f[FindingIncompatible]) != 0 {
+		t.Fatalf("a check still running elsewhere must not blame the updates: %+v", f[FindingIncompatible])
+	}
+}
+
 func TestDiagnoseCancelledRunIsNotRepoWide(t *testing.T) {
 	// Like ExcelAddIn: concurrency cancels CI on every PR in favour of a
 	// later run that passes.

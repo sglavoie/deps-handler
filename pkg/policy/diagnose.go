@@ -234,8 +234,11 @@ func repoWideChecks(decisions []Decision) map[string][]int {
 		judged++
 		seen := map[string]bool{}
 		for _, c := range LatestChecks(d.PR.Checks) {
-			// A skipped job did not run here.
-			if c.Name == "" || seen[c.Name] || c.State == github.CheckSkipped {
+			// Only a passed or failed job counts: a skipped one did not run
+			// here, and one pending or stale has no say yet. Counting those
+			// would hide a broken base branch behind a job still running,
+			// and suggest ignoring every update that failed it.
+			if c.Name == "" || seen[c.Name] || (c.State != github.CheckPassed && c.State != github.CheckFailed) {
 				continue
 			}
 			seen[c.Name] = true
