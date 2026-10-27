@@ -142,14 +142,18 @@ answers `approve` or `reject` with its reasons. It runs read-only:
   regular expression, at most 200 matching lines). Every path they take
   is resolved, symlinks included, and refused unless it stays inside the
   checkout and outside its `.git` (in any case, as macOS ignores it);
-  searches do not follow symlinks. After
+  searches do not follow symlinks. With `api.tools: false`, any tool call
+  fails the review without reading files or sending their contents. Tool
+  calls in the final answer fail the review too. After
   at most `api.max_turns` rounds of tool calls (30 by default), or a reply
   that is not the answer, the model is asked once more for the answer,
   held to its JSON schema. A model that thinks aloud (`<think>`, or only
   `</think>` when its chat template opens the thinking) or fences its
-  answer is read past both; a reply holding more than one answer, as when
-  a draft precedes it, is asked again too. The key, if the endpoint wants one, comes
-  from the variable `api.key_env` names, never from the config. A local
+  answer is read past both; what remains must be a single JSON object.
+  Arrays, surrounding prose and multiple JSON values require a fresh
+  answer; an invalid final answer fails the review. The key, if the
+  endpoint wants one, comes from the variable `api.key_env` names, never
+  from the config. A local
   server usually answers one request at a time (`llama-server -np 1`):
   run with `--review-parallel 1`, or the reviews queue behind each other
   and the wait counts against each one's `timeout`. A local 27B model

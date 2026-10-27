@@ -107,6 +107,9 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 		if err != nil {
 			return Answer{}, err
 		}
+		if !a.Tools && len(reply.ToolCalls) > 0 {
+			return Answer{}, errors.New("api: model returned tool calls while tools are disabled")
+		}
 		msgs = append(msgs, reply)
 		// A reply cut short at MaxTokens is no answer, even when it holds
 		// one the model drafted while thinking: it is asked for the
@@ -131,6 +134,9 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	}
 	if cut {
 		return Answer{}, fmt.Errorf("api: answer cut short at %d tokens", limit)
+	}
+	if len(reply.ToolCalls) > 0 {
+		return Answer{}, errors.New("api: model returned tool calls instead of a final answer")
 	}
 	ans, err := parseAnswer(reply.Content)
 	if err != nil {
@@ -260,9 +266,9 @@ var (
 // parseAnswer reads the model's JSON answer, past any reasoning it wrote
 // before it or a code fence around it. Many chat templates open the
 // thinking in the prompt, so a reply can close it without opening it:
-// everything before the last </think> is thinking too. Text holding more
-// than one JSON value is no answer, as the first may be a draft the model
-// went on to change its mind about.
+// everything before the last </think> is thinking too. What remains must
+// be one JSON object: surrounding prose or other JSON values may mean it
+// is a draft the model went on to change its mind about.
 func parseAnswer(content string) (Answer, error) {
 	if i := strings.LastIndex(content, "</think>"); i >= 0 {
 		content = content[i+len("</think>"):]
@@ -270,9 +276,6 @@ func parseAnswer(content string) (Answer, error) {
 	s := strings.TrimSpace(thinking.ReplaceAllString(content, ""))
 	if m := fenced.FindStringSubmatch(s); m != nil {
 		s = m[1]
-	}
-	if i, j := strings.Index(s, "{"), strings.LastIndex(s, "}"); i >= 0 && j > i {
-		s = s[i : j+1]
 	}
 	var a Answer
 	dec := json.NewDecoder(strings.NewReader(s))

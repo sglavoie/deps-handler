@@ -237,6 +237,61 @@ func TestAPIAsksForTheSchemaWhenTheReplyIsNotAnAnswer(t *testing.T) {
 	}
 }
 
+func TestAPIRejectsUnsolicitedToolCalls(t *testing.T) {
+	call := `{"role":"assistant","content":` + string(mustJSON(t, approve)) + `,"tool_calls":[{"id":"c1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"src/app.js\"}"}}]}`
+	for _, tc := range []struct {
+		name    string
+		tools   bool
+		replies []string
+	}{
+		{"tools disabled", false, []string{call}},
+		{"final answer", true, []string{content("please clarify"), call}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeModel{replies: append(append([]string{}, tc.replies...), content(approve))}
+			a := API{URL: serve(t, f), Model: "m", Tools: tc.tools}
+			if _, err := a.Run(context.Background(), checkout(t), "review this"); err == nil || !strings.Contains(err.Error(), "tool calls") {
+				t.Errorf("error = %v; unsolicited tool calls must fail the review", err)
+			}
+			if len(f.requests) != len(tc.replies) {
+				t.Fatalf("sent %d requests, want %d; tool output must not be sent", len(f.requests), len(tc.replies))
+			}
+		})
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestAPIRequiresOneAnswerObject(t *testing.T) {
+	reject := `{"decision":"reject","summary":"needs review","breaking_changes":[],"concerns":[]}`
+	for name, reply := range map[string]string{
+		"array":            "[" + approve + "]",
+		"trailing value":   approve + " false",
+		"leading value":    "null " + approve,
+		"revised in prose": approve + " On reflection, reject this update.",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeModel{replies: []string{content(reply), content(reject)}}
+			ans, err := (API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "review this")
+			if err != nil || ans.Decision != "reject" || len(f.requests) != 2 {
+				t.Fatalf("answer %+v, %v after %d requests; want a fresh answer", ans, err, len(f.requests))
+			}
+			// The final schema-constrained reply must obey the same rule.
+			f = &fakeModel{replies: []string{content("please clarify"), content(reply)}}
+			if _, err := (API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "review this"); err == nil {
+				t.Fatal("accepted an ambiguous final answer")
+			}
+		})
+	}
+}
+
 func TestAPIBoundsEachReplyAndLeavesSamplingToTheServer(t *testing.T) {
 	// Thinking cut short at the bound: no tool call and no answer.
 	cut := `{"role": "assistant", "content": "", "reasoning_content": "wait, let me check again. wait, let me check again."}`

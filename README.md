@@ -117,7 +117,10 @@ read-only, without your customizations and without a GitHub token:
   such as one served locally by llama.cpp's `llama-server`, Ollama or LM
   Studio, which costs nothing per review. It runs no program: it reads
   the checkout only through three tools deps-merger implements (list,
-  read and search), which cannot reach outside it.
+  read and search), which cannot reach outside it. With `api.tools: false`,
+  file access is disabled and any tool call fails the review. API verdicts
+  must be a single JSON object after any thinking block or code fence;
+  ambiguous replies require a fresh answer before they can approve a PR.
 
 Read-only is not confined to the checkout for Claude Code and Codex: they
 can read any file your user can, and what an agent reads goes to its
