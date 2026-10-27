@@ -399,9 +399,9 @@ func TestMarkdown(t *testing.T) {
 		"| PR | Update | Status | Reason |\n| --- | --- | --- | --- |\n" +
 		"| [#1 bump lib](https://github.com/o/r/pull/1) | patch | merged | squash |\n" +
 		"| [#2 bump a\\|b for @\u200boctocat &lt;b&gt;now&lt;/b&gt;](https://github.com/o/r/pull/2) | minor | merge | checks green, within policy |\n" +
-		"| #3 bump \\`x\\` | patch | skip | behind base branch; rebase left to a human (dependabot\\_commands: false) |\n\n" +
+		"| #\u200b3 bump \\`x\\` | patch | skip | behind base branch; rebase left to a human (dependabot\\_commands: false) |\n\n" +
 		"### Needs attention\n\n" +
-		"- behind the base branch (#3)\n" +
+		"- behind the base branch (o/r#3)\n" +
 		"  - Suggested: `@dependabot rebase`\n" +
 		"  - Suggested: ask @\u200bteam\n\n"
 	if b.String() != want {
@@ -429,6 +429,18 @@ func TestMarkdownReportModeAndError(t *testing.T) {
 	}
 }
 
+func TestMdLeadNamesTheRepo(t *testing.T) {
+	for in, want := range map[string]string{
+		"#58 (major) rejected by the agent: see #12": "o/r#58 (major) rejected by the agent: see #\u200b12",
+		"#4: verdict not cached":                     "o/r#4: verdict not cached",
+		"no checks ran":                              "no checks ran",
+	} {
+		if got := mdLead("o/r", in); got != want {
+			t.Errorf("mdLead(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestMdTextOpensNoBlock(t *testing.T) {
 	for in, want := range map[string]string{
 		"# Breaking: foo removed": `\# Breaking: foo removed`,
@@ -439,7 +451,9 @@ func TestMdTextOpensNoBlock(t *testing.T) {
 		"1. step":                 `1\. step`,
 		"12) step":                `12\) step`,
 		"    indented":            "indented",
-		"#12 bump lib":            "#12 bump lib",
+		"#12 bump lib":            "#\u200b12 bump lib",
+		"fixes #345 upstream":     "fixes #\u200b345 upstream",
+		"C# 12":                   "C# 12",
 		"-1 is less":              "-1 is less",
 		"1.2.3 is out":            "1.2.3 is out",
 		// GitHub links no URL but the PR's own.

@@ -50,15 +50,15 @@ func Markdown(w io.Writer, apply bool, res runner.RepoResult) {
 		fmt.Fprintln(w)
 	}
 	for _, warning := range res.Warnings {
-		fmt.Fprintf(w, "**Warning:** %s\n\n", mdText(warning))
+		fmt.Fprintf(w, "**Warning:** %s\n\n", mdLead(res.Repo, warning))
 	}
 
 	if res.Error == "" && len(res.Findings) > 0 {
 		fmt.Fprint(w, "### Needs attention\n\n")
 		for _, f := range res.Findings {
-			line := mdText(f.Summary)
+			line := mdLead(res.Repo, f.Summary)
 			if listsPRs(f.Kind) {
-				line += " (" + prList(f.PRs) + ")"
+				line += " (" + mdPRList(res.Repo, f.PRs) + ")"
 			}
 			fmt.Fprintf(w, "- %s\n", line)
 			for _, d := range f.Details {
@@ -79,11 +79,36 @@ var mdURL = regexp.MustCompile(`^https://github\.com/[A-Za-z0-9._~/%#?=+-]+$`)
 // mdPR links a PR's number and title to it. Only a github.com URL is
 // linked: the link is the one thing in a cell that is not escaped.
 func mdPR(n int, title, url string) string {
-	text := mdText(fmt.Sprintf("#%d %s", n, truncate(title)))
 	if !mdURL.MatchString(url) {
-		return text
+		return mdText(fmt.Sprintf("#%d %s", n, truncate(title)))
 	}
-	return "[" + text + "](" + url + ")"
+	// GitHub links no #N in a link's text: its number is left as is.
+	return fmt.Sprintf("[#%d %s](%s)", n, mdText(truncate(title)), url)
+}
+
+// mdPRList names PRs of repo as GitHub links them from anywhere, unlike
+// a bare #N, which it links to the issue's own repository.
+func mdPRList(repo string, prs []int) string {
+	parts := make([]string, len(prs))
+	for i, n := range prs {
+		parts[i] = fmt.Sprintf("%s#%d", repo, n)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// mdLeadRef is the PR a finding or a warning starts by naming.
+var mdLeadRef = regexp.MustCompile(`^#[0-9]+`)
+
+// mdLead is mdText for a line deps-merger starts with the PR it is about,
+// named so that GitHub links it to that PR of repo.
+func mdLead(repo, text string) string {
+	ref := mdLeadRef.FindString(text)
+	if ref == "" {
+		return mdText(text)
+	}
+	rest := text[len(ref):]
+	trimmed := strings.TrimLeft(rest, " ")
+	return repo + ref + rest[:len(rest)-len(trimmed)] + mdText(trimmed)
 }
 
 // mdSpecial is what GitHub Markdown would read as markup in a line of
@@ -97,8 +122,9 @@ var mdSpecial = strings.NewReplacer(
 )
 
 // mdAutolink is what GitHub links in text with no markup around it: a
-// URL, or a domain starting with www.
-var mdAutolink = regexp.MustCompile(`(?i)://|www\.`)
+// URL, a domain starting with www., or #N, which it takes for an issue of
+// the repository the Markdown is posted in, whichever it was written for.
+var mdAutolink = regexp.MustCompile(`(?i)://|www\.|#[0-9]`)
 
 // mdBlock is what, starting a list item, would open a block of its own
 // in it: a heading, a list or a rule.
