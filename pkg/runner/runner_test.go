@@ -1070,6 +1070,22 @@ func TestRetryCutOffByBlockedWritesIsReportedOnce(t *testing.T) {
 	}
 }
 
+func TestRefusedRetryCutOffByBlockedWritesSaysSoWhenGitHubCannotSay(t *testing.T) {
+	limited := &api.HTTPError{StatusCode: 403, Message: "API rate limit exceeded", Headers: map[string][]string{"Retry-After": {"3600"}}}
+	bad := &api.HTTPError{StatusCode: 502}
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2)), mergeErrs: map[int][]error{1: {limited}, 2: {&api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}}}, stateErrs: []error{bad, bad}}
+	res := newRunner(pendingFirstClient{fc}, true).RunRepo(context.Background(), repoCfg)
+	var two []Event
+	for _, ev := range res.Events {
+		if ev.Number == 2 {
+			two = append(two, ev)
+		}
+	}
+	if len(two) != 1 || two[0].Kind != EventMergeFailed || !strings.Contains(two[0].Detail, "after HTTP 405") || !strings.Contains(two[0].Detail, "retry not sent") {
+		t.Fatalf("PR 2 reported as %+v", two)
+	}
+}
+
 func TestRefusedMergeIsAPlainFailureWhenGitHubCannotSay(t *testing.T) {
 	bad := &api.HTTPError{StatusCode: 502}
 	notMergeable := &api.HTTPError{StatusCode: 405, Message: "Base branch was modified"}

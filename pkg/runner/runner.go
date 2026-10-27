@@ -370,6 +370,8 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 			switch state, err := r.prState(ctx, rc, n); {
 			case err != nil && p.uncertain:
 				resolve(n, p.failed(fmt.Sprintf("may have merged after %s, but GitHub could not say: %s", p.cause, errText(ctx, err))))
+			case err != nil && p.failure != "":
+				resolve(n, p.failed(p.failure))
 			case err != nil:
 				// GitHub refused the merge: it did not go through.
 				resolve(n, p.failed(p.cause))
