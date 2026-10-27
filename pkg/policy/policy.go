@@ -285,6 +285,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	if pr.CommitCount > len(pr.Commits) {
 		return skip("too many commits to verify (%d)", pr.CommitCount)
 	}
+	if len(pr.Commits) == 0 {
+		return skip("no commits to verify; left for a human")
+	}
 	for _, c := range pr.Commits {
 		if len(c.Authors) == 0 {
 			return skip("commit %.7s has no author; left for a human", c.OID)

@@ -40,7 +40,8 @@ A PR is merged only when all of these hold:
   commit status and a check run never stand in for each other;
 - GitHub reports it `MERGEABLE` and `CLEAN` (or `HAS_HOOKS`);
 - nothing was cut off: a PR with more than 100 commits or 100 checks is
-  skipped rather than judged on partial data.
+  skipped rather than judged on partial data. A PR with no commits to
+  verify is also skipped, even if an agent approved it.
 
 A safe PR that is only `BEHIND` its base branch gets one `@dependabot rebase`
 comment per head commit, one PR at a time: while a PR can merge, is up to

@@ -120,7 +120,9 @@ read-only, without your customizations and without a GitHub token:
   read and search), which cannot reach outside it. With `api.tools: false`,
   file access is disabled and any tool call fails the review. API verdicts
   must be a single JSON object after any thinking block or code fence;
-  ambiguous replies require a fresh answer before they can approve a PR.
+  all verdict fields must be present with the expected types, with no
+  duplicate fields. Ambiguous or incomplete replies require a fresh answer
+  before they can approve a PR.
 
 Read-only is not confined to the checkout for Claude Code and Codex: they
 can read any file your user can, and what an agent reads goes to its

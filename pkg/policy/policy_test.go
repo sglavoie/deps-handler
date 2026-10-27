@@ -34,6 +34,18 @@ func one(t *testing.T, repo *github.Repo, p config.Policy) Decision {
 	return ds[0]
 }
 
+func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.Commits = nil
+	pr.CommitCount = 0
+	for _, judge := range []Judge{approveAll, nil} {
+		ds := Evaluate(testutil.Repo(pr), defaultPolicy, "me", judge)
+		if len(ds) != 1 || ds[0].Action != ActionSkip || !strings.Contains(ds[0].Reason, "no commits") {
+			t.Fatalf("missing commits must block the PR even with agent approval: %+v", ds)
+		}
+	}
+}
+
 func TestEvaluate(t *testing.T) {
 	cases := []struct {
 		name   string

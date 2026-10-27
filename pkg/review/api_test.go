@@ -272,10 +272,17 @@ func mustJSON(t *testing.T, v any) []byte {
 func TestAPIRequiresOneAnswerObject(t *testing.T) {
 	reject := `{"decision":"reject","summary":"needs review","breaking_changes":[],"concerns":[]}`
 	for name, reply := range map[string]string{
-		"array":            "[" + approve + "]",
-		"trailing value":   approve + " false",
-		"leading value":    "null " + approve,
-		"revised in prose": approve + " On reflection, reject this update.",
+		"array":                 "[" + approve + "]",
+		"trailing value":        approve + " false",
+		"leading value":         "null " + approve,
+		"revised in prose":      approve + " On reflection, reject this update.",
+		"duplicate decision":    `{"decision":"reject","decision":"approve","summary":"ambiguous","breaking_changes":[],"concerns":[]}`,
+		"case variant decision": `{"decision":"reject","Decision":"approve","summary":"ambiguous","breaking_changes":[],"concerns":[]}`,
+		"missing fields":        `{"decision":"approve"}`,
+		"null summary":          strings.Replace(approve, `"summary": "only app.del changed, unused"`, `"summary": null`, 1),
+		"null concerns":         strings.Replace(approve, `"concerns": []`, `"concerns": null`, 1),
+		"null concern item":     strings.Replace(approve, `"concerns": []`, `"concerns": [null]`, 1),
+		"duplicate concerns":    strings.TrimSuffix(approve, "}") + `,"concerns":["unsafe"]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := &fakeModel{replies: []string{content(reply), content(reject)}}
