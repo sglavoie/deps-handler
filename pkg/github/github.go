@@ -657,10 +657,21 @@ func (c *client) Merge(ctx context.Context, owner, name string, number int, meth
 // reporting the outcome of a write whose response supplied no answer.
 var errMergeUnconfirmed = errors.New("GitHub did not confirm the merge outcome")
 
+// errCommentUnconfirmed preserves the possibility that a comment was
+// posted even though its successful HTTP response could not be decoded.
+var errCommentUnconfirmed = errors.New("GitHub did not confirm the comment outcome")
+
 func (c *client) Comment(ctx context.Context, owner, name string, number int, text string) error {
 	body, _ := json.Marshal(map[string]string{"body": text})
 	path := fmt.Sprintf("repos/%s/%s/issues/%d/comments", owner, name, number)
-	return c.rest.DoWithContext(ctx, "POST", path, bytes.NewReader(body), nil)
+	err := c.rest.DoWithContext(ctx, "POST", path, bytes.NewReader(body), nil)
+	// A successful POST with unreadable JSON may already have created the
+	// comment. Keep its place in the rebase queue and warn about the
+	// uncertainty, as for a connection lost while reading the response.
+	if errors.As(err, new(*json.SyntaxError)) || errors.As(err, new(*json.UnmarshalTypeError)) {
+		return fmt.Errorf("%w: %w", errCommentUnconfirmed, err)
+	}
+	return err
 }
 
 func (c *client) PullRequestDetails(ctx context.Context, owner, name string, number int) (*PullRequestDetails, error) {
@@ -805,7 +816,7 @@ func Transient(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, errMergeUnconfirmed) {
+	if errors.Is(err, errMergeUnconfirmed) || errors.Is(err, errCommentUnconfirmed) {
 		return true
 	}
 	if he, ok := errors.AsType[*api.HTTPError](err); ok {

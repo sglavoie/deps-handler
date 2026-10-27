@@ -413,6 +413,11 @@ func TestEvaluate(t *testing.T) {
 				pr.MergeState = "BEHIND"
 				pr.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(1)}}
 			}},
+		{name: "behind with our request at the head timestamp waits", action: ActionWait, reason: "rebase already requested",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "BEHIND"
+				pr.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0}}
+			}},
 		{name: "behind with an unanswered request is left for a human", action: ActionSkip, reason: "rebase requested 2 days ago and not done",
 			mutate: func(r *github.Repo, pr *github.PullRequest) {
 				pr.MergeState = "BEHIND"
@@ -423,6 +428,11 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.MergeState = "BEHIND"
 				pr.Comments, pr.CommentCount = chatter(testutil.T0.Add(time.Minute)), 80
+			}},
+		{name: "behind with comments cut off at the head timestamp waits", action: ActionWait, reason: "rebase may have been requested (older comments not read)",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				pr.MergeState = "BEHIND"
+				pr.Comments, pr.CommentCount = chatter(testutil.T0), 80
 			}},
 		{name: "behind with a request maybe not read for a day is left for a human", action: ActionSkip,
 			reason: "rebase may have been requested (older comments not read) 2 days ago and not done",

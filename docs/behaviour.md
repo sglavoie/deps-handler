@@ -61,8 +61,10 @@ every other PR targeting that branch behind again, so rebasing them all at
 once would rerun CI on each for every merge. Independent target branches
 have separate queues. A rebase request Dependabot has not acted on within a
 day stops holding the queue: that PR is left for a human and the next one is
-rebased. Only a PR's latest 50 comments are read: when even the oldest of
-them is newer than its head commit, a request may hide among the rest, so
+rebased. A request with the same timestamp as the head commit counts as
+pending too: the timestamp cannot establish that it preceded the commit.
+Only a PR's latest 50 comments are read: when even the oldest of
+them is at least as recent as its head commit, a request may hide among the rest, so
 the PR is not asked again but waits as if one were pending, and is left for
 a human a day after that oldest comment.
 A PR whose merge or rebase request failed also releases the queue for the
@@ -104,7 +106,8 @@ it, reads `interrupted; may have merged after` that failure. A rebase
 request in flight is reported requested, with a warning. Every request to
 GitHub times out after a minute, so a hung merge cannot hold up the other
 repositories' writes; a merge that times out is handled like a 504. A rebase request that fails
-with a 500, 502, 503, 504, a timeout or a broken connection may have been posted all the same: it is
+with a 500, 502, 503, 504, a timeout, a broken connection or unreadable JSON
+in a successful HTTP response may have been posted all the same: it is
 reported requested, with a warning, rather than failed, and a later run
 asks again if it was not. A merge or comment GitHub refuses for a rate limit
 is made again after the pause GitHub asks for, up to two minutes; other

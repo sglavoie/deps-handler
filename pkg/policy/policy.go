@@ -525,21 +525,23 @@ func pushedAt(pr *github.PullRequest) time.Time {
 
 // rebaseRequested returns when viewer first asked for a rebase since the
 // PR's latest commit, if it did; seen is false when the request may only
-// hide among comments that were not fetched. Only the latest comments are:
-// when older ones were cut off and even the oldest fetched one is newer
-// than the commit, a request counts as made no later than that comment, so
-// a busy PR is not asked blindly again and still stalls in time.
+// hide among comments that were not fetched. Equal timestamps cannot prove
+// a comment preceded the commit, so they count too. Only the latest comments
+// are fetched: when older ones were cut off and even the oldest fetched one
+// is at least as recent as the commit, a request counts as made no later
+// than that comment, so a busy PR is not asked blindly again and still
+// stalls in time.
 func rebaseRequested(pr *github.PullRequest, viewer string) (at time.Time, seen, ok bool) {
 	if len(pr.Commits) == 0 {
 		return time.Time{}, false, false
 	}
 	last := pushedAt(pr)
 	for _, c := range pr.Comments {
-		if c.Author == viewer && c.CreatedAt.After(last) && strings.Contains(c.Body, RebaseCommand) {
+		if c.Author == viewer && !c.CreatedAt.Before(last) && strings.Contains(c.Body, RebaseCommand) {
 			return c.CreatedAt, true, true
 		}
 	}
-	if pr.CommentCount > len(pr.Comments) && len(pr.Comments) > 0 && pr.Comments[0].CreatedAt.After(last) {
+	if pr.CommentCount > len(pr.Comments) && len(pr.Comments) > 0 && !pr.Comments[0].CreatedAt.Before(last) {
 		return pr.Comments[0].CreatedAt, false, true
 	}
 	return time.Time{}, false, false

@@ -510,6 +510,28 @@ func TestCommentPostsBody(t *testing.T) {
 	}
 }
 
+func TestCommentUnreadableSuccessMayHaveBeenPosted(t *testing.T) {
+	for _, body := range []string{"", `{"id":`, `<html>upstream error</html>`} {
+		t.Run(body, func(t *testing.T) {
+			rt := &routes{answers: map[string]*http.Response{"POST /repos/o/r/issues/5/comments": reply(201, body)}, bodies: map[string]string{}}
+			err := restClient(t, rt).Comment(context.Background(), "o", "r", 5, "@dependabot rebase")
+			if err == nil || !Transient(err) || Refused(err) {
+				t.Fatalf("an unreadable success must leave the comment outcome uncertain: %v", err)
+			}
+		})
+	}
+}
+
+func TestCommentHTTPRefusalRemainsDefinite(t *testing.T) {
+	for _, body := range []string{`{"message":"comments disabled"}`, "not JSON"} {
+		rt := &routes{answers: map[string]*http.Response{"POST /repos/o/r/issues/5/comments": reply(403, body)}, bodies: map[string]string{}}
+		err := restClient(t, rt).Comment(context.Background(), "o", "r", 5, "@dependabot rebase")
+		if err == nil || Transient(err) || !Refused(err) {
+			t.Fatalf("an HTTP refusal must remain a definite failure: %v", err)
+		}
+	}
+}
+
 func TestMergeRequiresConfirmation(t *testing.T) {
 	for _, body := range []string{
 		`{"merged": false, "message": "Pull Request is not mergeable"}`,

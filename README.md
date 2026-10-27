@@ -116,6 +116,10 @@ Rate-limit pauses accept `Retry-After` as seconds or an HTTP date; pauses
 over two minutes stop further writes for that run.
 A PR whose merge or rebase request failed stops holding the rebase queue
 for that run, even if it later waits on CI or GitHub to compute mergeability.
+An unreadable response to a successful rebase-comment POST is reported as
+possibly posted, with a warning, and keeps its place in the queue. A rebase
+request with the same timestamp as the head commit also counts as already
+requested, so timestamp ties do not trigger duplicate comments.
 
 The exact rules, and how each failure, retry, interruption and rate limit
 is reported, are in [How deps-merger behaves](docs/behaviour.md#what-counts-as-safe).
