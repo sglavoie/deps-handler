@@ -72,7 +72,8 @@ A PR is merged only when all of these hold:
 
 - Dependabot opened it and wrote every commit: authored by its GitHub
   account, committed and signed by GitHub, with no `Co-authored-by`
-  anyone else. A PR anyone else pushed to is left alone.
+  anyone else. The verified commits must include the current head. A PR
+  anyone else pushed to is left alone.
 - It is not a draft, and the repository is not archived and you can write
   to it.
 - Every dependency it moves has a known semver bump, and the largest is

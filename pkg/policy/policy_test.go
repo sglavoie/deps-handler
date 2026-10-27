@@ -46,6 +46,26 @@ func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
 	}
 }
 
+func TestUnverifiedHeadCannotMergeOrBeReviewed(t *testing.T) {
+	for _, state := range []string{"CLEAN", "BEHIND"} {
+		for _, size := range []string{"patch", "major"} {
+			t.Run(state+"/"+size, func(t *testing.T) {
+				pr := testutil.PR(1, "lib:"+size)
+				pr.HeadOID, pr.ChecksOID = "new-head", "new-head"
+				pr.MergeState = state
+				called := false
+				ds := Evaluate(testutil.Repo(pr), defaultPolicy, "me", func(Decision) *Verdict {
+					called = true
+					return &Verdict{Approved: true}
+				})
+				if ds[0].Action != ActionWait || ds[0].assessed || called {
+					t.Fatalf("unverified head must wait before review or diagnosis: %+v, judge called: %t", ds[0], called)
+				}
+			})
+		}
+	}
+}
+
 func TestEvaluate(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -311,11 +331,11 @@ func TestEvaluate(t *testing.T) {
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Commits[0].Authors = []github.Author{{Name: "dependabot[bot]", Email: "someone@example.com"}}
 			}},
-		{name: "signed commit whose author has only dependabot's email", action: ActionSkip, reason: "commit c1 author is not linked to Dependabot's account",
+		{name: "signed commit whose author has only dependabot's email", action: ActionSkip, reason: "commit sha1 author is not linked to Dependabot's account",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {
 				pr.Commits[0].Authors = []github.Author{{Email: "49699333+dependabot[bot]@users.noreply.github.com"}}
 			}},
-		{name: "commit without an author", action: ActionSkip, reason: "commit c1 has no author",
+		{name: "commit without an author", action: ActionSkip, reason: "commit sha1 has no author",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Commits[0].Authors = nil }},
 		{name: "unrecorded author before a dependabot trailer", action: ActionSkip, reason: "not linked to Dependabot's account",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) {

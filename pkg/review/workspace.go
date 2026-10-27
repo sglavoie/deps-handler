@@ -143,6 +143,14 @@ const PruneAfter = 30 * 24 * time.Hour
 // remove does not stop it from removing the others: their errors are
 // returned together.
 func (w *Workspace) Prune(keep map[string]bool) error {
+	// GitHub repository names ignore case, including on hosts whose
+	// filesystem does not. A config spelling change must keep its checkout.
+	keeping := make(map[string]bool, len(keep))
+	for name, retained := range keep {
+		if retained {
+			keeping[strings.ToLower(name)] = true
+		}
+	}
 	owners, err := os.ReadDir(w.Root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -163,7 +171,7 @@ func (w *Workspace) Prune(keep map[string]bool) error {
 		}
 		left := len(names)
 		for _, n := range names {
-			if keep[o.Name()+"/"+n.Name()] {
+			if keeping[strings.ToLower(o.Name()+"/"+n.Name())] {
 				continue
 			}
 			info, err := n.Info()

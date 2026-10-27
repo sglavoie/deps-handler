@@ -903,7 +903,7 @@ func TestWorkspacePrune(t *testing.T) {
 		}
 	}
 	w := &Workspace{Root: root}
-	if err := w.Prune(map[string]bool{"o/keep": true}); err != nil {
+	if err := w.Prune(map[string]bool{"O/Keep": true}); err != nil {
 		t.Fatal(err)
 	}
 	// q/other-config, recently used by a run with another config, stays.

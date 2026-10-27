@@ -698,6 +698,7 @@ func TestHeadThatKeepsMovingWaitsForNextRun(t *testing.T) {
 		pr := &c.repo.PullRequests[0]
 		pr.HeadOID = fmt.Sprintf("pushed%d", len(rv.calls))
 		pr.ChecksOID = pr.HeadOID
+		pr.Commits[0].OID = pr.HeadOID
 	}
 	r := reviewRunner(c, rv, true)
 	r.MaxReviews = 5
@@ -756,6 +757,7 @@ func TestCachedRejectionLapsesWhenTheHeadMoves(t *testing.T) {
 	rv := &fakeReviewer{verdicts: map[int]policy.Verdict{1: {Summary: "no"}}}
 	for _, head := range []string{"sha1", "sha1", "rebased"} {
 		pr.HeadOID, pr.ChecksOID = head, head
+		pr.Commits[0].OID = head
 		r := reviewRunner(&fakeClient{repo: testutil.Repo(pr)}, rv, false)
 		r.Verdicts = cache
 		r.RunRepo(context.Background(), repoCfg)
@@ -1223,6 +1225,7 @@ func TestRejectionInThisRunLapsesWhenTheHeadMoves(t *testing.T) {
 			// Dependabot rebases onto a fix while the first review runs.
 			pr := &c.repo.PullRequests[0]
 			pr.HeadOID, pr.ChecksOID = "rebased", "rebased"
+			pr.Commits[0].OID = pr.HeadOID
 			return
 		}
 		delete(rv.verdicts, 1)

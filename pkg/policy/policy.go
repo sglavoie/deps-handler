@@ -5,6 +5,7 @@ package policy
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -321,6 +322,12 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		if !c.CommittedByGitHub {
 			return skip("commit %.7s was not committed by GitHub; left for a human", c.OID)
 		}
+	}
+	// The commit list and head/checks are separate GraphQL fields. If a
+	// push leaves them out of sync, pinning a merge to HeadOID is not
+	// enough: that head's authorship and metadata must be verified too.
+	if pr.HeadOID == "" || !slices.ContainsFunc(pr.Commits, func(c github.Commit) bool { return c.OID == pr.HeadOID }) {
+		return wait(false, "commits not yet reported for head commit %.7s", pr.HeadOID)
 	}
 	d.assessed = true
 	if oversized != "" && judge != nil && p.AgentReview {

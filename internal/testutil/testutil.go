@@ -48,7 +48,7 @@ func PR(number int, deps ...string) github.PullRequest {
 		MergeState:  "CLEAN",
 		CommitCount: 1,
 		Commits: []github.Commit{{
-			OID: fmt.Sprintf("c%d", number), Message: Message(group, deps...),
+			OID: fmt.Sprintf("sha%d", number), Message: Message(group, deps...),
 			CommittedDate: T0, Authors: []github.Author{dependabotAuthor}, SignedByGitHub: true, CommittedByGitHub: true,
 		}},
 		Checks:    []github.Check{{Name: "build", State: github.CheckPassed}},
