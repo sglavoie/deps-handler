@@ -96,8 +96,10 @@ func TestTools(t *testing.T) {
 // fakeModel is an OpenAI-compatible endpoint answering with replies, in
 // order, and keeping the requests.
 type fakeModel struct {
-	mu       sync.Mutex
-	replies  []string
+	mu      sync.Mutex
+	replies []string
+	// cut holds the indexes of the replies cut short at max_tokens.
+	cut      map[int]bool
 	requests []chatRequest
 	bodies   []string
 	auth     []string
@@ -122,7 +124,11 @@ func (f *fakeModel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	reply := f.replies[0]
 	f.replies = f.replies[1:]
-	w.Write([]byte(`{"choices": [{"message": ` + reply + `}], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}`))
+	finish := "stop"
+	if f.cut[len(f.requests)-1] {
+		finish = "length"
+	}
+	w.Write([]byte(`{"choices": [{"message": ` + reply + `, "finish_reason": "` + finish + `"}], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}`))
 }
 
 func serve(t *testing.T, f *fakeModel) string {
@@ -206,6 +212,28 @@ func TestAPIBoundsEachReplyAndLeavesSamplingToTheServer(t *testing.T) {
 	(API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "p")
 	if f.requests[0].MaxTokens != DefaultMaxTokens {
 		t.Fatalf("default max_tokens %d", f.requests[0].MaxTokens)
+	}
+}
+
+func TestAPITakesNoDraftForTheAnswer(t *testing.T) {
+	reject := `{"decision": "reject", "summary": "app.del is used", "breaking_changes": [], "concerns": ["app.del removed"]}`
+	draft := "Draft: " + approve + " but wait, app.del is used, so I must rej"
+	for name, f := range map[string]*fakeModel{
+		// Thinking left open by a reply cut short, on a server that keeps
+		// it in the content.
+		"open thinking": {replies: []string{content("<think>" + draft), content(reject)}, cut: map[int]bool{0: true}},
+		// A draft outside any thinking, in a reply cut short.
+		"cut short": {replies: []string{content(draft), content(reject)}, cut: map[int]bool{0: true}},
+	} {
+		ans, err := (API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "p")
+		if err != nil || ans.Decision != "reject" || len(f.requests) != 2 {
+			t.Errorf("%s: answer %+v, %v after %d requests", name, ans, err, len(f.requests))
+		}
+	}
+	// An answer cut short is no answer either.
+	f := &fakeModel{replies: []string{content("no"), content(approve)}, cut: map[int]bool{1: true}}
+	if _, err := (API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "p"); err == nil || !strings.Contains(err.Error(), "cut short") {
+		t.Errorf("cut answer: err = %v", err)
 	}
 }
 

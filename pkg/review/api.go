@@ -102,15 +102,16 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 		if a.Tools {
 			req.Tools = apiTools
 		}
-		reply, err := a.complete(ctx, req, &used)
+		reply, cut, err := a.complete(ctx, req, &used)
 		if err != nil {
 			return Answer{}, err
 		}
 		msgs = append(msgs, reply)
-		// A reply cut short at MaxTokens has no tool calls and no answer
-		// either: it is asked for the answer below.
+		// A reply cut short at MaxTokens is no answer, even when it holds
+		// one the model drafted while thinking: it is asked for the
+		// answer below.
 		if len(reply.ToolCalls) == 0 {
-			if ans, err := parseAnswer(reply.Content); err == nil {
+			if ans, err := parseAnswer(reply.Content); err == nil && !cut {
 				return ans, nil
 			}
 			break
@@ -123,9 +124,12 @@ func (a API) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	// to the schema, with no tools left to call.
 	msgs = append(msgs, message{Role: "user", Content: apiAnswerNow})
 	req := chatRequest{Model: a.Model, Messages: msgs, MaxTokens: limit, ResponseFormat: answerFormat}
-	reply, err := a.complete(ctx, req, &used)
+	reply, cut, err := a.complete(ctx, req, &used)
 	if err != nil {
 		return Answer{}, err
+	}
+	if cut {
+		return Answer{}, fmt.Errorf("api: answer cut short at %d tokens", limit)
 	}
 	ans, err := parseAnswer(reply.Content)
 	if err != nil {
@@ -191,14 +195,16 @@ var answerFormat = map[string]any{
 	},
 }
 
-func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (message, error) {
+// complete sends req and returns the model's reply, and whether it was
+// cut short at req.MaxTokens.
+func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (message, bool, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
-		return message{}, err
+		return message{}, false, err
 	}
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(a.URL, "/")+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return message{}, err
+		return message{}, false, err
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	if a.Key != "" {
@@ -210,19 +216,20 @@ func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (messag
 	}
 	resp, err := c.Do(hreq)
 	if err != nil {
-		return message{}, fmt.Errorf("api: %w", err)
+		return message{}, false, fmt.Errorf("api: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
-		return message{}, fmt.Errorf("api: %w", err)
+		return message{}, false, fmt.Errorf("api: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return message{}, fmt.Errorf("api: %s: %s", resp.Status, clip(string(raw)))
+		return message{}, false, fmt.Errorf("api: %s: %s", resp.Status, clip(string(raw)))
 	}
 	var out struct {
 		Choices []struct {
-			Message message `json:"message"`
+			Message      message `json:"message"`
+			FinishReason string  `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
@@ -230,21 +237,22 @@ func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (messag
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return message{}, fmt.Errorf("api: unreadable response: %w", err)
+		return message{}, false, fmt.Errorf("api: unreadable response: %w", err)
 	}
 	used.Requests++
 	used.PromptTokens += out.Usage.PromptTokens
 	used.CompletionTokens += out.Usage.CompletionTokens
 	if len(out.Choices) == 0 {
-		return message{}, errors.New("api: response holds no choice")
+		return message{}, false, errors.New("api: response holds no choice")
 	}
 	reply := out.Choices[0].Message
 	reply.Role = "assistant"
-	return reply, nil
+	return reply, out.Choices[0].FinishReason == "length", nil
 }
 
 var (
-	thinking = regexp.MustCompile(`(?s)<think>.*?</think>`)
+	// Thinking left open runs to the end: any JSON in it is a draft.
+	thinking = regexp.MustCompile(`(?s)<think>.*?(?:</think>|$)`)
 	fenced   = regexp.MustCompile("(?s)^```(?:json)?\\s*(.*?)\\s*```$")
 )
 
