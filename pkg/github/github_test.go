@@ -629,16 +629,25 @@ func TestFetchRepoCommitterNotGitHub(t *testing.T) {
 type authRecorder struct {
 	canned
 	header http.Header
+	host   string
 }
 
 func (r *authRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.header = req.Header.Clone()
+	r.host = req.URL.Host
 	return r.canned.RoundTrip(req)
 }
 
 func TestNewWithToken(t *testing.T) {
-	// Without gh credentials or config, so the token is all it can use.
-	t.Setenv("GH_CONFIG_DIR", t.TempDir())
+	// Without gh credentials, so the token is all it can use, and with a
+	// gh config that sends github.com's API calls elsewhere, which the
+	// token must not follow.
+	dir := t.TempDir()
+	hosts := "github.com:\n    api_host: proxy.example.net\n"
+	if err := os.WriteFile(dir+"/hosts.yml", []byte(hosts), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_CONFIG_DIR", dir)
 	for _, v := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_HOST"} {
 		t.Setenv(v, "")
 	}
@@ -662,6 +671,9 @@ func TestNewWithToken(t *testing.T) {
 	}
 	if got := rec.header.Get("Authorization"); got != "token ghs_install" {
 		t.Errorf("Authorization = %q, want token ghs_install", got)
+	}
+	if rec.host != "api.github.com" {
+		t.Errorf("request went to %q, want api.github.com", rec.host)
 	}
 }
 

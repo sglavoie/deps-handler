@@ -243,12 +243,14 @@ func New() (Client, error) {
 
 // NewWithToken builds a github.com client that authenticates with token,
 // such as a GitHub App installation token, and reads nothing of the gh
-// CLI's: neither its credentials nor its config.
+// CLI's: neither its credentials nor its config. go-gh would otherwise
+// send the token to an api_host set in that config, and log it when
+// GH_DEBUG is set.
 func NewWithToken(token string) (Client, error) {
 	if token == "" {
 		return nil, errors.New("github auth: empty token")
 	}
-	return newClient(api.ClientOptions{Host: "github.com", AuthToken: token, Transport: http.DefaultTransport, Timeout: RequestTimeout})
+	return newClient(api.ClientOptions{Host: "github.com", APIHost: "api.github.com", AuthToken: token, Transport: http.DefaultTransport, Timeout: RequestTimeout, LogIgnoreEnv: true})
 }
 
 func newClient(opts api.ClientOptions) (*client, error) {
