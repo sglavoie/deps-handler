@@ -141,11 +141,14 @@ answers `approve` or `reject` with its reasons. It runs read-only:
   `list_files`, `read_file` (at most 400 lines at a time) and `search` (a
   regular expression, at most 200 matching lines). Every path they take
   is resolved, symlinks included, and refused unless it stays inside the
-  checkout and outside its `.git`; searches do not follow symlinks. After
+  checkout and outside its `.git` (in any case, as macOS ignores it);
+  searches do not follow symlinks. After
   at most `api.max_turns` rounds of tool calls (30 by default), or a reply
   that is not the answer, the model is asked once more for the answer,
-  held to its JSON schema. A model that thinks aloud (`<think>`) or fences
-  its answer is read past both. The key, if the endpoint wants one, comes
+  held to its JSON schema. A model that thinks aloud (`<think>`, or only
+  `</think>` when its chat template opens the thinking) or fences its
+  answer is read past both; a reply holding more than one answer, as when
+  a draft precedes it, is asked again too. The key, if the endpoint wants one, comes
   from the variable `api.key_env` names, never from the config. A local
   server usually answers one request at a time (`llama-server -np 1`):
   run with `--review-parallel 1`, or the reviews queue behind each other

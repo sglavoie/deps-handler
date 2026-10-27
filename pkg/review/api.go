@@ -258,8 +258,15 @@ var (
 )
 
 // parseAnswer reads the model's JSON answer, past any reasoning it wrote
-// before it or a code fence around it.
+// before it or a code fence around it. Many chat templates open the
+// thinking in the prompt, so a reply can close it without opening it:
+// everything before the last </think> is thinking too. Text holding more
+// than one JSON value is no answer, as the first may be a draft the model
+// went on to change its mind about.
 func parseAnswer(content string) (Answer, error) {
+	if i := strings.LastIndex(content, "</think>"); i >= 0 {
+		content = content[i+len("</think>"):]
+	}
 	s := strings.TrimSpace(thinking.ReplaceAllString(content, ""))
 	if m := fenced.FindStringSubmatch(s); m != nil {
 		s = m[1]
@@ -272,6 +279,9 @@ func parseAnswer(content string) (Answer, error) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&a); err != nil {
 		return Answer{}, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return Answer{}, errors.New("more than one JSON value")
 	}
 	if a.Decision != "approve" && a.Decision != "reject" {
 		return Answer{}, fmt.Errorf("decision %q is neither approve nor reject", a.Decision)
@@ -344,7 +354,12 @@ func inside(root, rel string) (string, error) {
 
 func isGitDir(root, p string) bool {
 	rel, err := filepath.Rel(root, p)
-	return err == nil && (rel == ".git" || strings.HasPrefix(rel, ".git"+string(filepath.Separator)))
+	if err != nil {
+		return false
+	}
+	// macOS ignores case, so .GIT is the same directory.
+	first, _, _ := strings.Cut(rel, string(filepath.Separator))
+	return strings.EqualFold(first, ".git")
 }
 
 func listFiles(root, rel string) (string, error) {
@@ -479,7 +494,7 @@ func search(root, rel, pattern string) (string, error) {
 			return nil
 		}
 		if d.IsDir() {
-			if p != dir && (d.Name() == ".git" || d.Name() == "node_modules") {
+			if p != dir && (strings.EqualFold(d.Name(), ".git") || d.Name() == "node_modules") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -496,7 +511,8 @@ func search(root, rel, pattern string) (string, error) {
 			return nil
 		}
 		relp, _ := filepath.Rel(realRoot, p)
-		for i, line := range strings.Split(string(data), "\n") {
+		// The newline ending the last line starts no line of its own.
+		for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
 			if re.MatchString(line) {
 				if hits == maxSearchHits {
 					return stop

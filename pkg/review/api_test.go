@@ -51,6 +51,10 @@ func TestToolsStayInTheCheckout(t *testing.T) {
 		{"search", `{"pattern": "PRIVATE", "path": "outside"}`, "outside the checkout"},
 		{"read_file", `{"path": ".git/config"}`, ".git directory"},
 		{"list_files", `{"path": ".git"}`, ".git directory"},
+		// .git in another case, which macOS reads as the same directory.
+		{"read_file", `{"path": ".GIT/config"}`, ""},
+		{"list_files", `{"path": ".Git"}`, ""},
+		{"search", `{"pattern": "ghs_", "path": ".GIT"}`, ""},
 		{"read_file", `{"path": "assets/logo.bin"}`, "binary"},
 		{"read_file", `{"path": "nope.txt"}`, "does not exist"},
 		{"nope", `{}`, "no tool"},
@@ -87,6 +91,10 @@ func TestTools(t *testing.T) {
 	got := runTool(root, "search", `{"pattern": "express\\(|app\\.del"}`)
 	if got != "src/app.js:2: const app = express();\nsrc/app.js:3: app.del('/x', h);\n" {
 		t.Errorf("search = %q", got)
+	}
+	// The newline ending a file starts no line of its own to match.
+	if got := runTool(root, "search", `{"pattern": "^$", "path": "src"}`); got != "(no matches)" {
+		t.Errorf("search for an empty line = %q", got)
 	}
 	if got := runTool(root, "search", `{"pattern": "("}`); !strings.Contains(got, "bad pattern") {
 		t.Errorf("bad pattern = %q", got)
@@ -239,14 +247,23 @@ func TestAPITakesNoDraftForTheAnswer(t *testing.T) {
 		"open thinking": {replies: []string{content("<think>" + draft), content(reject)}, cut: map[int]bool{0: true}},
 		// A draft outside any thinking, in a reply cut short.
 		"cut short": {replies: []string{content(draft), content(reject)}, cut: map[int]bool{0: true}},
+		// A complete reply holding a draft and the answer: neither is
+		// taken, as the first could be either.
+		"two answers": {replies: []string{content("Draft:\n" + approve + "\nOn reflection:\n" + reject), content(reject)}},
 	} {
 		ans, err := (API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "p")
 		if err != nil || ans.Decision != "reject" || len(f.requests) != 2 {
 			t.Errorf("%s: answer %+v, %v after %d requests", name, ans, err, len(f.requests))
 		}
 	}
+	// A chat template that opens the thinking in the prompt leaves only its
+	// end in the reply: a draft before it is thinking all the same.
+	f := &fakeModel{replies: []string{content("maybe " + approve + " but wait, app.del is used</think>\n" + reject)}}
+	if ans, err := (API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "p"); err != nil || ans.Decision != "reject" {
+		t.Errorf("thinking opened in the prompt: answer %+v, %v", ans, err)
+	}
 	// An answer cut short is no answer either.
-	f := &fakeModel{replies: []string{content("no"), content(approve)}, cut: map[int]bool{1: true}}
+	f = &fakeModel{replies: []string{content("no"), content(approve)}, cut: map[int]bool{1: true}}
 	if _, err := (API{URL: serve(t, f), Model: "m"}).Run(context.Background(), checkout(t), "p"); err == nil || !strings.Contains(err.Error(), "cut short") {
 		t.Errorf("cut answer: err = %v", err)
 	}
