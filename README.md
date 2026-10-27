@@ -122,7 +122,9 @@ read-only, without your customizations and without a GitHub token:
   must be a single JSON object after any thinking block or code fence;
   all verdict fields must be present with the expected types, with no
   duplicate fields. Ambiguous or incomplete replies require a fresh answer
-  before they can approve a PR.
+  before they can approve a PR. Reasoning after the answer also requires
+  a fresh answer. Claude Code and Codex verdicts undergo the same field
+  validation; malformed verdicts fail the review.
 
 Read-only is not confined to the checkout for Claude Code and Codex: they
 can read any file your user can, and what an agent reads goes to its

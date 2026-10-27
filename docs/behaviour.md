@@ -150,8 +150,10 @@ answers `approve` or `reject` with its reasons. It runs read-only:
   that is not the answer, the model is asked once more for the answer,
   held to its JSON schema. A model that thinks aloud (`<think>`, or only
   `</think>` when its chat template opens the thinking) or fences its
-  answer is read past both; what remains must be a single JSON object.
-  Arrays, surrounding prose and multiple JSON values require a fresh
+  answer is read past that leading reasoning and the surrounding fence;
+  what remains must be a single JSON object. Tags inside JSON strings
+  remain literal text. Arrays, surrounding prose, reasoning after the
+  answer and multiple JSON values require a fresh
   answer; an invalid final answer fails the review. The key, if the
   endpoint wants one, comes from the variable `api.key_env` names, never
   from the config. A local
@@ -159,6 +161,11 @@ answers `approve` or `reject` with its reasons. It runs read-only:
   run with `--review-parallel 1`, or the reviews queue behind each other
   and the wait counts against each one's `timeout`. A local 27B model
   takes a few minutes per review.
+
+All three agents' verdicts must contain every field in the requested
+schema, with the expected types and no duplicate or unknown fields.
+Malformed CLI verdicts fail the review; the API agent requests a fresh
+answer once, then fails if that answer is malformed too.
 
 Neither gets a GitHub token: `GH_TOKEN`, `GITHUB_TOKEN`,
 `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are removed from the

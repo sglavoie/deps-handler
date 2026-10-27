@@ -257,87 +257,30 @@ func (a API) complete(ctx context.Context, req chatRequest, used *Usage) (messag
 	return reply, out.Choices[0].FinishReason == "length", nil
 }
 
-var (
-	// Thinking left open runs to the end: any JSON in it is a draft.
-	thinking = regexp.MustCompile(`(?s)<think>.*?(?:</think>|$)`)
-	fenced   = regexp.MustCompile("(?s)^```(?:json)?\\s*(.*?)\\s*```$")
-)
+var fenced = regexp.MustCompile("(?s)^```(?:json)?\\s*(.*?)\\s*```$")
 
 // parseAnswer reads the model's JSON answer, past any reasoning it wrote
 // before it or a code fence around it. Many chat templates open the
 // thinking in the prompt, so a reply can close it without opening it:
-// everything before the last </think> is thinking too. What remains must
+// everything before its closing </think> is thinking too. What remains must
 // be one JSON object: surrounding prose or other JSON values may mean it
 // is a draft the model went on to change its mind about.
 func parseAnswer(content string) (Answer, error) {
-	if i := strings.LastIndex(content, "</think>"); i >= 0 {
-		content = content[i+len("</think>"):]
+	s := strings.TrimSpace(content)
+	// Only remove reasoning before the answer. Tags in JSON strings are
+	// data, and reasoning after an answer may be reconsidering that answer.
+	// Neither may be stripped to turn an ambiguous reply into an approval.
+	for !strings.HasPrefix(s, "{") && !strings.HasPrefix(s, "```") {
+		i := strings.Index(s, "</think>")
+		if i < 0 {
+			break
+		}
+		s = strings.TrimSpace(s[i+len("</think>"):])
 	}
-	s := strings.TrimSpace(thinking.ReplaceAllString(content, ""))
 	if m := fenced.FindStringSubmatch(s); m != nil {
 		s = m[1]
 	}
-	// Decoding straight into Answer accepts duplicate and case-insensitive
-	// keys, missing fields and nulls. A later "decision" could overwrite a
-	// rejection, so enforce the schema before constructing the answer.
-	dec := json.NewDecoder(strings.NewReader(s))
-	if token, err := dec.Token(); err != nil || token != json.Delim('{') {
-		return Answer{}, errors.New("answer must be a JSON object")
-	}
-	fields := make(map[string]any)
-	for dec.More() {
-		token, err := dec.Token()
-		if err != nil {
-			return Answer{}, err
-		}
-		key, ok := token.(string)
-		if !ok {
-			return Answer{}, errors.New("answer field must be a string")
-		}
-		if _, exists := fields[key]; exists {
-			return Answer{}, fmt.Errorf("duplicate answer field %q", Clean(key))
-		}
-		var value any
-		if err := dec.Decode(&value); err != nil {
-			return Answer{}, err
-		}
-		switch key {
-		case "decision", "summary":
-			if _, ok := value.(string); !ok {
-				return Answer{}, fmt.Errorf("%s must be a string", key)
-			}
-		case "breaking_changes", "concerns":
-			items, ok := value.([]any)
-			if !ok {
-				return Answer{}, fmt.Errorf("%s must be an array of strings", key)
-			}
-			for _, item := range items {
-				if _, ok := item.(string); !ok {
-					return Answer{}, fmt.Errorf("%s must contain only strings", key)
-				}
-			}
-		default:
-			return Answer{}, fmt.Errorf("unknown answer field %q", Clean(key))
-		}
-		fields[key] = value
-	}
-	if _, err := dec.Token(); err != nil {
-		return Answer{}, err
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return Answer{}, errors.New("more than one JSON value")
-	}
-	if len(fields) != 4 {
-		return Answer{}, errors.New("answer requires decision, summary, breaking_changes and concerns")
-	}
-	var a Answer
-	if err := json.Unmarshal([]byte(s), &a); err != nil {
-		return Answer{}, err
-	}
-	if a.Decision != "approve" && a.Decision != "reject" {
-		return Answer{}, fmt.Errorf("decision %q is neither approve nor reject", Clean(a.Decision))
-	}
-	return a, nil
+	return decodeAnswer([]byte(s))
 }
 
 // runTool runs one tool call and returns what the model is told: the

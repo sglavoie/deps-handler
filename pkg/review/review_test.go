@@ -347,6 +347,32 @@ func TestCodexErrors(t *testing.T) {
 	}
 }
 
+func TestCLIAgentsRequireCompleteAnswers(t *testing.T) {
+	for name, answer := range map[string]string{
+		"missing fields":        `{"decision":"approve"}`,
+		"duplicate decision":    `{"decision":"reject","decision":"approve","summary":"ambiguous","breaking_changes":[],"concerns":[]}`,
+		"case variant decision": `{"decision":"reject","Decision":"approve","summary":"ambiguous","breaking_changes":[],"concerns":[]}`,
+		"null summary":          `{"decision":"approve","summary":null,"breaking_changes":[],"concerns":[]}`,
+		"null concerns":         `{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":null}`,
+		"null concern item":     `{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":[null]}`,
+		"unknown field":         `{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":[],"unsafe":true}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Both command adapters must validate what the process actually
+			// returned, even though they requested schema-constrained output.
+			body := "printf '%s\\n' '{\"is_error\":false,\"structured_output\":" + answer + "}'\n" +
+				`while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && out=$2; shift; done` + "\n" +
+				"if [ -n \"$out\" ]; then printf '%s\\n' '" + answer + "' > \"$out\"; fi"
+			cmd, _ := fakeAgent(t, body)
+			for _, agent := range []Agent{Claude{Command: cmd}, Codex{Command: cmd}} {
+				if got, err := agent.Run(context.Background(), t.TempDir(), "review"); err == nil {
+					t.Errorf("%s accepted malformed answer: %+v", agent.Name(), got)
+				}
+			}
+		})
+	}
+}
+
 func TestAgentEnvLacksGitHubTokens(t *testing.T) {
 	for _, k := range githubTokens {
 		t.Setenv(k, "secret")

@@ -78,10 +78,10 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	}
 	out, runErr := run(cmd)
 	var res struct {
-		IsError          bool    `json:"is_error"`
-		Subtype          string  `json:"subtype"`
-		Result           string  `json:"result"`
-		StructuredOutput *Answer `json:"structured_output"`
+		IsError          bool            `json:"is_error"`
+		Subtype          string          `json:"subtype"`
+		Result           string          `json:"result"`
+		StructuredOutput json.RawMessage `json:"structured_output"`
 	}
 	perr := json.Unmarshal(out, &res)
 	// claude exits 1 on an error it reports in its JSON, where the reason
@@ -98,10 +98,14 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	if perr != nil {
 		return Answer{}, fmt.Errorf("claude: unreadable output: %w", perr)
 	}
-	if res.StructuredOutput == nil {
+	if len(res.StructuredOutput) == 0 || bytes.Equal(res.StructuredOutput, []byte("null")) {
 		return Answer{}, errors.New("claude: no structured output")
 	}
-	return *res.StructuredOutput, nil
+	a, err := decodeAnswer(res.StructuredOutput)
+	if err != nil {
+		return Answer{}, fmt.Errorf("claude: unreadable answer: %w", err)
+	}
+	return a, nil
 }
 
 // Codex runs `codex exec` in its read-only sandbox, without the user's
@@ -150,8 +154,8 @@ func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	if err != nil {
 		return Answer{}, fmt.Errorf("codex: no answer: %w", err)
 	}
-	var a Answer
-	if err := json.Unmarshal(data, &a); err != nil {
+	a, err := decodeAnswer(data)
+	if err != nil {
 		return Answer{}, fmt.Errorf("codex: unreadable answer: %w", err)
 	}
 	return a, nil
