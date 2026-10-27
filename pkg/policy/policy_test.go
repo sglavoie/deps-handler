@@ -60,6 +60,19 @@ func TestUnnamedDependencyCannotMergeWithoutReview(t *testing.T) {
 	}
 }
 
+func TestExtraMetadataDocumentCannotAuthorizeMerge(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.Commits[0].Message = strings.Replace(pr.Commits[0].Message, "\n...", "\n---\nother: metadata\n...", 1)
+	d := one(t, testutil.Repo(pr), defaultPolicy)
+	if d.Grade != config.UpdateUnknown || d.Action != ActionSkip {
+		t.Fatalf("partial metadata authorized a merge: %+v", d)
+	}
+	ds := Evaluate(testutil.Repo(pr), defaultPolicy, "me", func(Decision) *Verdict { return nil })
+	if ds[0].Action != ActionReview {
+		t.Fatalf("unreadable metadata should require review: %+v", ds[0])
+	}
+}
+
 func TestNoChecksRequiresKnownHeadAge(t *testing.T) {
 	for _, size := range []string{"patch", "major"} {
 		for _, state := range []string{"CLEAN", "BEHIND"} {

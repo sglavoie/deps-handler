@@ -124,6 +124,40 @@ func TestTools(t *testing.T) {
 	}
 }
 
+func TestToolsPreserveWhitespaceInPaths(t *testing.T) {
+	for _, name := range []string{" leading.txt", "trailing.txt ", " "} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, name), []byte("exact file\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if trimmed := strings.TrimSpace(name); trimmed != "" {
+				if err := os.WriteFile(filepath.Join(root, trimmed), []byte("wrong file\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			args, err := json.Marshal(map[string]string{"path": name, "pattern": "exact"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tool := range []string{"read_file", "search"} {
+				if got := runTool(context.Background(), root, tool, string(args)); !strings.Contains(got, "exact file") {
+					t.Errorf("%s for %q = %q", tool, name, got)
+				}
+			}
+			if err := os.Remove(filepath.Join(root, name)); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(filepath.Join(root, name), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if got := runTool(context.Background(), root, "list_files", string(args)); got != "(empty)" {
+				t.Errorf("list_files for directory %q = %q", name, got)
+			}
+		})
+	}
+}
+
 func TestAPIEndpointPreservesQuery(t *testing.T) {
 	for _, suffix := range []string{"/v1?api-version=1", "/v1/?api-version=1", "/v1?route=a%2Fb#local"} {
 		t.Run(suffix, func(t *testing.T) {

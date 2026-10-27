@@ -71,6 +71,22 @@ func TestParseCommitMessageWithoutBlock(t *testing.T) {
 	}
 }
 
+func TestParseCommitMessageRejectsExtraYAMLDocuments(t *testing.T) {
+	first := "bump libraries\n\n---\nupdated-dependencies:\n" +
+		"- dependency-name: lib\n  update-type: version-update:semver-patch\n"
+	for name, extra := range map[string]string{
+		"another mapping":    "---\nother: metadata\n",
+		"empty document":     "---\n",
+		"malformed document": "---\n[invalid\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if deps := ParseCommitMessage(first + extra + "...\n"); deps != nil {
+				t.Fatalf("accepted a partial metadata stream: %+v", deps)
+			}
+		})
+	}
+}
+
 func TestGrade(t *testing.T) {
 	d := func(u config.UpdateType) Dependency { return Dependency{UpdateType: u} }
 	cases := []struct {

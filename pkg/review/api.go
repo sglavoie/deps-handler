@@ -342,7 +342,9 @@ var errOutside = errors.New("path is outside the checkout")
 // inside resolves rel, a path relative to the checkout root, to a path
 // within it, following symlinks so that one cannot lead out of it.
 func inside(root, rel string) (string, error) {
-	rel = filepath.FromSlash(strings.TrimSpace(rel))
+	// Whitespace can be part of a tracked filename; trimming it can read
+	// a different file from the one the model requested.
+	rel = filepath.FromSlash(rel)
 	if rel == "" {
 		rel = "."
 	}

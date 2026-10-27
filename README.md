@@ -85,6 +85,8 @@ A PR is merged only when all of these hold:
   within `max_update_type` (a grouped PR is as risky as its riskiest bump).
   Missing or blank dependency names invalidate the metadata for the whole
   commit, requiring agent review or manual handling.
+  Metadata containing multiple YAML documents or malformed trailing YAML
+  is also rejected rather than graded from its first document alone.
 - Every check on its head commit passed, and at least one ran, unless the
   repo sets `require_checks: false` or `merge_without_checks_after`.
 - GitHub reports it mergeable and clean, and nothing about it was cut off
@@ -166,6 +168,8 @@ read-only, without your customizations and without a GitHub token:
   Claude Code and Codex verdicts undergo the same field
   validation; malformed verdicts fail the review. File reads and searches
   stop when the review is cancelled or its timeout expires.
+  API file tools preserve leading and trailing whitespace in filenames,
+  so they read the exact path requested.
 
 Read-only is not confined to the checkout for Claude Code and Codex: they
 can read any file your user can, and what an agent reads goes to its

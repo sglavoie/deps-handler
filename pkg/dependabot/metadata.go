@@ -3,6 +3,8 @@
 package dependabot
 
 import (
+	"errors"
+	"io"
 	"strings"
 
 	"github.com/sglavoie/deps-merger/pkg/config"
@@ -56,7 +58,14 @@ func ParseCommitMessage(msg string) []Dependency {
 	var doc struct {
 		Deps []rawDependency `yaml:"updated-dependencies"`
 	}
-	if err := yaml.Unmarshal([]byte(block), &doc); err != nil {
+	dec := yaml.NewDecoder(strings.NewReader(block))
+	if err := dec.Decode(&doc); err != nil {
+		return nil
+	}
+	// Unmarshal reads only the first YAML document. Never grade a valid
+	// prefix while ignoring extra or malformed metadata after it.
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil
 	}
 	out := make([]Dependency, 0, len(doc.Deps))
