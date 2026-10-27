@@ -160,6 +160,8 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		// An unset variable in `-r "$REPO"` must not select every repo.
 		"empty repo":      {[]string{"run", "-c", active, "-r", ""}, 2, "--repo needs a repo name"},
 		"empty agent":     {[]string{"run", "-c", active, "--agent", ""}, 2, "--agent needs an agent name"},
+		"empty config":    {[]string{"run", "-c", ""}, 2, "--config needs a file path"},
+		"empty init -c":   {[]string{"init", "--force", "-c", ""}, 2, "--config needs a file path"},
 		"blank repo":      {[]string{"run", "-c", active, "-r", "a, "}, 2, "--repo has an empty repo name"},
 		"blank --repo":    {[]string{"run", "-c", active, "--repo", " "}, 2, "--repo has an empty repo name"},
 		"unknown owner":   {[]string{"run", "-c", cfg, "--owner", "zzz"}, 2, `owner "zzz" has no repo in the config`},

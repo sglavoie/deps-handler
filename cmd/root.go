@@ -34,6 +34,14 @@ by anyone else, are never changed.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// An empty -c, as an unset variable gives, must not fall back on the
+	// default config and act on its repos.
+	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		if f := cmd.Flag("config"); f != nil && f.Changed && strings.TrimSpace(configPath) == "" {
+			return usageError{errors.New("--config needs a file path")}
+		}
+		return nil
+	}
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-merger/config.yaml, or ~/.config/deps-merger/config.yaml when XDG_CONFIG_HOME is unset)")
 	root.AddCommand(newInitCmd(), newRunCmd(), newReposCmd(), newVerdictsCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
