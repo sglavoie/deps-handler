@@ -209,6 +209,14 @@ func TestEvaluate(t *testing.T) {
 				pr.BaseMovedAt = testutil.T0.Add(-time.Minute)
 				r.FetchedAt = testutil.T0.Add(time.Minute)
 			}},
+		{name: "a second commit without metadata makes the size unknown", action: ActionSkip, reason: "cannot determine",
+			mutate: func(_ *github.Repo, pr *github.PullRequest) {
+				c := pr.Commits[0]
+				c.OID = "c1b"
+				c.Message = "some other change\n\nno metadata here"
+				pr.Commits = append(pr.Commits, c)
+				pr.CommitCount = 2
+			}},
 		{name: "mergeability unknown", action: ActionWait, reason: "mergeability",
 			mutate: func(_ *github.Repo, pr *github.PullRequest) { pr.Mergeable = "UNKNOWN" }},
 		{name: "behind asks rebase", action: ActionRebase,

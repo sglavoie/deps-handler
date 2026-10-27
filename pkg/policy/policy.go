@@ -196,10 +196,18 @@ func anyRan(checks []github.Check) bool {
 
 func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer string, judge Judge) Decision {
 	d := Decision{PR: pr, Number: pr.Number, Title: pr.Title, URL: pr.URL, Dependencies: []dependabot.Dependency{}}
+	// A commit whose size cannot be read makes the whole PR's unknown, not
+	// just the PR's other commits' size.
+	unread := false
 	for _, c := range pr.Commits {
-		d.Dependencies = append(d.Dependencies, dependabot.ParseCommitMessage(c.Message)...)
+		deps := dependabot.ParseCommitMessage(c.Message)
+		unread = unread || len(deps) == 0
+		d.Dependencies = append(d.Dependencies, deps...)
 	}
 	d.Grade = dependabot.Grade(d.Dependencies)
+	if unread {
+		d.Grade = config.UpdateUnknown
+	}
 	checks := LatestChecks(pr.Checks)
 	// Matrix jobs and other workflows can repeat a name; one that failed
 	// anywhere is listed as failing, not stale, as rerunning won't fix it.
