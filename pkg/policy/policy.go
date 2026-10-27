@@ -433,7 +433,8 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		if safe.Verdict == nil {
 			safe.Action, safe.Reason = ActionReview, oversized+AwaitingReview
 		} else if safe.Action == ActionMerge {
-			safe.Reason = fmt.Sprintf("checks green, %s update approved by agent", safe.Grade)
+			// "checks green" or "no checks ran", as within policy.
+			safe.Reason = strings.TrimSuffix(safe.Reason, "within policy") + fmt.Sprintf("%s update approved by agent", safe.Grade)
 		} else {
 			safe.Reason += fmt.Sprintf(" (%s update approved by agent)", safe.Grade)
 		}
