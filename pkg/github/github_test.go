@@ -66,7 +66,8 @@ func TestRetryable(t *testing.T) {
 
 func TestTransient(t *testing.T) {
 	for err, want := range map[error]bool{
-		&api.HTTPError{StatusCode: 502}:                         true,
+		nil:                             false,
+		&api.HTTPError{StatusCode: 502}: true,
 		fmt.Errorf("wrap: %w", &api.HTTPError{StatusCode: 504}): true,
 		&api.HTTPError{StatusCode: 404}:                         false,
 		&api.GraphQLError{Errors: []api.GraphQLErrorItem{{Message: "Something went wrong while executing your query."}}}: true,

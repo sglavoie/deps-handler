@@ -46,6 +46,23 @@ func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
 	}
 }
 
+func TestUnknownCheckStateCannotMerge(t *testing.T) {
+	for _, state := range []github.CheckState{"", "unknown"} {
+		for _, require := range []bool{true, false} {
+			for _, size := range []string{"patch", "major"} {
+				pr := testutil.PR(1, "lib:"+size)
+				pr.Checks[0].State = state
+				p := defaultPolicy
+				p.RequireChecks = require
+				ds := Evaluate(testutil.Repo(pr), p, "me", approveAll)
+				if ds[0].Action != ActionSkip || !strings.Contains(ds[0].Reason, "unknown check state") {
+					t.Errorf("state %q, require_checks %t, size %s: %+v", state, require, size, ds[0])
+				}
+			}
+		}
+	}
+}
+
 func TestUnverifiedHeadCannotMergeOrBeReviewed(t *testing.T) {
 	for _, state := range []string{"CLEAN", "BEHIND"} {
 		for _, size := range []string{"patch", "major"} {

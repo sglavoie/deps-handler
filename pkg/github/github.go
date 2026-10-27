@@ -739,6 +739,9 @@ func repoNotFound(err error) bool {
 // call cut short by the run being cancelled can fail in these ways too:
 // callers rule that out first.
 func Transient(err error) bool {
+	if err == nil {
+		return false
+	}
 	if he, ok := errors.AsType[*api.HTTPError](err); ok {
 		return he.StatusCode == http.StatusBadGateway || he.StatusCode == http.StatusServiceUnavailable || he.StatusCode == http.StatusGatewayTimeout
 	}

@@ -1,8 +1,10 @@
 package review
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -112,6 +114,40 @@ func TestSearchStopsWhenTheReviewTimesOut(t *testing.T) {
 	cancel()
 	if got := runTool(ctx, root, "search", `{"pattern": "needle"}`); !strings.Contains(got, "context canceled") {
 		t.Fatalf("search = %q; a cancelled review must not keep reading files", got)
+	}
+}
+
+func TestReadFileStopsWhenTheReviewTimesOut(t *testing.T) {
+	root := checkout(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := runTool(ctx, root, "read_file", `{"path":"src/app.js"}`); !strings.Contains(got, "context canceled") {
+		t.Fatalf("read = %q; a cancelled review must not keep reading files", got)
+	}
+}
+
+// cancelReader cancels the review as its first chunk is being read.
+type cancelReader struct {
+	io.Reader
+	cancel context.CancelFunc
+}
+
+func (r cancelReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.cancel()
+	return n, err
+}
+
+func TestReadLineStopsDuringLongLine(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	source := strings.NewReader(strings.Repeat("x", 2<<20))
+	r := bufio.NewReaderSize(cancelReader{source, cancel}, 64<<10)
+	if _, _, err := readLine(ctx, r, maxLineBytes); !errors.Is(err, context.Canceled) {
+		t.Fatalf("read = %v; a cancelled review must stop discarding a long line", err)
+	}
+	if source.Len() == 0 {
+		t.Fatal("read consumed the whole line after cancellation")
 	}
 }
 

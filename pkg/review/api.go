@@ -301,7 +301,7 @@ func runTool(ctx context.Context, root, name, arguments string) string {
 	case "list_files":
 		out, err = listFiles(root, args.Path)
 	case "read_file":
-		out, err = readFile(root, args.Path, args.Offset, args.Limit)
+		out, err = readFile(ctx, root, args.Path, args.Offset, args.Limit)
 	case "search":
 		out, err = search(ctx, root, args.Path, args.Pattern)
 	default:
@@ -400,7 +400,10 @@ func mustReal(root string) string {
 	return r
 }
 
-func readFile(root, rel string, offset, limit int) (string, error) {
+func readFile(ctx context.Context, root, rel string, offset, limit int) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	p, err := inside(root, rel)
 	if err != nil {
 		return "", err
@@ -421,7 +424,7 @@ func readFile(root, rel string, offset, limit int) (string, error) {
 	r := bufio.NewReaderSize(f, 64<<10)
 	line, shown := 0, 0
 	for {
-		text, clipped, err := readLine(r, maxLineBytes)
+		text, clipped, err := readLine(ctx, r, maxLineBytes)
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
@@ -454,9 +457,14 @@ func readFile(root, rel string, offset, limit int) (string, error) {
 // most limit bytes of it, and reports whether it held more. A minified
 // bundle, as an action's dist/index.js, is one line of megabytes: whole,
 // it would fill a local model's context, or fail to read at all.
-func readLine(r *bufio.Reader, limit int) (text string, clipped bool, err error) {
+// Cancellation is checked for every fragment, including the bytes thrown
+// away from a long line and the lines skipped before a requested offset.
+func readLine(ctx context.Context, r *bufio.Reader, limit int) (text string, clipped bool, err error) {
 	var b []byte
 	for {
+		if err := ctx.Err(); err != nil {
+			return "", false, err
+		}
 		chunk, more, err := r.ReadLine()
 		if errors.Is(err, io.EOF) && len(b) > 0 {
 			// The file ends a line that filled the reader exactly.

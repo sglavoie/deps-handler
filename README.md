@@ -125,7 +125,8 @@ read-only, without your customizations and without a GitHub token:
   duplicate fields. Ambiguous or incomplete replies require a fresh answer
   before they can approve a PR. Reasoning after the answer also requires
   a fresh answer. Claude Code and Codex verdicts undergo the same field
-  validation; malformed verdicts fail the review.
+  validation; malformed verdicts fail the review. File reads and searches
+  stop when the review is cancelled or its timeout expires.
 
 Read-only is not confined to the checkout for Claude Code and Codex: they
 can read any file your user can, and what an agent reads goes to its
@@ -249,6 +250,9 @@ repository policy files.
 The engine the CLI runs is importable from `pkg/`: `runner` drives a run
 over a `github.Client`, with `policy`, `config`, `review` and `report`
 behind it. Until 1.0 its API may change in any release; pin a version.
+Custom clients must normalize check states to the `github.CheckState`
+constants; empty or unrecognized states block merging even when checks
+are optional or an agent approved the update.
 
 ## Contributing
 
