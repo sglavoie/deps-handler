@@ -93,4 +93,10 @@ func TestIsCommitAuthor(t *testing.T) {
 	if IsCommitAuthor("", "", "dependabot[bot]@users.noreply.github.com.evil.example") {
 		t.Error("an email merely containing Dependabot's")
 	}
+	if IsCommitAuthor("", "dependabot[bot]", "someone@example.com") {
+		t.Error("Dependabot's name with someone else's email")
+	}
+	if IsCommitAuthor("", "dependabot[bot]", "1+dependabot[bot]@users.noreply.github.com") {
+		t.Error("an email shaped like Dependabot's with another account's ID")
+	}
 }

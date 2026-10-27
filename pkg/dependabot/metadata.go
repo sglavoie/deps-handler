@@ -108,14 +108,24 @@ func IsLogin(login string) bool {
 	return login == "dependabot" || login == "dependabot[bot]"
 }
 
+// Email is the address Dependabot's commits carry, which GitHub links to
+// its account.
+const Email = "49699333+dependabot[bot]@users.noreply.github.com"
+
 // IsCommitAuthor reports whether a commit author identity is Dependabot. A
-// linked login decides; without one, the name or email Dependabot uses is
-// accepted, which only suits a Co-authored-by trailer: such trailers link
-// no account. A commit's own author must be linked to Dependabot's account
-// (see IsLogin), since a name or email alone is anyone's to type.
+// linked login decides; without one, Dependabot's email, or its name with
+// no email, is accepted, which only suits a Co-authored-by trailer: such
+// trailers link no login. GitHub credits a trailer to whoever owns its
+// email, so a trailer with Dependabot's name and someone else's email, or
+// with an email merely shaped like Dependabot's, names someone else. A
+// commit's own author must be linked to Dependabot's account (see
+// IsLogin), since a name or email alone is anyone's to type.
 func IsCommitAuthor(login, name, email string) bool {
 	if login != "" {
 		return IsLogin(login)
 	}
-	return name == "dependabot[bot]" || strings.HasSuffix(email, "+dependabot[bot]@users.noreply.github.com")
+	if email == "" {
+		return name == "dependabot[bot]"
+	}
+	return strings.EqualFold(email, Email)
 }
