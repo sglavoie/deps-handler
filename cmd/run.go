@@ -120,9 +120,11 @@ no repository of; and 130 when interrupted.`,
 			}
 			var agent review.Agent
 			switch {
-			case wantReviews && !slices.ContainsFunc(selected, func(r config.Repo) bool { return r.Policy.AgentReview }):
+			case wantReviews && !slices.ContainsFunc(selected, config.Repo.MayReview):
 				// No repo would use the agent, so neither require it
-				// installed nor take the review lock.
+				// installed nor take the review lock. A repo whose
+				// agent_review comes from the defaults is not one: its
+				// policy files may turn reviews on.
 				fmt.Fprintln(cmd.ErrOrStderr(), "note: no agent reviews: every selected repo sets agent_review: false")
 			case wantReviews:
 				if agent, err = newAgent(cfg.Agent, agentName); err != nil {
