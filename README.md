@@ -93,6 +93,8 @@ on every other PR. Merges are made one at a time with the head SHA pinned,
 re-reading the repository after each; a merge GitHub fails in a way that
 may hide a success is checked before it is reported. Writes are never sent
 concurrently, and a rate limit stops them rather than push through it.
+A PR whose merge or rebase request failed stops holding the rebase queue
+for that run, even if it later waits on CI or GitHub to compute mergeability.
 
 The exact rules, and how each failure, retry, interruption and rate limit
 is reported, are in [How deps-merger behaves](docs/behaviour.md#what-counts-as-safe).
@@ -269,8 +271,8 @@ constants; empty or unrecognized states block merging even when checks
 are optional, an agent approved the update, or a newer check would otherwise
 supersede the unrecognized one.
 The review cache copies verdict concerns on storage and retrieval, so callers
-can edit their own copies independently. Codex reviews accept absolute or
-relative checkout paths.
+can edit their own copies independently. Codex and API reviews accept
+absolute or relative checkout paths, including `.` for the current directory.
 
 ## Contributing
 

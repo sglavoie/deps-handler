@@ -574,6 +574,35 @@ func TestEvaluateQueuesRebases(t *testing.T) {
 	}
 }
 
+func TestRefusedPRCannotHoldRebaseQueueWhileWaiting(t *testing.T) {
+	for _, state := range []string{"pending checks", "missing checks", "unknown mergeability", "unknown merge state"} {
+		t.Run(state, func(t *testing.T) {
+			pr := testutil.PR(1)
+			switch state {
+			case "pending checks":
+				pr.Checks[0].State = github.CheckPending
+			case "missing checks":
+				pr.ChecksOID = "older"
+			case "unknown mergeability":
+				pr.Mergeable = "UNKNOWN"
+			case "unknown merge state":
+				pr.MergeState = "UNKNOWN"
+			}
+			behind := testutil.PR(2)
+			behind.MergeState = "BEHIND"
+			repo := testutil.Repo(pr, behind)
+			// An update still eligible to merge holds the queue while waiting.
+			if ds := Evaluate(repo, defaultPolicy, "me", nil); ds[1].Action != ActionWait {
+				t.Fatalf("eligible PR must hold the queue: %+v", ds)
+			}
+			ds := EvaluateAfter(repo, defaultPolicy, "me", nil, map[int]bool{1: true})
+			if ds[0].Action != ActionWait || ds[1].Action != ActionRebase {
+				t.Fatalf("a PR whose write failed must release the queue even while waiting: %+v", ds)
+			}
+		})
+	}
+}
+
 func TestEvaluateAgentReview(t *testing.T) {
 	approved := func(Decision) *Verdict { return &Verdict{Approved: true, Summary: "fine"} }
 	rejected := func(Decision) *Verdict { return &Verdict{Summary: "breaks API"} }

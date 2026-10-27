@@ -292,6 +292,31 @@ func TestApplyRebasesBehindARefusedRebase(t *testing.T) {
 	}
 }
 
+// pendingAfterRefusal simulates CI restarting between a failed merge and
+// the next repository snapshot.
+type pendingAfterRefusal struct{ *fakeClient }
+
+func (f pendingAfterRefusal) Merge(context.Context, string, string, int, string, string) error {
+	f.repo.PullRequests[0].Checks[0].State = github.CheckPending
+	return &api.HTTPError{StatusCode: 403, Message: "merge refused"}
+}
+
+func TestApplyRebasesAfterFailedMergeStartsWaiting(t *testing.T) {
+	behind := testutil.PR(2)
+	behind.MergeState = "BEHIND"
+	fc := pendingAfterRefusal{&fakeClient{repo: testutil.Repo(testutil.PR(1), behind)}}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if len(res.Events) != 2 || res.Events[0].Kind != EventMergeFailed || res.Events[1].Kind != EventRebaseRequested || res.Events[1].Number != 2 {
+		t.Fatalf("events = %+v; the failed merge must release the rebase queue while CI runs", res.Events)
+	}
+	if got := fc.comments[2]; len(got) != 1 || got[0] != policy.RebaseCommand {
+		t.Fatalf("rebase comments = %v", got)
+	}
+	if !res.Failed() {
+		t.Fatal("rebasing the next PR must not hide the merge failure")
+	}
+}
+
 func TestApplyRetriesTransientMergeFailureOnce(t *testing.T) {
 	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), transient: map[int]int{1: 1}}
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)

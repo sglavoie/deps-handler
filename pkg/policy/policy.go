@@ -141,7 +141,7 @@ func EvaluateAfter(repo *github.Repo, p config.Policy, viewer string, judge Judg
 func queueRebases(ds []Decision, refused map[int]bool) {
 	ahead := 0
 	for _, d := range ds {
-		if d.Action == ActionMerge && !refused[d.Number] || d.inFlight {
+		if !refused[d.Number] && (d.Action == ActionMerge || d.inFlight) {
 			ahead = d.Number
 			break
 		}

@@ -336,7 +336,7 @@ func inside(root, rel string) (string, error) {
 	if !filepath.IsLocal(rel) {
 		return "", errOutside
 	}
-	realRoot, err := filepath.EvalSymlinks(root)
+	realRoot, err := checkoutRoot(root)
 	if err != nil {
 		return "", err
 	}
@@ -347,7 +347,8 @@ func inside(root, rel string) (string, error) {
 		}
 		return "", err
 	}
-	if p != realRoot && !strings.HasPrefix(p, realRoot+string(filepath.Separator)) {
+	within, err := filepath.Rel(realRoot, p)
+	if err != nil || !filepath.IsLocal(within) {
 		return "", errOutside
 	}
 	if isGitDir(realRoot, p) {
@@ -403,11 +404,21 @@ func listFiles(root, rel string) (string, error) {
 }
 
 func mustReal(root string) string {
-	r, err := filepath.EvalSymlinks(root)
+	r, err := checkoutRoot(root)
 	if err != nil {
 		return root
 	}
 	return r
+}
+
+// checkoutRoot keeps containment checks, listings and search paths in the
+// same absolute coordinates, including when the checkout is ".".
+func checkoutRoot(root string) (string, error) {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
 }
 
 func readFile(ctx context.Context, root, rel string, offset, limit int) (string, error) {

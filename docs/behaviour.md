@@ -60,6 +60,9 @@ rebased. Only a PR's latest 50 comments are read: when even the oldest of
 them is newer than its head commit, a request may hide among the rest, so
 the PR is not asked again but waits as if one were pending, and is left for
 a human a day after that oldest comment.
+A PR whose merge or rebase request failed also releases the queue for the
+rest of that run, even if its checks restart or GitHub recomputes its
+mergeability afterward.
 
 Dependabot takes commands only from users with push access, not from a
 GitHub App or `GITHUB_TOKEN`. With `dependabot_commands: false`,

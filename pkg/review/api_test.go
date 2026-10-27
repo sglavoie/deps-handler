@@ -72,6 +72,26 @@ func TestToolsStayInTheCheckout(t *testing.T) {
 	}
 }
 
+func TestToolsWithCurrentDirectoryCheckout(t *testing.T) {
+	root := checkout(t)
+	t.Chdir(root)
+	for _, c := range []struct{ tool, args, want string }{
+		{"list_files", `{"path":"src"}`, "app.js\n"},
+		{"read_file", `{"path":"src/app.js","limit":1}`, "1\tconst express"},
+		{"read_file", `{"path":"app-link.js"}`, "app.del"},
+		{"search", `{"path":"src","pattern":"app\\.del"}`, "src/app.js:3: app.del"},
+		{"read_file", `{"path":"key.pem"}`, "error: path is outside the checkout"},
+		{"read_file", `{"path":".git/config"}`, "error: the .git directory"},
+	} {
+		if got := runTool(context.Background(), ".", c.tool, c.args); !strings.Contains(got, c.want) {
+			t.Errorf("%s %s = %q; want %q", c.tool, c.args, got, c.want)
+		}
+	}
+	if got := runTool(context.Background(), ".", "list_files", `{}`); strings.Contains(got, ".git") || !strings.Contains(got, "src/") {
+		t.Errorf("root listing = %q; want checkout files without .git", got)
+	}
+}
+
 func TestTools(t *testing.T) {
 	root := checkout(t)
 	list := runTool(context.Background(), root, "list_files", `{"path": "."}`)
