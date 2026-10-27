@@ -63,6 +63,24 @@ func TestUnknownCheckStateCannotMerge(t *testing.T) {
 	}
 }
 
+func TestNewerCheckCannotHideUnknownState(t *testing.T) {
+	for _, state := range []github.CheckState{"", "unknown"} {
+		for _, size := range []string{"patch", "major"} {
+			pr := testutil.PR(1, "lib:"+size)
+			pr.Checks = []github.Check{
+				{Name: "build", State: state, Suite: 1, App: actions, Workflow: 7},
+				{Name: "build", State: github.CheckPassed, Suite: 2, App: actions, Workflow: 7},
+			}
+			p := defaultPolicy
+			p.RequireChecks = false
+			ds := Evaluate(testutil.Repo(pr), p, "me", approveAll)
+			if ds[0].Action != ActionSkip || !strings.Contains(ds[0].Reason, "unknown check state") {
+				t.Errorf("state %q, size %s: newer check hid an unknown state: %+v", state, size, ds[0])
+			}
+		}
+	}
+}
+
 func TestUnverifiedHeadCannotMergeOrBeReviewed(t *testing.T) {
 	for _, state := range []string{"CLEAN", "BEHIND"} {
 		for _, size := range []string{"patch", "major"} {

@@ -255,9 +255,13 @@ repository policy files.
 The engine the CLI runs is importable from `pkg/`: `runner` drives a run
 over a `github.Client`, with `policy`, `config`, `review` and `report`
 behind it. Until 1.0 its API may change in any release; pin a version.
+The same `Runner` can run successive passes: each `Run` reloads owner
+policies and starts with a fresh review budget and rate-limit state. Calls
+to `Run` must not overlap other `Run` or `RunRepo` calls on that runner.
 Custom clients must normalize check states to the `github.CheckState`
 constants; empty or unrecognized states block merging even when checks
-are optional or an agent approved the update.
+are optional, an agent approved the update, or a newer check would otherwise
+supersede the unrecognized one.
 
 ## Contributing
 

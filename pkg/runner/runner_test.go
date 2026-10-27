@@ -1356,3 +1356,65 @@ func TestOrgFileIsReadOncePerOwner(t *testing.T) {
 		t.Errorf("file reads = %d, want 5", got)
 	}
 }
+
+func TestRunReloadsOwnerPolicy(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1)), files: map[string]string{}}
+	r := newRunner(fc, false)
+	first := r.Run(context.Background(), []config.Repo{repoCfg}, nil)
+	if first[0].Failed() {
+		t.Fatalf("first run: %+v", first)
+	}
+	// An owner switches to report mode between runs of a long-lived client.
+	fc.files["o/.github:deps-merger.yml"] = "mode: report\n"
+	r.Apply = true
+	second := r.Run(context.Background(), []config.Repo{repoCfg}, nil)
+	if second[0].Failed() || second[0].Policy.Mode != config.ModeReport || len(fc.merges) != 0 {
+		t.Fatalf("second run ignored the new owner policy: %+v; merges %v", second, fc.merges)
+	}
+}
+
+func TestRunResetsRateLimit(t *testing.T) {
+	fc := &fakeClient{
+		repo:      testutil.Repo(testutil.PR(1)),
+		mergeErrs: map[int][]error{1: {&api.HTTPError{StatusCode: 429}}},
+	}
+	r := newRunner(fc, true)
+	// Refuse the retry too, blocking writes for the remainder of this run.
+	fc.mergeErrs[1] = append(fc.mergeErrs[1], &api.HTTPError{StatusCode: 429})
+	if first := r.Run(context.Background(), []config.Repo{repoCfg}, nil); !first[0].Failed() {
+		t.Fatalf("rate-limited run succeeded: %+v", first)
+	}
+	second := r.Run(context.Background(), []config.Repo{repoCfg}, nil)
+	if second[0].Failed() || !slices.Equal(fc.merges, []int{1}) {
+		t.Fatalf("later run stayed rate-limited: %+v; merges %v", second, fc.merges)
+	}
+}
+
+func TestRunResetsReviewBudget(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{}
+	r := reviewRunner(fc, rv, false)
+	r.MaxReviews = 1
+	for range 2 {
+		if result := r.Run(context.Background(), []config.Repo{repoCfg}, nil); result[0].Failed() {
+			t.Fatalf("run failed: %+v", result)
+		}
+	}
+	if !slices.Equal(rv.calls, []int{1, 1}) {
+		t.Fatalf("later run inherited an exhausted review budget: %v", rv.calls)
+	}
+}
+
+func TestRunConsumesWarnings(t *testing.T) {
+	fc := &fakeClient{repo: testutil.Repo()}
+	r := newRunner(fc, false)
+	r.Warn("cache recovered")
+	first := r.Run(context.Background(), []config.Repo{repoCfg}, nil)
+	if !slices.Equal(first[0].Warnings, []string{"cache recovered"}) {
+		t.Fatalf("first run lost warning: %+v", first)
+	}
+	second := r.Run(context.Background(), []config.Repo{repoCfg}, nil)
+	if len(second[0].Warnings) != 0 {
+		t.Fatalf("second run repeated an old warning: %+v", second)
+	}
+}

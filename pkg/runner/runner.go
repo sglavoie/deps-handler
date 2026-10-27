@@ -178,7 +178,19 @@ func New(c github.Client, viewer string, apply bool) *Runner {
 // the order given, passing each to progress in that order as soon as it and
 // those before it are done. A failure in one repo does not stop others; an
 // interruption stops repos from starting, and those are left out.
+// A Runner can be reused for successive runs. Run must not overlap another
+// Run or an external RunRepo call on the same Runner.
 func (r *Runner) Run(ctx context.Context, repos []config.Repo, progress func(RepoResult)) []RepoResult {
+	// These belong to one run, not to the lifetime of a library client.
+	// In particular, an owner's policy must be read again before any writes.
+	r.orgFiles = nil
+	r.writesBlocked.Store(false)
+	r.reviewsStarted.Store(0)
+	r.reviewsOnce = sync.Once{}
+	r.reviewSlots = nil
+	warnings := r.warnings
+	r.warnings = nil
+
 	results := make([]RepoResult, len(repos))
 	// started[i] says whether repo i ran, once results[i] is final.
 	started := make([]chan bool, len(repos))
@@ -211,8 +223,8 @@ func (r *Runner) Run(ctx context.Context, repos []config.Repo, progress func(Rep
 		if !<-started[i] {
 			break
 		}
-		if i == 0 && len(r.warnings) > 0 {
-			results[0].Warnings = append(slices.Clone(r.warnings), results[0].Warnings...)
+		if i == 0 && len(warnings) > 0 {
+			results[0].Warnings = append(slices.Clone(warnings), results[0].Warnings...)
 		}
 		if progress != nil {
 			progress(results[i])

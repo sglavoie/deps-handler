@@ -359,14 +359,19 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	if pr.CheckCount > len(pr.Checks) {
 		return skip("too many checks to verify (%d)", pr.CheckCount)
 	}
-	pending := 0
-	for _, c := range checks {
+	// Validate the whole response before relying on supersession: a newer
+	// suite cannot establish what an unrecognized older state means.
+	for _, c := range pr.Checks {
 		switch c.State {
-		case github.CheckPending:
-			pending++
-		case github.CheckPassed, github.CheckFailed, github.CheckSkipped, github.CheckStale:
+		case github.CheckPending, github.CheckPassed, github.CheckFailed, github.CheckSkipped, github.CheckStale:
 		default:
 			return skip("unknown check state %q for %s; left for a human", c.State, c.Name)
+		}
+	}
+	pending := 0
+	for _, c := range checks {
+		if c.State == github.CheckPending {
+			pending++
 		}
 	}
 	switch {
