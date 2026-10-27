@@ -159,6 +159,7 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"ambiguous repo": {[]string{"run", "-c", writeConfig(t, "repos: [a/x, b/x]\n"), "-r", "x"}, 2, "ambiguous: x matches a/x, b/x"},
 		// An unset variable in `-r "$REPO"` must not select every repo.
 		"empty repo":      {[]string{"run", "-c", active, "-r", ""}, 2, "--repo needs a repo name"},
+		"empty agent":     {[]string{"run", "-c", active, "--agent", ""}, 2, "--agent needs an agent name"},
 		"blank repo":      {[]string{"run", "-c", active, "-r", "a, "}, 2, "--repo has an empty repo name"},
 		"blank --repo":    {[]string{"run", "-c", active, "--repo", " "}, 2, "--repo has an empty repo name"},
 		"unknown owner":   {[]string{"run", "-c", cfg, "--owner", "zzz"}, 2, `owner "zzz" has no repo in the config`},

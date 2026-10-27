@@ -78,6 +78,11 @@ no repository of; and 130 when interrupted.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Flags first: a mistake in the command line is reported
 			// before anything in the config.
+			// An empty --agent, as an unset variable gives, must not turn
+			// reviews off.
+			if cmd.Flags().Changed("agent") && strings.TrimSpace(agentName) == "" {
+				return usageError{errors.New("--agent needs an agent name")}
+			}
 			wantReviews := reviews || agentName != ""
 			if asJSON && markdown {
 				return usageError{errors.New("--json and --markdown cannot be used together")}
