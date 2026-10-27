@@ -148,6 +148,17 @@ func TestSummaryAfterApply(t *testing.T) {
 	}
 }
 
+func TestSummaryLeavesOutWhatAFailureHid(t *testing.T) {
+	failed := applied
+	failed.Error = "HTTP 502"
+	var b bytes.Buffer
+	Summary(&b, true, []runner.RepoResult{failed}, 0)
+	want := "1 repo: 1 merged, 1 merge failed; 1 repo failed\n"
+	if b.String() != want {
+		t.Fatalf("got %q\nwant %q", b.String(), want)
+	}
+}
+
 func TestSummaryDryRun(t *testing.T) {
 	res := runner.RepoResult{Repo: "o/r", Decisions: []policy.Decision{
 		decision(1, policy.ActionMerge, ""), decision(2, policy.ActionRebase, ""), decision(3, policy.ActionSkip, ""),

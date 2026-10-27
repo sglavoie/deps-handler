@@ -168,10 +168,15 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 		if r.Failed() {
 			failed++
 		}
-		findings += len(r.Findings)
 		for _, ev := range r.Events {
 			counts[string(ev.Kind)]++
 		}
+		if r.Error != "" {
+			// As the report shows it: the writes made, not the decisions
+			// and findings of a read the failure may have left stale.
+			continue
+		}
+		findings += len(r.Findings)
 		for _, d := range pending(r) {
 			counts[label(d.Action, applies(apply, r))]++
 		}
