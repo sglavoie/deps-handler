@@ -470,6 +470,7 @@ func TestMdTextOpensNoBlock(t *testing.T) {
 		"see GH-123 upstream":     "see GH-\u200b123 upstream",
 		"-1 is less":              "-1 is less",
 		"1.2.3 is out":            "1.2.3 is out",
+		"reads $GOPATH/$GOBIN":    `reads \$GOPATH/\$GOBIN`,
 		// GitHub links no URL but the PR's own.
 		"see https://evil.example/x": "see https:/\u200b/evil.example/x",
 		"see WWW.evil.example":       "see WWW\u200b.evil.example",

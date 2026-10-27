@@ -116,6 +116,8 @@ func mdLead(repo, text string) string {
 var mdSpecial = strings.NewReplacer(
 	`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`,
 	"<", "&lt;", ">", "&gt;", "&", "&amp;", "|", `\|`, "~", `\~`,
+	// GitHub reads text between dollar signs as math.
+	"$", `\$`,
 	// A zero-width space after @ stops GitHub reading a mention, which
 	// would notify whoever is named.
 	"@", "@\u200b",
