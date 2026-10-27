@@ -86,7 +86,21 @@ func execute(args []string, stdout, stderr io.Writer) int {
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
+	usageCompletion(root)
 	return exitCode(root.Execute(), stderr)
+}
+
+// usageCompletion makes completion for a shell it has no script for a
+// usage error, as help is for an unknown topic. Cobra only checks the
+// arguments of a command that runs, so it runs to print its help. The
+// command is made once the output is set: its scripts write where it was
+// when they were made.
+func usageCompletion(root *cobra.Command) {
+	root.InitDefaultCompletionCmd()
+	if completion, _, err := root.Find([]string{"completion"}); err == nil && completion != root {
+		completion.Args = cobra.NoArgs
+		completion.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
+	}
 }
 
 // exitCode maps the error a command returned to the documented exit status,

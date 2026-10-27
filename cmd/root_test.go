@@ -191,6 +191,7 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"empty owner among others": {[]string{"run", "-c", missing, "--owner", "o", "--owner", ""}, 2, "--owner has an empty owner name"},
 		"repos empty repo":         {[]string{"repos", "-c", missing, "-r", "a", "-r", ""}, 2, "--repo has an empty repo name"},
 		"unknown help topic":       {[]string{"help", "nope"}, 2, `unknown help topic "nope"`},
+		"unknown completion shell": {[]string{"completion", "nope"}, 2, `unknown command "nope"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, _, stderr := run(c.args...)
@@ -381,5 +382,11 @@ func TestCompletesRepoAndOwner(t *testing.T) {
 	}
 	if _, out, _ := run("__complete", "-c", cfg, "repos", "--owner", ""); !strings.HasPrefix(out, "o\np\n:4\n") {
 		t.Errorf("--owner: %q", out)
+	}
+}
+
+func TestCompletionWritesToOutput(t *testing.T) {
+	if code, out, stderr := run("completion", "bash"); code != 0 || !strings.Contains(out, "bash completion V2 for deps-merger") {
+		t.Fatalf("code %d, stderr %q, output starts %.60q", code, stderr, out)
 	}
 }
