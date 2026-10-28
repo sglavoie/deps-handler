@@ -78,3 +78,7 @@ try *args:
 # Dry run against the configured repos
 dry-run *args:
     go run . run {{ args }}
+
+# Run the GitHub App server and Cloudflare tunnel locally (Ctrl-C to stop)
+app-local:
+    ./scripts/run-local.sh

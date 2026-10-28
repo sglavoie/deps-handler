@@ -59,11 +59,13 @@ webhook at `https://<host>/webhook`, and set its webhook secret. The
 
 ## Run and operate
 
-For the local tunnel setup, `./scripts/run-local.sh` loads
+For the local tunnel setup, run `just app-local`. It calls
+`./scripts/run-local.sh`, which loads
 `~/.config/deps-merger-cloud/dev.env`, starts the server, and starts
 `cloudflared` using
 `~/.config/deps-merger-cloud/cloudflared.yml`. Set `DMC_ENV` and
-`DMC_TUNNEL_CONFIG` to use other files. The server sweeps installed
+`DMC_TUNNEL_CONFIG` to use other files. Press Ctrl-C to stop both
+processes. The server sweeps installed
 repositories at startup and every four hours by default.
 
 With `DMC_DB` set to the running server's database:
