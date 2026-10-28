@@ -171,6 +171,8 @@ read-only, without your customizations and without a GitHub token:
   stop when the review is cancelled or its timeout expires.
   API file tools preserve leading and trailing whitespace in filenames,
   so they read the exact path requested.
+  Searches report unreadable files or directories as errors instead of
+  presenting partial results or claiming there were no matches.
 
 Read-only is not confined to the checkout for Claude Code and Codex: they
 can read any file your user can, and what an agent reads goes to its
@@ -323,6 +325,8 @@ its report names those it used.
 Errors reading those files stop the repository from being processed;
 only an absent file or an unambiguously missing repository inherits policy
 without a file. A concurrent rate-limit error is still reported.
+An incomplete policy response with missing repository or file fields also
+stops processing; only explicit absence allows policy inheritance.
 
 Recursive YAML merge aliases are rejected in both local config and
 repository policy files.

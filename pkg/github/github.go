@@ -758,14 +758,7 @@ query($owner: String!, $name: String!, $expression: String!) {
 
 func (c *client) FileText(ctx context.Context, owner, name, path string) ([]byte, error) {
 	var resp struct {
-		Repository *struct {
-			Object *struct {
-				Typename    string `json:"__typename"`
-				Text        *string
-				IsBinary    bool
-				IsTruncated bool
-			}
-		}
+		Repository json.RawMessage
 	}
 	vars := map[string]any{"owner": owner, "name": name, "expression": "HEAD:" + path}
 	if err := c.gql.DoWithContext(ctx, fileQuery, vars, &resp); err != nil {
@@ -774,10 +767,35 @@ func (c *client) FileText(ctx context.Context, owner, name, path string) ([]byte
 		}
 		return nil, fmt.Errorf("%s/%s:%s: %w", owner, name, path, c.withReset(ctx, err))
 	}
-	if resp.Repository == nil || resp.Repository.Object == nil {
+	// Only explicit nulls establish absence. Missing fields can mean an
+	// incomplete response, and must not silently discard a stricter policy.
+	incomplete := fmt.Errorf("%s/%s:%s: incomplete policy response", owner, name, path)
+	if len(resp.Repository) == 0 {
+		return nil, incomplete
+	}
+	if bytes.Equal(bytes.TrimSpace(resp.Repository), []byte("null")) {
 		return nil, nil
 	}
-	switch o := resp.Repository.Object; {
+	var repo struct{ Object json.RawMessage }
+	if err := json.Unmarshal(resp.Repository, &repo); err != nil {
+		return nil, fmt.Errorf("%w: %w", incomplete, err)
+	}
+	if len(repo.Object) == 0 {
+		return nil, incomplete
+	}
+	if bytes.Equal(bytes.TrimSpace(repo.Object), []byte("null")) {
+		return nil, nil
+	}
+	var o struct {
+		Typename    string `json:"__typename"`
+		Text        *string
+		IsBinary    bool
+		IsTruncated bool
+	}
+	if err := json.Unmarshal(repo.Object, &o); err != nil {
+		return nil, fmt.Errorf("%w: %w", incomplete, err)
+	}
+	switch {
 	case o.Typename != "Blob":
 		return nil, fmt.Errorf("%s/%s:%s is not a file", owner, name, path)
 	case o.IsBinary || o.Text == nil:

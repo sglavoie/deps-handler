@@ -538,7 +538,7 @@ func search(ctx context.Context, root, rel, pattern string) (string, error) {
 			return err
 		}
 		if err != nil {
-			return nil
+			return err
 		}
 		if d.IsDir() {
 			if p != dir && (strings.EqualFold(d.Name(), ".git") || d.Name() == "node_modules") {
@@ -550,11 +550,18 @@ func search(ctx context.Context, root, rel, pattern string) (string, error) {
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		if info, err := d.Info(); err != nil || info.Size() > maxSearchedFile {
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Size() > maxSearchedFile {
 			return nil
 		}
 		data, err := os.ReadFile(p)
-		if err != nil || bytes.IndexByte(data, 0) >= 0 {
+		if err != nil {
+			return err
+		}
+		if bytes.IndexByte(data, 0) >= 0 {
 			return nil
 		}
 		relp, _ := filepath.Rel(realRoot, p)

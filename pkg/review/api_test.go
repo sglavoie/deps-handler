@@ -93,6 +93,27 @@ func TestToolsWithCurrentDirectoryCheckout(t *testing.T) {
 	}
 }
 
+func TestSearchReportsUnreadablePaths(t *testing.T) {
+	for _, rel := range []string{".", "src", "src/app.js"} {
+		t.Run(rel, func(t *testing.T) {
+			root := checkout(t)
+			path := filepath.Join(root, rel)
+			if err := os.Chmod(path, 0); err != nil {
+				t.Skipf("cannot restrict permissions: %v", err)
+			}
+			t.Cleanup(func() { os.Chmod(path, 0o755) })
+			if f, err := os.Open(path); err == nil {
+				f.Close()
+				t.Skip("current user can read paths without read permission")
+			}
+			got := runTool(context.Background(), root, "search", `{"pattern":"express"}`)
+			if !strings.HasPrefix(got, "error:") {
+				t.Fatalf("search = %q; unreadable code must not look like a complete search", got)
+			}
+		})
+	}
+}
+
 func TestTools(t *testing.T) {
 	root := checkout(t)
 	list := runTool(context.Background(), root, "list_files", `{"path": "."}`)
