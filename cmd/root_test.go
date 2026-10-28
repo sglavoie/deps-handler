@@ -79,6 +79,69 @@ func TestRestoreBackup(t *testing.T) {
 	}
 }
 
+func TestMoveAsideKeepsBackupWhenRunsOverlap(t *testing.T) {
+	path := writeConfig(t, "original config")
+	start := make(chan struct{})
+	type result struct {
+		backup string
+		err    error
+	}
+	results := make(chan result, 2)
+	for range 2 {
+		go func() {
+			<-start
+			backup, err := moveAside(path)
+			results <- result{backup, err}
+		}()
+	}
+	close(start)
+	a, b := <-results, <-results
+	backup := a.backup
+	if backup == "" {
+		backup = b.backup
+	}
+	if backup == "" {
+		t.Fatalf("neither run made a backup: %+v, %+v", a, b)
+	}
+	if a.backup != "" && b.backup != "" {
+		t.Fatalf("both runs moved one config: %+v, %+v", a, b)
+	}
+	if data, err := os.ReadFile(backup); err != nil || string(data) != "original config" {
+		t.Fatalf("backup = %q, %v; original config was lost", data, err)
+	}
+}
+
+func TestMoveAsidePreservesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.yaml")
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(target, []byte("original config"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target.yaml", path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	backup, err := moveAside(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(backup); err != nil || got != "target.yaml" {
+		t.Fatalf("backup symlink = %q, %v", got, err)
+	}
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Fatalf("original symlink still exists: %v", err)
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != "original config" {
+		t.Fatalf("target = %q, %v", got, err)
+	}
+	if err := restoreBackup(path, backup); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(path); err != nil || got != "target.yaml" {
+		t.Fatalf("restored symlink = %q, %v", got, err)
+	}
+}
+
 func run(args ...string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 	code := execute(args, &stdout, &stderr)

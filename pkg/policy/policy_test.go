@@ -57,6 +57,26 @@ func TestRebaseRequestMatchesViewerIgnoringCase(t *testing.T) {
 	}
 }
 
+func TestRebaseRequestNeedsExactCommand(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want Action
+	}{
+		{RebaseCommand, ActionWait},
+		{"  " + RebaseCommand + "\n", ActionWait},
+		{"Do not post " + RebaseCommand, ActionRebase},
+		{RebaseCommand + "-now", ActionRebase},
+	} {
+		pr := testutil.PR(1)
+		pr.MergeState = "BEHIND"
+		pr.Comments = []github.Comment{{Author: "me", Body: tc.body, CreatedAt: testutil.T0.Add(time.Minute)}}
+		d := Evaluate(testutil.Repo(pr), defaultPolicy, "me", nil)[0]
+		if d.Action != tc.want {
+			t.Errorf("comment %q: got %s (%s), want %s", tc.body, d.Action, d.Reason, tc.want)
+		}
+	}
+}
+
 func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
 	pr := testutil.PR(1)
 	pr.Commits = nil

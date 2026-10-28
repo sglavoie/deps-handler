@@ -22,8 +22,8 @@ const maxDiscoverPages = 20
 const repoFields = `pageInfo { hasNextPage endCursor }
       nodes {
         nameWithOwner isArchived isFork viewerPermission
-        yml: object(expression: "HEAD:.github/dependabot.yml") { id }
-        yaml: object(expression: "HEAD:.github/dependabot.yaml") { id }
+        yml: object(expression: "HEAD:.github/dependabot.yml") { __typename id }
+        yaml: object(expression: "HEAD:.github/dependabot.yaml") { __typename id }
       }`
 
 const viewerReposQuery = `
@@ -57,7 +57,10 @@ type discoveredRepo struct {
 	IsArchived       bool
 	IsFork           bool
 	ViewerPermission string
-	Yml, Yaml        *struct{ ID string }
+	Yml, Yaml        *struct {
+		Typename string `json:"__typename"`
+		ID       string
+	}
 }
 
 // UnmarshalJSON checks each item before filtering can discard it. Missing
@@ -83,7 +86,7 @@ func (r *discoveredRepo) UnmarshalJSON(data []byte) error {
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return errors.New("incomplete repository listing: invalid nameWithOwner")
 	}
-	if r.Yml != nil && r.Yml.ID == "" || r.Yaml != nil && r.Yaml.ID == "" {
+	if r.Yml != nil && (r.Yml.ID == "" || r.Yml.Typename == "") || r.Yaml != nil && (r.Yaml.ID == "" || r.Yaml.Typename == "") {
 		return errors.New("incomplete repository listing: unidentified Dependabot config")
 	}
 	return nil
@@ -113,7 +116,7 @@ func (c *client) dependabotRepos(ctx context.Context, owners []string) ([]string
 	owner := ""
 	add := func(p repoPage) {
 		for _, n := range p.Nodes {
-			if n.IsArchived || n.IsFork || n.Yml == nil && n.Yaml == nil {
+			if n.IsArchived || n.IsFork || (n.Yml == nil || n.Yml.Typename != "Blob") && (n.Yaml == nil || n.Yaml.Typename != "Blob") {
 				continue
 			}
 			if o, _, _ := strings.Cut(n.NameWithOwner, "/"); owner != "" && !strings.EqualFold(o, owner) {

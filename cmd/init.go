@@ -136,13 +136,31 @@ With --stdout, the config is printed rather than written.`,
 }
 
 // restoreBackup restores a config after a failed replacement without
-// overwriting a file another process created meanwhile. Linking installs
-// the old file only if path is absent; a failed restore keeps the backup.
+// overwriting a file another process created meanwhile. The old file or
+// symlink is restored only if path is absent; a failed restore keeps the backup.
 func restoreBackup(path, backup string) error {
-	if err := os.Link(backup, path); err != nil {
+	info, err := os.Lstat(backup)
+	if err != nil {
+		return err
+	}
+	if err := linkNoReplace(backup, path, info); err != nil {
 		return err
 	}
 	return os.Remove(backup)
+}
+
+// linkNoReplace creates to with the same file or symlink as from, only
+// when to does not exist. Link follows symlinks on some systems, so those
+// must be copied as symlinks explicitly.
+func linkNoReplace(from, to string, info os.FileInfo) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(from)
+		if err != nil {
+			return err
+		}
+		return os.Symlink(target, to)
+	}
+	return os.Link(from, to)
 }
 
 // writeNew writes data to path, which must not exist yet: O_EXCL, so a
@@ -167,11 +185,13 @@ func writeNew(path string, data []byte, retry string) error {
 	return nil
 }
 
-// moveAside renames the file at path, if there is one, to a backup named
-// after the time, and returns the backup's path: empty when there was
-// nothing to move.
+// moveAside backs up the file at path, if there is one, under a name based
+// on the time and returns that name: empty when there was nothing to move.
+// Creating the backup only when its name is free, atomically, means
+// concurrent init runs cannot overwrite an earlier backup.
 func moveAside(path string) (string, error) {
-	if fi, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+	fi, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	} else if err != nil {
 		return "", err
@@ -180,10 +200,15 @@ func moveAside(path string) (string, error) {
 		return "", fmt.Errorf("%s is a directory, not a config file", path)
 	}
 	backup := fmt.Sprintf("%s.%s.bak", path, time.Now().Format("20060102-150405"))
-	if _, err := os.Lstat(backup); err == nil {
+	err = linkNoReplace(path, backup, fi)
+	if errors.Is(err, os.ErrExist) {
 		return "", fmt.Errorf("%s already exists; try again in a second", backup)
+	} else if err != nil {
+		return "", err
 	}
-	if err := os.Rename(path, backup); err != nil {
+	if err := os.Remove(path); err != nil {
+		// Keep the backup if removing the source failed: it may be the
+		// only copy if another process changed the source meanwhile.
 		return "", err
 	}
 	return backup, nil

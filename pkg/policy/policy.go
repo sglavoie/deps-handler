@@ -551,7 +551,7 @@ func rebaseRequested(pr *github.PullRequest, viewer string) (at time.Time, seen,
 	}
 	last := pushedAt(pr)
 	for _, c := range pr.Comments {
-		if viewer != "" && strings.EqualFold(c.Author, viewer) && !c.CreatedAt.Before(last) && strings.Contains(c.Body, RebaseCommand) {
+		if viewer != "" && strings.EqualFold(c.Author, viewer) && !c.CreatedAt.Before(last) && strings.TrimSpace(c.Body) == RebaseCommand {
 			return c.CreatedAt, true, true
 		}
 	}
