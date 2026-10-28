@@ -369,7 +369,7 @@ type gqlRepo struct {
 			ReviewDecision   string
 			Author           *struct{ Login string }
 			Commits          struct {
-				TotalCount int
+				TotalCount *int
 				Nodes      []struct {
 					Commit struct {
 						Oid           string
@@ -394,7 +394,7 @@ type gqlRepo struct {
 						Oid               string
 						StatusCheckRollup *struct {
 							Contexts struct {
-								TotalCount int
+								TotalCount *int
 								Nodes      []struct {
 									Typename   string `json:"__typename"`
 									Name       string
@@ -417,7 +417,7 @@ type gqlRepo struct {
 				}
 			}
 			Comments struct {
-				TotalCount int
+				TotalCount *int
 				Nodes      []struct {
 					Body      string
 					CreatedAt time.Time
@@ -474,6 +474,15 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		default:
 			return nil, fmt.Errorf("%s/%s#%d: unrecognized pull request state %q", owner, name, n.Number, n.State)
 		}
+		// Counts establish whether every commit and check was fetched, and
+		// whether an earlier rebase request may be hidden in unread comments.
+		// Missing fields must not become zero and imply a complete list.
+		if n.Commits.TotalCount == nil || n.Commits.Nodes == nil || *n.Commits.TotalCount < len(n.Commits.Nodes) {
+			return nil, fmt.Errorf("%s/%s#%d: incomplete commits", owner, name, n.Number)
+		}
+		if n.Comments.TotalCount == nil || n.Comments.Nodes == nil || *n.Comments.TotalCount < len(n.Comments.Nodes) {
+			return nil, fmt.Errorf("%s/%s#%d: incomplete comments", owner, name, n.Number)
+		}
 		pr := PullRequest{
 			Number:         n.Number,
 			Title:          n.Title,
@@ -485,8 +494,8 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			Mergeable:      n.Mergeable,
 			MergeState:     n.MergeStateStatus,
 			ReviewDecision: n.ReviewDecision,
-			CommitCount:    n.Commits.TotalCount,
-			CommentCount:   n.Comments.TotalCount,
+			CommitCount:    *n.Commits.TotalCount,
+			CommentCount:   *n.Comments.TotalCount,
 		}
 		if n.Author != nil {
 			pr.Author = n.Author.Login
@@ -524,7 +533,11 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			if ln.Commit.StatusCheckRollup == nil {
 				continue
 			}
-			pr.CheckCount = ln.Commit.StatusCheckRollup.Contexts.TotalCount
+			contexts := ln.Commit.StatusCheckRollup.Contexts
+			if contexts.TotalCount == nil || contexts.Nodes == nil || *contexts.TotalCount < len(contexts.Nodes) {
+				return nil, fmt.Errorf("%s/%s#%d: incomplete checks", owner, name, n.Number)
+			}
+			pr.CheckCount = *contexts.TotalCount
 			for _, cx := range ln.Commit.StatusCheckRollup.Contexts.Nodes {
 				switch cx.Typename {
 				case "StatusContext":

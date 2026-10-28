@@ -241,6 +241,9 @@ the fetched search page has closed since GitHub indexed it. An incomplete
 search is not reported as having no open PRs.
 Missing search results, counts or lists, and unknown states on returned PRs,
 fail the repository read instead of silently hiding PRs.
+Missing commit, check or comment lists or totals also fail the read, as do
+totals smaller than the returned lists. Incomplete responses cannot establish
+that all commits and checks were verified or that no rebase was requested.
 
 Failure diagnosis compares checks by name and their available app, workflow
 and event identities, keeping commit status contexts separate from check runs.

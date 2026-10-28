@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -737,6 +738,79 @@ func TestFetchRepoRejectsUnknownPRState(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "pull request state") || r != nil {
 			t.Fatalf("state %q: FetchRepo = %+v, %v; unknown state must not hide a PR", state, r, err)
 		}
+	}
+}
+
+func TestFetchRepoRequiresCompletePRConnections(t *testing.T) {
+	for _, connection := range []string{"commits", "checks", "comments"} {
+		for _, corruption := range []string{"missing connection", "null connection", "missing count", "null count", "negative count", "count below fetched", "missing nodes", "null nodes"} {
+			t.Run(connection+"/"+corruption, func(t *testing.T) {
+				var response map[string]any
+				if err := json.Unmarshal([]byte(fetchResponse), &response); err != nil {
+					t.Fatal(err)
+				}
+				data := response["data"].(map[string]any)
+				pr := data["search"].(map[string]any)["nodes"].([]any)[2].(map[string]any)
+				parent, field := pr, connection
+				if connection == "checks" {
+					last := pr["last"].(map[string]any)["nodes"].([]any)[0].(map[string]any)
+					parent = last["commit"].(map[string]any)["statusCheckRollup"].(map[string]any)
+					field = "contexts"
+				}
+				list := parent[field].(map[string]any)
+				switch corruption {
+				case "missing connection":
+					delete(parent, field)
+				case "null connection":
+					parent[field] = nil
+				case "missing count":
+					delete(list, "totalCount")
+				case "null count":
+					list["totalCount"] = nil
+				case "negative count":
+					list["totalCount"] = -1
+				case "count below fetched":
+					list["totalCount"] = 0
+				case "missing nodes":
+					delete(list, "nodes")
+				case "null nodes":
+					list["nodes"] = nil
+				}
+				body, err := json.Marshal(response)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r, err := gqlClient(t, canned(string(body))).FetchRepo(context.Background(), "o", "r")
+				if err == nil || r != nil || !strings.Contains(err.Error(), "o/r#5: incomplete "+connection) {
+					t.Fatalf("FetchRepo returned repo=%t, err=%v; incomplete %s must fail the read", r != nil, err, connection)
+				}
+			})
+		}
+	}
+}
+
+func TestFetchRepoAcceptsExplicitEmptyPRConnections(t *testing.T) {
+	// Zero explicitly means empty; a larger total with an empty fetched
+	// page must survive so policy can block and diagnose truncation.
+	for _, count := range []int{0, 101} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			connection := fmt.Sprintf(`{"totalCount":%d,"nodes":[]}`, count)
+			body := `{"data":{"repository":{"nameWithOwner":"o/r"},"search":{"issueCount":1,"nodes":[{
+				"number":5,"state":"OPEN","commits":` + connection + `,"comments":` + connection + `,
+				"last":{"nodes":[{"commit":{"oid":"abc","statusCheckRollup":{"contexts":` + connection + `}}}]}
+			}]}}}`
+			r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(r.PullRequests) != 1 {
+				t.Fatalf("pull requests = %+v", r.PullRequests)
+			}
+			pr := r.PullRequests[0]
+			if pr.CommitCount != count || pr.CheckCount != count || pr.CommentCount != count || len(pr.Commits)+len(pr.Checks)+len(pr.Comments) != 0 {
+				t.Fatalf("counts and empty lists not preserved: %+v", pr)
+			}
+		})
 	}
 }
 
