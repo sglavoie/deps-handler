@@ -239,6 +239,8 @@ Under each repo the report lists, without acting on them:
 Truncation findings remain visible with `--open`, even when every PR on
 the fetched search page has closed since GitHub indexed it. An incomplete
 search is not reported as having no open PRs.
+Missing search results, counts or lists, and unknown states on returned PRs,
+fail the repository read instead of silently hiding PRs.
 
 Failure diagnosis compares checks by name and their available app, workflow
 and event identities, keeping commit status contexts separate from check runs.
@@ -327,6 +329,8 @@ only an absent file or an unambiguously missing repository inherits policy
 without a file. A concurrent rate-limit error is still reported.
 An incomplete policy response with missing repository or file fields also
 stops processing; only explicit absence allows policy inheritance.
+Policy text also requires explicit confirmation that it is neither binary
+nor truncated; missing or null flags stop processing.
 
 Recursive YAML merge aliases are rejected in both local config and
 repository policy files.

@@ -353,8 +353,8 @@ type gqlRepo struct {
 		MergeCommitAllowed bool
 		RebaseMergeAllowed bool
 	}
-	Search struct {
-		IssueCount int
+	Search *struct {
+		IssueCount *int
 		Nodes      []struct {
 			Number           int
 			State            string
@@ -447,6 +447,11 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 	if err != nil || resp.Repository == nil {
 		return nil, fmt.Errorf("%s/%s: repository not found or not accessible", owner, name)
 	}
+	// Missing search fields cannot establish that there are no open PRs,
+	// nor supply the total needed to report an unread portion of the list.
+	if resp.Search == nil || resp.Search.IssueCount == nil || resp.Search.Nodes == nil {
+		return nil, fmt.Errorf("%s/%s: incomplete pull request search", owner, name)
+	}
 	r := &Repo{
 		FullName:      resp.Repository.NameWithOwner,
 		Archived:      resp.Repository.IsArchived,
@@ -454,13 +459,20 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		SquashAllowed: resp.Repository.SquashMergeAllowed,
 		MergeAllowed:  resp.Repository.MergeCommitAllowed,
 		RebaseAllowed: resp.Repository.RebaseMergeAllowed,
-		OpenPRCount:   resp.Search.IssueCount,
+		OpenPRCount:   *resp.Search.IssueCount,
 		SearchCount:   len(resp.Search.Nodes),
 		FetchedAt:     time.Now(),
 	}
 	for _, n := range resp.Search.Nodes {
-		if n.Number == 0 || n.State != "OPEN" {
-			continue // non-PR hit, or closed since the search index was built
+		if n.Number == 0 {
+			continue // non-PR hit
+		}
+		switch n.State {
+		case "OPEN":
+		case "CLOSED", "MERGED":
+			continue // closed since the search index was built
+		default:
+			return nil, fmt.Errorf("%s/%s#%d: unrecognized pull request state %q", owner, name, n.Number, n.State)
 		}
 		pr := PullRequest{
 			Number:         n.Number,
@@ -789,8 +801,8 @@ func (c *client) FileText(ctx context.Context, owner, name, path string) ([]byte
 	var o struct {
 		Typename    string `json:"__typename"`
 		Text        *string
-		IsBinary    bool
-		IsTruncated bool
+		IsBinary    *bool
+		IsTruncated *bool
 	}
 	if err := json.Unmarshal(repo.Object, &o); err != nil {
 		return nil, fmt.Errorf("%w: %w", incomplete, err)
@@ -798,10 +810,12 @@ func (c *client) FileText(ctx context.Context, owner, name, path string) ([]byte
 	switch {
 	case o.Typename != "Blob":
 		return nil, fmt.Errorf("%s/%s:%s is not a file", owner, name, path)
-	case o.IsBinary || o.Text == nil:
+	case o.IsBinary != nil && *o.IsBinary || o.Text == nil:
 		return nil, fmt.Errorf("%s/%s:%s is not a text file", owner, name, path)
-	case o.IsTruncated:
+	case o.IsTruncated != nil && *o.IsTruncated:
 		return nil, fmt.Errorf("%s/%s:%s is too large", owner, name, path)
+	case o.IsBinary == nil || o.IsTruncated == nil:
+		return nil, incomplete
 	default:
 		return []byte(*o.Text), nil
 	}
