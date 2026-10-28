@@ -32,18 +32,22 @@ judges whether it is safe:
 - the App checks out the pull request's head commit, shallowly, with its
   installation token;
 - the model gets the pull request's description (Dependabot's release
-  notes and changelog), its diff, and three tools to list, read and
-  search that checkout. They cannot reach anything outside it, and the
-  model runs no commands;
+  notes and changelog) and its diff. The production API model has three
+  tools to list, read and search that checkout; they cannot reach
+  anything outside it, and the model runs no commands. Local CLI agents
+  can inspect the checkout in read-only mode;
 - it answers approve or reject with its reasons. An approved update still
   goes through every other check before it merges, and only in `mode:
   merge`; a rejected one is listed in the issue with the reasons.
 
-The model currently runs on a machine of the operator's (an
+The production model currently runs on a machine of the operator's (an
 open-weights model served there), reached from the App's machine over an
-encrypted private network, so your code goes to no AI provider. If that
-changes to a hosted model, this note names the provider first, and agent
-review stays off until you turn it on again.
+encrypted private network, so your code goes to no AI provider. Local
+development can instead use Claude Code or Codex; those CLI modes send
+review data to their respective providers. Before using either mode for
+an organization's repositories, the operator must tell that organization.
+If the production deployment changes to a hosted model, this note names
+the provider first, and agent review stays off until you turn it on again.
 
 The checkout and the verdict are kept, on the App's machine, to avoid
 reviewing the same update twice: verdicts for 14 days, checkouts until

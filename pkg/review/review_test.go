@@ -398,6 +398,10 @@ func TestAgentEnvLacksGitHubTokens(t *testing.T) {
 	for _, k := range githubTokens {
 		t.Setenv(k, "secret")
 	}
+	t.Setenv("DMC_PRIVATE_KEY", "secret")
+	t.Setenv("DMC_WEBHOOK_SECRET", "secret")
+	t.Setenv("DMC_REVIEW_KEY_ENV", "MODEL_API_KEY")
+	t.Setenv("MODEL_API_KEY", "secret")
 	t.Setenv("DEPS_MERGER_KEEP", "kept")
 	// Codex's git must read the checkout, not the repository these name.
 	for _, k := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_PARAMETERS"} {

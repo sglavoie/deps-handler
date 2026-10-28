@@ -10,8 +10,8 @@ mode: merge
 ```
 
 The deployment must also set `DMC_ALLOW_MERGE=true`. Agent review is
-optional and requires both a model endpoint on the server and
-`agent_review: true` in the repository policy. There is no billing,
+optional and requires a review backend plus `agent_review: true` in the
+repository policy. There is no billing,
 subscription, or paid tier.
 
 ## Build and test
@@ -49,7 +49,8 @@ The server reads these environment variables:
 | `PORT`, `DMC_HOST` | HTTP listener, default port 8080 |
 | `DMC_ALLOW_MERGE` | Deployment merge switch, default false |
 | `DMC_REPOS` | Optional comma-separated repository allowlist |
-| `DMC_REVIEW_URL`, `DMC_REVIEW_MODEL` | Optional model endpoint and name |
+| `DMC_REVIEW_AGENT` | `api` (default), `claude`, or `codex` |
+| `DMC_REVIEW_URL`, `DMC_REVIEW_MODEL` | Model endpoint and name when using `api` |
 
 The remaining review settings are documented at the top of
 [`cmd/server/main.go`](../../cmd/server/main.go). The server exposes
@@ -59,7 +60,11 @@ webhook at `https://<host>/webhook`, and set its webhook secret. The
 
 ## Run and operate
 
-For the local tunnel setup, run `just app-local`. It calls
+For the local tunnel setup, run `just app-local`. To use an installed,
+logged-in CLI agent instead of the local model, run `just app-local claude`
+or `just app-local codex`. Those modes run `claude -p` or `codex exec`
+for reviews and do not need a model endpoint or API key. The repository
+still needs `agent_review: true` to request reviews. The recipe calls
 `./scripts/run-local.sh`, which loads
 `~/.config/deps-merger-cloud/dev.env`, starts the server, and starts
 `cloudflared` using

@@ -186,14 +186,16 @@ var gitRepoEnv = []string{
 	"GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
 }
 
-// agentEnv is this process's environment without the GitHub tokens, so
-// that neither an agent nor what the checkout's git runs gets one, and
-// without what would point git at another repository than the checkout.
+// agentEnv is this process's environment without GitHub tokens, App
+// settings and its review API key. CLI agents need none of those. It also
+// excludes settings that would point git outside the checkout.
 func agentEnv() []string {
 	env := os.Environ()
+	reviewKey := os.Getenv("DMC_REVIEW_KEY_ENV")
 	return slices.DeleteFunc(env, func(kv string) bool {
 		name, _, _ := strings.Cut(kv, "=")
 		return slices.ContainsFunc(githubTokens, func(t string) bool { return strings.EqualFold(name, t) }) ||
+			strings.HasPrefix(name, "DMC_") || name == reviewKey ||
 			slices.Contains(gitRepoEnv, name) ||
 			strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_")
 	})

@@ -6,14 +6,26 @@
 # docs/app/README.md.
 set -eu
 cd "$(dirname "$0")/.."
+if [ "$#" -gt 1 ]; then
+	echo 'usage: run-local.sh [api|claude|codex]' >&2
+	exit 2
+fi
 env_file=${DMC_ENV:-$HOME/.config/deps-merger-cloud/dev.env}
 tunnel_config=${DMC_TUNNEL_CONFIG:-$HOME/.config/deps-merger-cloud/cloudflared.yml}
-state=$HOME/.local/state/deps-merger-cloud
-mkdir -p "$state"
 
 set -a
 . "$env_file"
 set +a
+
+review_agent=${1:-${DMC_REVIEW_AGENT:-api}}
+case "$review_agent" in
+	api|claude|codex) ;;
+	*) echo 'usage: run-local.sh [api|claude|codex]' >&2; exit 2 ;;
+esac
+export DMC_REVIEW_AGENT=$review_agent
+
+state=$HOME/.local/state/deps-merger-cloud
+mkdir -p "$state"
 
 go build -o "$state/server" ./cmd/server
 "$state/server" &

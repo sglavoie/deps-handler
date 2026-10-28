@@ -79,6 +79,6 @@ try *args:
 dry-run *args:
     go run . run {{ args }}
 
-# Run the GitHub App server and Cloudflare tunnel locally (Ctrl-C to stop)
-app-local:
-    ./scripts/run-local.sh
+# Run the GitHub App locally with the API model, Claude Code, or Codex
+app-local agent="":
+    ./scripts/run-local.sh {{ quote(agent) }}

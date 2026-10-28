@@ -23,6 +23,8 @@
 //	                       as a local llama-server's http://127.0.0.1:8081/v1:
 //	                       with DMC_REVIEW_MODEL, turns on agent review for
 //	                       repositories with agent_review: true
+//	DMC_REVIEW_AGENT       api (default), claude or codex; the CLI agents use
+//	                       their local login and need no review URL or API key
 //	DMC_REVIEW_MODEL       the model, as the API names it
 //	DMC_REVIEW_KEY_ENV     the variable holding the API's key, if it wants one
 //	DMC_REVIEW_TOOLS       false to let the model judge from the prompt alone
@@ -45,6 +47,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -208,30 +211,54 @@ func or(s, fallback string) string {
 	return s
 }
 
-// loadReview reads the agent review settings: none without
-// DMC_REVIEW_URL. Checkouts and verdicts go next to the database.
+// loadReview reads the agent review settings. The API backend needs an
+// endpoint; CLI backends use their local login. Checkouts and verdicts go
+// next to the database.
 func loadReview(db string) (*service.Review, error) {
-	url, model := os.Getenv("DMC_REVIEW_URL"), os.Getenv("DMC_REVIEW_MODEL")
-	if url == "" && model == "" {
-		return nil, nil
-	}
-	if url == "" || model == "" {
-		return nil, errors.New("agent review needs both DMC_REVIEW_URL and DMC_REVIEW_MODEL")
-	}
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return nil, fmt.Errorf("DMC_REVIEW_URL %q is not an http or https URL", url)
-	}
-	key := ""
-	if name := os.Getenv("DMC_REVIEW_KEY_ENV"); name != "" {
-		if key = os.Getenv(name); key == "" {
-			return nil, fmt.Errorf("DMC_REVIEW_KEY_ENV names %s, which is not set", name)
+	backend := or(os.Getenv("DMC_REVIEW_AGENT"), "api")
+	model := backend
+	var agent func(func(review.Usage)) review.Agent
+	var available func(context.Context) error
+	switch backend {
+	case "api":
+		url := os.Getenv("DMC_REVIEW_URL")
+		model = os.Getenv("DMC_REVIEW_MODEL")
+		if url == "" && model == "" {
+			return nil, nil
 		}
+		if url == "" || model == "" {
+			return nil, errors.New("agent review needs both DMC_REVIEW_URL and DMC_REVIEW_MODEL")
+		}
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			return nil, fmt.Errorf("DMC_REVIEW_URL %q is not an http or https URL", url)
+		}
+		key := ""
+		if name := os.Getenv("DMC_REVIEW_KEY_ENV"); name != "" {
+			if key = os.Getenv(name); key == "" {
+				return nil, fmt.Errorf("DMC_REVIEW_KEY_ENV names %s, which is not set", name)
+			}
+		}
+		tools := true
+		if v := os.Getenv("DMC_REVIEW_TOOLS"); v != "" {
+			var err error
+			if tools, err = strconv.ParseBool(v); err != nil {
+				return nil, errors.New("DMC_REVIEW_TOOLS: want true or false")
+			}
+		}
+		agent = func(usage func(review.Usage)) review.Agent {
+			return review.API{URL: url, Model: model, Key: key, Tools: tools, Usage: usage}
+		}
+		available = func(ctx context.Context) error { return ping(ctx, url, key) }
+	case "claude":
+		agent = func(func(review.Usage)) review.Agent { return review.Claude{} }
+	case "codex":
+		agent = func(func(review.Usage)) review.Agent { return review.Codex{} }
+	default:
+		return nil, fmt.Errorf("DMC_REVIEW_AGENT: %q (want api, claude or codex)", backend)
 	}
-	tools := true
-	if v := os.Getenv("DMC_REVIEW_TOOLS"); v != "" {
-		var err error
-		if tools, err = strconv.ParseBool(v); err != nil {
-			return nil, errors.New("DMC_REVIEW_TOOLS: want true or false")
+	if backend != "api" {
+		if _, err := exec.LookPath(backend); err != nil {
+			return nil, fmt.Errorf("DMC_REVIEW_AGENT: %s is not installed or not on PATH", backend)
 		}
 	}
 	perDay := 20
@@ -248,11 +275,9 @@ func loadReview(db string) (*service.Review, error) {
 	}
 	dir := strings.TrimSuffix(db, filepath.Ext(db)) + "-reviews"
 	return &service.Review{
-		Agent: func(usage func(review.Usage)) review.Agent {
-			return review.API{URL: url, Model: model, Key: key, Tools: tools, Usage: usage}
-		},
+		Agent: agent,
 		Model: model, PerDay: perDay, Timeout: timeout, Dir: dir,
-		Available: func(ctx context.Context) error { return ping(ctx, url, key) },
+		Available: available,
 	}, nil
 }
 
