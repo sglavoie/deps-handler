@@ -47,8 +47,8 @@ type Decision struct {
 	// Verdict is the agent's review, for a PR the policy alone would not
 	// merge because of its size.
 	Verdict *Verdict `json:"verdict,omitempty"`
-	// assessed is true when the PR is Dependabot's own work and its checks
-	// ran on its head commit, so they speak for the update itself.
+	// assessed is true when the PR is Dependabot's own work and its complete
+	// check list was read from its head commit, so it can support diagnosis.
 	assessed bool
 	// inFlight is true for a PR waiting on CI or GitHub that should merge
 	// once they finish, so other PRs must not be rebased ahead of it.
@@ -346,7 +346,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	if pr.HeadOID == "" || !slices.ContainsFunc(pr.Commits, func(c github.Commit) bool { return c.OID == pr.HeadOID }) {
 		return wait(false, "commits not yet reported for head commit %.7s", pr.HeadOID)
 	}
-	d.assessed = true
+	// An unread check may supersede a fetched failure or be the only one
+	// that ran. A partial list cannot establish a diagnosis in either case.
+	d.assessed = pr.CheckCount <= len(pr.Checks)
 	if oversized != "" && judge != nil && p.AgentReview {
 		d.Verdict = judge(d)
 	}
@@ -549,7 +551,7 @@ func rebaseRequested(pr *github.PullRequest, viewer string) (at time.Time, seen,
 	}
 	last := pushedAt(pr)
 	for _, c := range pr.Comments {
-		if c.Author == viewer && !c.CreatedAt.Before(last) && strings.Contains(c.Body, RebaseCommand) {
+		if viewer != "" && strings.EqualFold(c.Author, viewer) && !c.CreatedAt.Before(last) && strings.Contains(c.Body, RebaseCommand) {
 			return c.CreatedAt, true, true
 		}
 	}

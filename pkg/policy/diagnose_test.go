@@ -44,6 +44,49 @@ func TestDiagnoseRepoWideFailure(t *testing.T) {
 	}
 }
 
+func TestDiagnoseIgnoresIncompleteCheckLists(t *testing.T) {
+	for _, checks := range [][]github.Check{
+		nil,
+		{{Name: "test", State: github.CheckSkipped}},
+		{{Name: "test", State: github.CheckFailed, Suite: 1, App: actions, Workflow: 7, Event: "pull_request"}},
+	} {
+		pr := testutil.PR(1)
+		pr.Checks = checks
+		// The unread checks might include a passing rerun that supersedes
+		// the failure, or the only check that actually ran.
+		pr.CheckCount = len(checks) + 1
+		other := pr
+		other.Number = 2
+		for _, repo := range []*github.Repo{testutil.Repo(pr), testutil.Repo(pr, other)} {
+			for _, d := range Evaluate(repo, defaultPolicy, "me", nil) {
+				if d.Action != ActionSkip || !strings.Contains(d.Reason, "too many checks") {
+					t.Fatalf("incomplete checks must block action: %+v", d)
+				}
+			}
+			f := findings(repo)
+			for _, kind := range []FindingKind{FindingIncompatible, FindingRepoCheck, FindingNoChecks} {
+				if len(f[kind]) != 0 {
+					t.Errorf("checks %+v: incomplete results produced %s: %+v", checks, kind, f[kind])
+				}
+			}
+		}
+	}
+}
+
+func TestIncompleteCheckListsDoNotDiluteSharedFailures(t *testing.T) {
+	prs := []github.PullRequest{failing(testutil.PR(1), "test"), failing(testutil.PR(2), "test")}
+	for number := 3; number <= 5; number++ {
+		pr := testutil.PR(number)
+		pr.Checks[0].Name = "test"
+		pr.CheckCount = len(pr.Checks) + 1
+		prs = append(prs, pr)
+	}
+	f := findings(testutil.Repo(prs...))
+	if len(f[FindingRepoCheck]) != 1 || len(f[FindingRepoCheck][0].PRs) != 2 || len(f[FindingIncompatible]) != 0 {
+		t.Fatalf("incomplete check lists hid the shared failure: %+v", f)
+	}
+}
+
 func TestUnknownRerunDoesNotHideFailures(t *testing.T) {
 	for _, state := range []github.CheckState{"", github.CheckUnknown, "future-state"} {
 		t.Run(string(state), func(t *testing.T) {

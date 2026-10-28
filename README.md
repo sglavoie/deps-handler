@@ -126,6 +126,7 @@ An unreadable response to a successful rebase-comment POST is reported as
 possibly posted, with a warning, and keeps its place in the queue. A rebase
 request with the same timestamp as the head commit also counts as already
 requested, so timestamp ties do not trigger duplicate comments.
+Rebase requests recognize your login regardless of capitalization.
 
 The exact rules, and how each failure, retry, interruption and rate limit
 is reported, are in [How deps-merger behaves](docs/behaviour.md#what-counts-as-safe).
@@ -239,6 +240,8 @@ Failure diagnosis compares checks by name and their available app, workflow
 and event identities, keeping commit status contexts separate from check runs.
 A same-named job from another source cannot establish or hide a shared
 failure, and a shared failure does not hide an update's separate failing job.
+Incomplete check lists are excluded from failure and no-checks diagnoses:
+unread checks may include a passing rerun or the only check that ran.
 
 ## Scripting
 

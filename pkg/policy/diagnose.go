@@ -260,9 +260,9 @@ type sharedCheck struct {
 // two PRs, with those PR numbers. The check must also have
 // run on at least half of the PRs, so a job only stale PRs still carry is not
 // mistaken for a broken base branch. Only PRs judged on Dependabot's own head
-// commit count, for both: a check failing where a human pushed, or on an
-// older commit, says nothing about the base branch, and such PRs must not
-// dilute the half either.
+// commit with complete check lists count, for both: a check failing where a
+// human pushed, on an older commit, or in a partial list says nothing about
+// the base branch, and such PRs must not dilute the half either.
 func repoWideChecks(decisions []Decision) []sharedCheck {
 	ran := map[checkSource]int{}
 	failed := map[checkSource][]int{}

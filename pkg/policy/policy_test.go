@@ -35,6 +35,28 @@ func one(t *testing.T, repo *github.Repo, p config.Policy) Decision {
 	return ds[0]
 }
 
+func TestRebaseRequestMatchesViewerIgnoringCase(t *testing.T) {
+	for _, tc := range []struct {
+		name, author, viewer string
+		want                 Action
+	}{
+		{"same login", "me", "me", ActionWait},
+		{"different capitalization", "Me", "me", ActionWait},
+		{"another user", "someone-else", "me", ActionRebase},
+		{"missing identities", "", "", ActionRebase},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pr := testutil.PR(1)
+			pr.MergeState = "BEHIND"
+			pr.Comments = []github.Comment{{Author: tc.author, Body: RebaseCommand, CreatedAt: testutil.T0.Add(time.Minute)}}
+			d := Evaluate(testutil.Repo(pr), defaultPolicy, tc.viewer, nil)[0]
+			if d.Action != tc.want {
+				t.Fatalf("author %q, viewer %q: %+v; want %s", tc.author, tc.viewer, d, tc.want)
+			}
+		})
+	}
+}
+
 func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
 	pr := testutil.PR(1)
 	pr.Commits = nil
