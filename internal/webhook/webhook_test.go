@@ -1,0 +1,124 @@
+package webhook
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"testing"
+
+	"github.com/sglavoie/deps-merger/internal/jobs"
+)
+
+var secret = []byte("s3cret")
+
+type recorded struct {
+	jobs        []jobs.Job
+	installed   []string
+	uninstalled []string
+}
+
+func handler(rec *recorded, secret []byte) *Handler {
+	return &Handler{
+		Secret:    secret,
+		Enqueue:   func(j jobs.Job) { rec.jobs = append(rec.jobs, j) },
+		Installed: func(_ context.Context, id int64, account string) { rec.installed = append(rec.installed, account) },
+		Uninstalled: func(_ context.Context, id int64, deleted bool) {
+			rec.uninstalled = append(rec.uninstalled, fmt.Sprintf("%d deleted=%t", id, deleted))
+		},
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+func deliver(h http.Handler, kind, body string, key []byte) int {
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Event", kind)
+	if key != nil {
+		mac := hmac.New(sha256.New, key)
+		mac.Write([]byte(body))
+		req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w.Code
+}
+
+const inst = `"installation": {"id": 7, "account": {"login": "acme"}}`
+const repo = `"repository": {"full_name": "acme/app", "default_branch": "main"}`
+
+func TestSignatures(t *testing.T) {
+	rec := &recorded{}
+	body := `{"action": "opened", "pull_request": {"user": {"login": "dependabot[bot]"}}, ` + repo + `, ` + inst + `}`
+	if code := deliver(handler(rec, secret), "pull_request", body, nil); code != http.StatusUnauthorized {
+		t.Errorf("unsigned: %d", code)
+	}
+	if code := deliver(handler(rec, secret), "pull_request", body, []byte("wrong")); code != http.StatusUnauthorized {
+		t.Errorf("wrongly signed: %d", code)
+	}
+	// No secret configured: nothing gets through, signed or not.
+	if code := deliver(handler(rec, nil), "pull_request", body, nil); code != http.StatusInternalServerError {
+		t.Errorf("no secret: %d", code)
+	}
+	if len(rec.jobs) != 0 {
+		t.Fatalf("jobs from rejected deliveries: %+v", rec.jobs)
+	}
+	if code := deliver(handler(rec, secret), "pull_request", body, secret); code != http.StatusAccepted || len(rec.jobs) != 1 {
+		t.Fatalf("signed: %d, jobs %+v", code, rec.jobs)
+	}
+}
+
+func TestRouting(t *testing.T) {
+	for _, c := range []struct {
+		name, kind, body string
+		want             []string // repos queued; "*" for all of the installation
+	}{
+		{"dependabot PR opened", "pull_request", `{"action": "opened", "pull_request": {"user": {"login": "dependabot[bot]"}}, ` + repo + `, ` + inst + `}`, []string{"acme/app"}},
+		{"dependabot PR merged", "pull_request", `{"action": "closed", "pull_request": {"user": {"login": "dependabot[bot]"}}, ` + repo + `, ` + inst + `}`, []string{"acme/app"}},
+		{"human PR", "pull_request", `{"action": "opened", "pull_request": {"user": {"login": "sam"}}, ` + repo + `, ` + inst + `}`, nil},
+		{"PR labeled", "pull_request", `{"action": "labeled", "pull_request": {"user": {"login": "dependabot[bot]"}}, ` + repo + `, ` + inst + `}`, nil},
+		{"suite on a PR", "check_suite", `{"action": "completed", "check_suite": {"pull_requests": [{"number": 3}]}, ` + repo + `, ` + inst + `}`, []string{"acme/app"}},
+		{"suite on a branch", "check_suite", `{"action": "completed", "check_suite": {"pull_requests": []}, ` + repo + `, ` + inst + `}`, nil},
+		{"push to default", "push", `{"ref": "refs/heads/main", ` + repo + `, ` + inst + `}`, []string{"acme/app"}},
+		{"push elsewhere", "push", `{"ref": "refs/heads/feature", ` + repo + `, ` + inst + `}`, nil},
+		{"installed", "installation", `{"action": "created", ` + inst + `}`, []string{"*"}},
+		{"repos added", "installation_repositories", `{"action": "added", "repositories_added": [{"full_name": "acme/a"}, {"full_name": "acme/b"}], ` + inst + `}`, []string{"acme/a", "acme/b"}},
+		{"repos removed", "installation_repositories", `{"action": "removed", "repositories_removed": [{"full_name": "acme/a"}], ` + inst + `}`, nil},
+		{"unsubscribed event", "star", `{"action": "created", ` + repo + `, ` + inst + `}`, nil},
+	} {
+		rec := &recorded{}
+		code := deliver(handler(rec, secret), c.kind, c.body, secret)
+		var got []string
+		for _, j := range rec.jobs {
+			r := j.Repo
+			if r == "" {
+				r = "*"
+			}
+			if j.Installation != 7 || j.Trigger != c.kind {
+				t.Errorf("%s: job %+v", c.name, j)
+			}
+			got = append(got, r)
+		}
+		if !slices.Equal(got, c.want) || (code != http.StatusAccepted && code != http.StatusNoContent) {
+			t.Errorf("%s: %d, queued %v, want %v", c.name, code, got, c.want)
+		}
+	}
+}
+
+func TestInstallationLifecycle(t *testing.T) {
+	rec := &recorded{}
+	h := handler(rec, secret)
+	deliver(h, "installation", `{"action": "created", `+inst+`}`, secret)
+	deliver(h, "installation", `{"action": "suspend", `+inst+`}`, secret)
+	deliver(h, "installation", `{"action": "deleted", `+inst+`}`, secret)
+	if !slices.Equal(rec.installed, []string{"acme"}) || !slices.Equal(rec.uninstalled, []string{"7 deleted=false", "7 deleted=true"}) {
+		t.Fatalf("installed %v, uninstalled %v", rec.installed, rec.uninstalled)
+	}
+}

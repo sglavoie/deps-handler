@@ -3,3 +3,11 @@ coverage.out
 /.demo/
 /dist/
 /completions/
+*.db
+*.db-*
+*.pem
+.env
+*.env
+tunnel.json
+/server
+/admin

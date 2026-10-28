@@ -7,6 +7,10 @@
 Merges safe Dependabot pull requests across a list of repositories and
 reports what needs fixing in each one. It uses your `gh` login.
 
+The same repository also contains a free GitHub App server. It
+reports into a Dependency health issue and merges only in repositories
+that opt in. See [GitHub App setup and operation](docs/app/README.md).
+
 It is deliberately conservative. A PR merges only when Dependabot alone
 wrote it, its checks are green and its update is within your policy. With
 `--review`, an AI agent (Claude Code or Codex) reads a read-only checkout

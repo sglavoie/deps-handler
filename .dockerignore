@@ -1,0 +1,16 @@
+go.work
+go.work.sum
+*.db
+*.db-*
+*.pem
+.env
+*.env
+tunnel.json
+.git
+/deps-merger
+/server
+/admin
+/dist
+/.demo
+/completions
+/coverage.out

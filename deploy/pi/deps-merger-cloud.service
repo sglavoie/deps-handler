@@ -1,0 +1,30 @@
+# The App's server, on the Pi. Settings and keys in
+# /etc/deps-merger-cloud/prod.env; its database and checkouts in
+# /var/lib/deps-merger-cloud. Installed by scripts/deploy-pi.sh.
+[Unit]
+Description=deps-merger GitHub App
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=dmc
+Group=dmc
+EnvironmentFile=/etc/deps-merger-cloud/prod.env
+Environment=HOME=/var/lib/deps-merger-cloud
+ExecStart=/opt/deps-merger-cloud/server
+Restart=on-failure
+RestartSec=5
+StateDirectory=deps-merger-cloud
+StateDirectoryMode=0700
+MemoryMax=768M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target
