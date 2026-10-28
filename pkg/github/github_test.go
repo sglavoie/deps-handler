@@ -721,7 +721,7 @@ func TestFetchRepoRequiresCompleteSearch(t *testing.T) {
 		`, "search": {"issueCount": 0, "nodes": null}`,
 	} {
 		t.Run(search, func(t *testing.T) {
-			body := `{"data":{"repository":{"nameWithOwner":"o/r"}` + search + `}}`
+			body := `{"data":{"repository":{"nameWithOwner":"o/r","isArchived":false}` + search + `}}`
 			r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")
 			if err == nil || !strings.Contains(err.Error(), "incomplete pull request search") || r != nil {
 				t.Fatalf("FetchRepo = %+v, %v; incomplete searches must not report success", r, err)
@@ -731,7 +731,7 @@ func TestFetchRepoRequiresCompleteSearch(t *testing.T) {
 	// An explicitly empty search is valid, and a partial page retains its
 	// total count so the caller can report truncation.
 	for _, count := range []int{0, 101} {
-		body := fmt.Sprintf(`{"data":{"repository":{"nameWithOwner":"o/r"},"search":{"issueCount":%d,"nodes":[]}}}`, count)
+		body := fmt.Sprintf(`{"data":{"repository":{"nameWithOwner":"o/r","isArchived":false},"search":{"issueCount":%d,"nodes":[]}}}`, count)
 		r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")
 		if err != nil || r.OpenPRCount != count || len(r.PullRequests) != 0 {
 			t.Fatalf("count %d: FetchRepo = %+v, %v", count, r, err)
@@ -745,6 +745,39 @@ func TestFetchRepoRejectsUnknownPRState(t *testing.T) {
 		r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")
 		if err == nil || !strings.Contains(err.Error(), "pull request state") || r != nil {
 			t.Fatalf("state %q: FetchRepo = %+v, %v; unknown state must not hide a PR", state, r, err)
+		}
+	}
+}
+
+func TestFetchRepoRequiresSafetyFlags(t *testing.T) {
+	for _, field := range []string{"isArchived", "isDraft"} {
+		for _, value := range []string{"missing", "null", "false", "true"} {
+			t.Run(field+"/"+value, func(t *testing.T) {
+				original := fmt.Sprintf("%q: false", field)
+				replacement := fmt.Sprintf("%q: %s", field, value)
+				if value == "missing" {
+					original += ","
+					replacement = ""
+				}
+				body := strings.Replace(fetchResponse, original, replacement, 1)
+				r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")
+				if value == "missing" || value == "null" {
+					if err == nil || r != nil || !strings.Contains(err.Error(), field) {
+						t.Fatalf("FetchRepo = %+v, %v; absent %s must not become false", r, err, field)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := r.Archived
+				if field == "isDraft" {
+					got = r.PullRequests[0].IsDraft
+				}
+				if got != (value == "true") {
+					t.Fatalf("%s = %t, want %s", field, got, value)
+				}
+			})
 		}
 	}
 }
@@ -803,8 +836,8 @@ func TestFetchRepoAcceptsExplicitEmptyPRConnections(t *testing.T) {
 	for _, count := range []int{0, 101} {
 		t.Run(strconv.Itoa(count), func(t *testing.T) {
 			connection := fmt.Sprintf(`{"totalCount":%d,"nodes":[]}`, count)
-			body := `{"data":{"repository":{"nameWithOwner":"o/r"},"search":{"issueCount":1,"nodes":[{
-				"number":5,"state":"OPEN","commits":` + connection + `,"comments":` + connection + `,
+			body := `{"data":{"repository":{"nameWithOwner":"o/r","isArchived":false},"search":{"issueCount":1,"nodes":[{
+				"number":5,"state":"OPEN","isDraft":false,"commits":` + connection + `,"comments":` + connection + `,
 				"last":{"nodes":[{"commit":{"oid":"abc","statusCheckRollup":{"contexts":` + connection + `}}}]}
 			}]}}}`
 			r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")

@@ -173,6 +173,8 @@ read-only, without your customizations and without a GitHub token:
   so they read the exact path requested.
   Searches report unreadable files or directories as errors instead of
   presenting partial results or claiming there were no matches.
+  Search handles LF and CRLF line endings alike and reports no matches
+  for empty files.
 
 Read-only is not confined to the checkout for Claude Code and Codex: they
 can read any file your user can, and what an agent reads goes to its
@@ -241,6 +243,8 @@ the fetched search page has closed since GitHub indexed it. An incomplete
 search is not reported as having no open PRs.
 Missing search results, counts or lists, and unknown states on returned PRs,
 fail the repository read instead of silently hiding PRs.
+Missing or null archive and draft flags also fail the read rather than
+treating a repository as active or a PR as ready for merging.
 Missing commit, check or comment lists or totals also fail the read, as do
 totals smaller than the returned lists. Incomplete responses cannot establish
 that all commits and checks were verified or that no rebase was requested.

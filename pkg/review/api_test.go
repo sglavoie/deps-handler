@@ -114,6 +114,30 @@ func TestSearchReportsUnreadablePaths(t *testing.T) {
 	}
 }
 
+func TestSearchLineEndings(t *testing.T) {
+	for _, tc := range []struct {
+		name, data, pattern, want string
+	}{
+		{"LF", "before\ntarget\nafter\n", "^target$", "file.txt:2: target\n"},
+		{"CRLF", "before\r\ntarget\r\nafter\r\n", "^target$", "file.txt:2: target\n"},
+		{"unterminated", "before\ntarget", "^target$", "file.txt:2: target\n"},
+		{"empty file", "", "^$", "(no matches)"},
+		{"empty LF line", "\n", "^$", "file.txt:1: \n"},
+		{"empty CRLF line", "\r\n", "^$", "file.txt:1: \n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte(tc.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := search(context.Background(), root, ".", tc.pattern)
+			if err != nil || got != tc.want {
+				t.Fatalf("search = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestTools(t *testing.T) {
 	root := checkout(t)
 	list := runTool(context.Background(), root, "list_files", `{"path": "."}`)

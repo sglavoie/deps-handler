@@ -561,12 +561,14 @@ func search(ctx context.Context, root, rel, pattern string) (string, error) {
 		if err != nil {
 			return err
 		}
-		if bytes.IndexByte(data, 0) >= 0 {
+		if len(data) == 0 || bytes.IndexByte(data, 0) >= 0 {
 			return nil
 		}
 		relp, _ := filepath.Rel(realRoot, p)
 		// The newline ending the last line starts no line of its own.
 		for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+			// Match the text without its CRLF ending, as read_file does.
+			line = strings.TrimSuffix(line, "\r")
 			if re.MatchString(line) {
 				if hits == maxSearchHits {
 					return stop

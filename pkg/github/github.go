@@ -369,7 +369,7 @@ type gqlCheckRollup struct {
 type gqlRepo struct {
 	Repository *struct {
 		NameWithOwner      string
-		IsArchived         bool
+		IsArchived         *bool
 		ViewerPermission   string
 		SquashMergeAllowed bool
 		MergeCommitAllowed bool
@@ -382,7 +382,7 @@ type gqlRepo struct {
 			State            string
 			Title            string
 			URL              string
-			IsDraft          bool
+			IsDraft          *bool
 			CreatedAt        time.Time
 			HeadRefOid       string
 			BaseRefName      string
@@ -449,6 +449,11 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 	if err != nil || resp.Repository == nil {
 		return nil, fmt.Errorf("%s/%s: repository not found or not accessible", owner, name)
 	}
+	// These flags rule out action. An absent flag cannot establish that
+	// the repository is active or that an open PR is ready for merging.
+	if resp.Repository.IsArchived == nil {
+		return nil, fmt.Errorf("%s/%s: incomplete repository: missing isArchived", owner, name)
+	}
 	// Missing search fields cannot establish that there are no open PRs,
 	// nor supply the total needed to report an unread portion of the list.
 	if resp.Search == nil || resp.Search.IssueCount == nil || resp.Search.Nodes == nil {
@@ -456,7 +461,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 	}
 	r := &Repo{
 		FullName:      resp.Repository.NameWithOwner,
-		Archived:      resp.Repository.IsArchived,
+		Archived:      *resp.Repository.IsArchived,
 		Permission:    resp.Repository.ViewerPermission,
 		SquashAllowed: resp.Repository.SquashMergeAllowed,
 		MergeAllowed:  resp.Repository.MergeCommitAllowed,
@@ -476,6 +481,9 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		default:
 			return nil, fmt.Errorf("%s/%s#%d: unrecognized pull request state %q", owner, name, n.Number, n.State)
 		}
+		if n.IsDraft == nil {
+			return nil, fmt.Errorf("%s/%s#%d: incomplete pull request: missing isDraft", owner, name, n.Number)
+		}
 		// Counts establish whether every commit and check was fetched, and
 		// whether an earlier rebase request may be hidden in unread comments.
 		// Missing fields must not become zero and imply a complete list.
@@ -489,7 +497,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			Number:         n.Number,
 			Title:          n.Title,
 			URL:            n.URL,
-			IsDraft:        n.IsDraft,
+			IsDraft:        *n.IsDraft,
 			CreatedAt:      n.CreatedAt,
 			HeadOID:        n.HeadRefOid,
 			BaseRef:        n.BaseRefName,
