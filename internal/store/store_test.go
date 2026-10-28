@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -119,6 +120,37 @@ func TestTwoProcessesShareTheDatabase(t *testing.T) {
 	}
 	if p, err := a.Paused(ctx, 7); err != nil || !p {
 		t.Fatalf("paused = %v, %v", p, err)
+	}
+}
+
+func TestOpenEscapesSQLiteURIPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state?backup#1.db")
+	s, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("database was not created at %q: %v", path, err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), "state")); !os.IsNotExist(err) {
+		t.Fatalf("URI path was truncated: %v", err)
+	}
+}
+
+func TestOpenRelativeSQLitePath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	s, err := Open(context.Background(), "state.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat("state.db"); err != nil {
+		t.Fatalf("relative database was not created: %v", err)
 	}
 }
 

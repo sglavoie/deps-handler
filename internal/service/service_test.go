@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -52,7 +53,8 @@ type engine struct {
 	// gone are PRs someone else merged (true) or closed (false).
 	gone map[int]bool
 	// onMerge runs after a merge goes through.
-	onMerge func(n int)
+	onMerge  func(n int)
+	mergeErr error
 }
 
 func (e *engine) Viewer(context.Context) (string, error) { return login, nil }
@@ -66,6 +68,11 @@ func (e *engine) FetchRepo(context.Context, string, string) (*github.Repo, error
 
 func (e *engine) Merge(_ context.Context, _, _ string, n int, _, _ string) error {
 	e.mu.Lock()
+	if e.mergeErr != nil {
+		err := e.mergeErr
+		e.mu.Unlock()
+		return err
+	}
 	e.merged = append(e.merged, n)
 	e.prs = slices.DeleteFunc(e.prs, func(p github.PullRequest) bool { return p.Number == n })
 	hook := e.onMerge
@@ -399,6 +406,32 @@ func TestRunsTrackPRsForTheMetrics(t *testing.T) {
 	}
 	if m.Repos != 1 || m.ReposMerging != 1 || m.Merges != 1 {
 		t.Fatalf("repos %d, merging %d, merges %d", m.Repos, m.ReposMerging, m.Merges)
+	}
+}
+
+func TestFailedMergeAttemptIsNotCreditedToApp(t *testing.T) {
+	s, p := setup(t, true, "mode: merge\n", pr(1))
+	ctx := context.Background()
+	if err := s.Store.InstallationAdded(ctx, 1, "o", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	p.engine.mergeErr = errors.New("merge refused")
+	if err := s.RunRepo(ctx, 1, "o/r", "test"); err == nil {
+		t.Fatal("failed merge returned no error")
+	}
+	if !slices.Contains(writes(t, s), "merge-attempted #1") {
+		t.Fatalf("missing attempt record: %v", writes(t, s))
+	}
+	p.engine.leave(1, true) // A person merges it after the refusal.
+	if err := s.RunRepo(ctx, 1, "o/r", "test"); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := s.Store.Metrics(ctx, time.Now())
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("metrics = %+v, %v", ms, err)
+	}
+	if ms[0].MergedByApp != 0 || ms[0].MergedOther != 1 {
+		t.Fatalf("merge attribution = %+v", ms[0])
 	}
 }
 

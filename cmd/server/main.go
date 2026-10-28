@@ -50,6 +50,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -93,6 +94,9 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 	a, err := app.New(ctx, cfg.appID, cfg.key)
 	if err != nil {
 		return err
+	}
+	if !slices.Contains(a.Events, "status") {
+		log.Warn("GitHub App is not subscribed to commit status events; enable the status event in its settings so status-only CI can trigger runs", "app", a.Slug)
 	}
 	log.Info("started", "app", a.Slug, "db", cfg.db, "allow_merge", cfg.allowMerge, "repos", cfg.repos)
 	s := &service.Service{Platform: a, Store: st, Log: log, Allowed: cfg.repos, AllowMerge: cfg.allowMerge, Review: cfg.review}

@@ -90,6 +90,8 @@ func TestRouting(t *testing.T) {
 		{"PR labeled", "pull_request", `{"action": "labeled", "pull_request": {"user": {"login": "dependabot[bot]"}}, ` + repo + `, ` + inst + `}`, nil},
 		{"suite on a PR", "check_suite", `{"action": "completed", "check_suite": {"pull_requests": [{"number": 3}]}, ` + repo + `, ` + inst + `}`, []string{"acme/app"}},
 		{"suite on a branch", "check_suite", `{"action": "completed", "check_suite": {"pull_requests": []}, ` + repo + `, ` + inst + `}`, nil},
+		{"commit status changed", "status", `{"sha": "head", "state": "success", ` + repo + `, ` + inst + `}`, []string{"acme/app"}},
+		{"status without installation", "status", `{"sha": "head", "state": "success", ` + repo + `}`, nil},
 		{"push to default", "push", `{"ref": "refs/heads/main", ` + repo + `, ` + inst + `}`, []string{"acme/app"}},
 		{"push elsewhere", "push", `{"ref": "refs/heads/feature", ` + repo + `, ` + inst + `}`, nil},
 		{"installed", "installation", `{"action": "created", ` + inst + `}`, []string{"*"}},

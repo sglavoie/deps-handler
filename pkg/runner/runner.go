@@ -435,7 +435,7 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	}
 	polls := 0
 	var judge policy.Judge
-	if r.Reviewer != nil {
+	if r.Reviewer != nil || r.Verdicts != nil {
 		judge = func(d policy.Decision) *policy.Verdict {
 			key := review.NewRequest(rc, d).Key()
 			// As in the cache, a rejection holds only for the head it was
@@ -777,6 +777,9 @@ const headMoved = " (head moved during review; next run)"
 // whether it did, after which the repository must be evaluated again. When
 // the run's review cap is reached, it says so on the PRs left waiting.
 func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []policy.Decision, rv *repoReviews) bool {
+	if r.Reviewer == nil {
+		return false
+	}
 	for i := range decisions {
 		d := &decisions[i]
 		if d.Action != policy.ActionReview {

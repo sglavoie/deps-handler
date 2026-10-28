@@ -67,8 +67,10 @@ number of reviews a day.
 | Actions | read | tell reruns of a check apart from the original |
 | Workflows | read and write | merge Dependabot updates to `.github/workflows` |
 
-It subscribes to pull request, check suite and push events, so it can
-re-check a repository when one of its Dependabot pull requests changes.
+It subscribes to pull request, check suite, commit status and push events,
+so it can re-check a repository when a Dependabot pull request or its CI
+changes. Existing Apps need the `status` event enabled in their GitHub App
+settings; GitHub may ask installations to accept the added event.
 
 ## What it writes to GitHub
 

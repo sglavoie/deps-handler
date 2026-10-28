@@ -104,6 +104,10 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) error {
 		if e.GetAction() == "completed" && len(e.GetCheckSuite().PullRequests) > 0 {
 			enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 		}
+	case *gh.StatusEvent:
+		// Commit statuses are separate from check suites. A repository
+		// relying on them must be checked again when one changes.
+		enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 	case *gh.PushEvent:
 		// The default branch moved: PRs may be behind, and the policy file
 		// may have changed.

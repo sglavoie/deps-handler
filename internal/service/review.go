@@ -49,9 +49,8 @@ func (r *Review) verdicts(installation int64) string {
 	return filepath.Join(r.Dir, "verdicts", strconv.FormatInt(installation, 10)+".json")
 }
 
-// setupReview gives the run a reviewer, unless the installation has used
-// its reviews for the day or the model is unavailable. It checks PRs out with the installation's
-// token and caches verdicts per installation.
+// setupReview gives the run cached verdicts even when no new reviews are
+// available. New reviews check PRs out with the installation's token.
 func (s *Service) setupReview(ctx context.Context, log *slog.Logger, r *runner.Runner, engine github.Client, installation int64, repo string) {
 	rv := s.Review
 	done, err := s.Store.ReviewsSince(ctx, installation, time.Now().Add(-24*time.Hour))
@@ -59,17 +58,18 @@ func (s *Service) setupReview(ctx context.Context, log *slog.Logger, r *runner.R
 		log.Error("count reviews", "err", err)
 		return
 	}
+	verdicts, err := review.OpenCache(rv.verdicts(installation))
+	if err != nil {
+		log.Error("no agent review", "err", err)
+		return
+	}
+	r.AgentName, r.Verdicts = rv.Model, verdicts
 	left := rv.PerDay - done
 	if left <= 0 {
 		log.Info("no agent review: the installation's reviews for the day are used", "per_day", rv.PerDay)
 		return
 	}
 	token, err := s.Platform.Token(ctx, installation)
-	if err != nil {
-		log.Error("no agent review", "err", err)
-		return
-	}
-	verdicts, err := review.OpenCache(rv.verdicts(installation))
 	if err != nil {
 		log.Error("no agent review", "err", err)
 		return
@@ -89,7 +89,7 @@ func (s *Service) setupReview(ctx context.Context, log *slog.Logger, r *runner.R
 		}
 	}
 	// One at a time: a local model serves one request at a time anyway.
-	r.AgentName, r.Verdicts, r.MaxReviews, r.ReviewParallel = rv.Model, verdicts, left, 1
+	r.MaxReviews, r.ReviewParallel = left, 1
 }
 
 // unavailable is the reviewer while the model does not answer.

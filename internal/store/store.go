@@ -9,6 +9,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -93,7 +95,18 @@ CREATE TABLE IF NOT EXISTS writes (
 
 // Open opens or creates the database at path.
 func Open(ctx context.Context, path string) (*Store, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("store %s: %w", path, err)
+	}
+	uriPath := filepath.ToSlash(absolute)
+	if filepath.VolumeName(absolute) != "" && uriPath[0] != '/' {
+		// file:///C:/... names a Windows drive; file://C:/... treats C:
+		// as the URI authority instead.
+		uriPath = "/" + uriPath
+	}
+	uri := url.URL{Scheme: "file", Path: uriPath, RawQuery: "_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"}
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, err
 	}
@@ -275,12 +288,12 @@ func (s *Store) ClosePR(ctx context.Context, repo string, number int, outcome st
 	return err
 }
 
-// AppMerge reports when the App last merged repo's PR number, as its
-// writes record: a merge whose call failed may have gone through.
+// AppMerge reports when the App last confirmed merging repo's PR number.
+// An attempted merge alone cannot establish who merged it later.
 func (s *Store) AppMerge(ctx context.Context, repo string, number int) (time.Time, bool, error) {
 	var at time.Time
 	err := s.db.QueryRowContext(ctx, `
-SELECT at FROM writes WHERE repo = ? AND number = ? AND kind IN ('merge', 'merge-attempted') ORDER BY at DESC LIMIT 1`, repo, number).Scan(&at)
+SELECT at FROM writes WHERE repo = ? AND number = ? AND kind = 'merge' ORDER BY at DESC LIMIT 1`, repo, number).Scan(&at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, false, nil
 	}

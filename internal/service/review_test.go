@@ -270,6 +270,29 @@ func TestReviewsStopAtTheDailyAllowance(t *testing.T) {
 	}
 }
 
+func TestCachedApprovalStillMergesAtTheDailyAllowance(t *testing.T) {
+	repo, heads := remote(t, 2)
+	s, p := setup(t, true, "mode: report\nagent_review: true\n", major(1, heads[0]), major(2, heads[1]))
+	a := &agent{decision: "approve"}
+	withReview(t, s, a, repo, 1)
+	ctx := context.Background()
+	if err := s.RunRepo(ctx, 1, "o/r", "test"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.prompts) != 1 || len(p.engine.merged) != 0 {
+		t.Fatalf("first run: reviews %d, merges %v", len(a.prompts), p.engine.merged)
+	}
+	// The daily allowance is exhausted, but the approved PR can still
+	// merge after this repository opts in. The other PR awaits a review.
+	p.engine.files["o/r:.github/deps-merger.yml"] = "mode: merge\nagent_review: true\n"
+	if err := s.RunRepo(ctx, 1, "o/r", "test"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.prompts) != 1 || !slices.Equal(p.engine.merged, []int{1}) {
+		t.Fatalf("second run: reviews %d, merges %v", len(a.prompts), p.engine.merged)
+	}
+}
+
 func TestNoReviewUnlessTheRepositoryAsks(t *testing.T) {
 	repo, heads := remote(t, 1)
 	s, p := setup(t, true, "mode: merge\n", major(1, heads[0]))

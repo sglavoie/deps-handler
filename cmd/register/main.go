@@ -88,7 +88,7 @@ func run(name string, port int, public bool, profile, webhook string) error {
 		"hook_attributes": hook(webhook),
 		// Events the App needs from the start: ones added later must be
 		// accepted on each installation before GitHub delivers any.
-		"default_events": []string{"check_suite", "pull_request", "push"},
+		"default_events": []string{"check_suite", "pull_request", "push", "status"},
 		"default_permissions": map[string]string{
 			"metadata":      "read",
 			"contents":      "write",
