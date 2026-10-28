@@ -186,6 +186,14 @@ model provider (for `api`, wherever `api.url` points).
 [Agent review](docs/behaviour.md#agent-review) says exactly what each
 agent can reach.
 
+With `--apply`, deps-merger posts the reviewer's decision, reasoning and
+concerns as a PR comment before merging or leaving the reviewed PR alone.
+Cached verdicts are posted too; an identical comment by the current GitHub
+user among the PR's latest 50 comments is reused. Review failures get an
+explanation as well. If posting fails, processing that repository stops
+without merging the PR and the run exits `1`; a later run can retry using
+the cached verdict. Dry runs and repositories in report mode post no comments.
+
 The agent never merges anything: an approved PR goes through every check
 again before it merges. Reviews run after their repository's other
 merges, four at a time (`--review-parallel`), at most 10 per run

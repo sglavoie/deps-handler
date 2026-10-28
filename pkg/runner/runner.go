@@ -324,6 +324,9 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	attempted := map[int]bool{}
 	retried := map[int]bool{}
 	rebased := map[int]bool{}
+	// Remember successful review comments even before GitHub's next read
+	// includes them. Across runs, the PR's own comments provide this record.
+	commented := map[string]bool{}
 	// unsure holds merges GitHub failed in a way that may hide a success,
 	// until the pass tells whether they went through. doubted keeps, for
 	// the rest of the pass, why a PR's merge may have gone through.
@@ -463,6 +466,26 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		decisions := policy.EvaluateAfter(repo, rc.Policy, r.Viewer, judge, refused)
 		res.Decisions = decisions
 		res.Findings = policy.Diagnose(repo, rc.Policy, decisions)
+		if apply {
+			for _, d := range decisions {
+				if d.Verdict == nil {
+					continue
+				}
+				body := r.reviewComment(rc, d)
+				if commented[body] || slices.ContainsFunc(d.PR.Comments, func(c github.Comment) bool {
+					return strings.EqualFold(c.Author, r.Viewer) && c.Body == body
+				}) {
+					continue
+				}
+				if err := r.comment(ctx, rc, d.Number, body); err != nil {
+					// A timeout may hide a successful POST, but cannot prove
+					// the explanation was published. Leave the PR unmerged;
+					// the next run checks its comments before trying again.
+					return fail(fmt.Errorf("#%d: post agent review comment: %w", d.Number, err))
+				}
+				commented[body] = true
+			}
+		}
 
 		var next *policy.Decision
 		rebaseRefused := false

@@ -264,6 +264,28 @@ token, so they cannot fake their own end. It says the same of files in the
 checkout that come from the dependency, such as vendored code and
 lockfiles.
 
+In apply mode, deps-merger posts the verdict's reviewer, summary and
+concerns (including breaking changes) on the PR before acting on it.
+Approvals say merging still depends on policy checks; rejections explain
+why the PR is left for a human. A failed review posts its error instead.
+This applies to cached verdicts too, including those produced by a dry
+run. Dry runs and report-mode repositories never post these comments.
+
+An identical explanation by the current GitHub user in the latest 50 PR
+comments suppresses another post. The comment identifies the update and
+target branch; rejections also identify the head, so a new review after
+a rebase can post another explanation. Comments posted during the run
+are remembered even if GitHub has not returned them yet. Older comments
+outside the fetched window cannot suppress a new post.
+
+Review comments use the same serialized, rate-limit-aware writes as
+merges. If GitHub cannot confirm the post succeeded, the repository stops
+with an error before merging, even when the response timed out and the
+comment may have been posted. The next run checks the PR comments before
+retrying and can reuse the cached verdict. Reviewer text has tokens and
+control characters removed, mentions neutralized, and unusually long
+explanations truncated to fit a GitHub comment.
+
 Reviews run after their repository's other merges, four at a time
 (`--review-parallel`), at most `--max-reviews` (default 10) per run. A
 repository reviews its PRs one after another, so more reviews than

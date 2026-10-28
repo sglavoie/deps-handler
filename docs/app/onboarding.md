@@ -35,8 +35,10 @@ follow up. Replace `<app-slug>` and the contact details with real ones.
 >
 > What it reads, stores and writes is in the attached one-pager. By
 > default it does not clone your code or send it to a model; optional
-> agent review is explained there. It never comments or pushes, and
-> uninstalling deletes what it kept about your repositories.
+> agent review is explained there. When merging and agent review are
+> enabled, it comments with the reviewer's reasoning before merging or
+> leaving a PR alone. It never pushes commits, and uninstalling deletes
+> what it kept about your repositories.
 >
 > If anything looks wrong, reply here and I'll pause it for your
 > organization straight away.

@@ -59,6 +59,8 @@ type agent struct {
 	prompts  []string
 	// delay is how long each review takes.
 	delay time.Duration
+	// onRun can change the installation while a review is in progress.
+	onRun func()
 }
 
 func (a *agent) build(usage func(review.Usage)) review.Agent { return agentRun{a, usage} }
@@ -79,6 +81,9 @@ func (r agentRun) Run(_ context.Context, dir, prompt string) (review.Answer, err
 		return review.Answer{}, err
 	}
 	r.usage(review.Usage{Requests: 2, PromptTokens: 1200, CompletionTokens: 80})
+	if r.a.onRun != nil {
+		r.a.onRun()
+	}
 	return review.Answer{Decision: r.a.decision, Summary: "lib 2 is fine here", BreakingChanges: []string{}, Concerns: []string{}}, nil
 }
 
@@ -94,6 +99,11 @@ func TestReviewApprovesAMajorThatThenMerges(t *testing.T) {
 	s, p := setup(t, true, "mode: merge\nagent_review: true\n", major(1, heads[0]))
 	a := &agent{decision: "approve"}
 	withReview(t, s, a, repo, 10)
+	p.engine.onMerge = func(int) {
+		if !slices.Equal(p.engine.comments, []int{1}) {
+			t.Errorf("merge before explanation: %v", p.engine.comments)
+		}
+	}
 	ctx := context.Background()
 	s.Store.InstallationAdded(ctx, 1, "o", time.Now())
 	s.RunRepo(ctx, 1, "o/r", "test")
@@ -203,12 +213,32 @@ func TestReviewRejectionHoldsThePRAndIsCached(t *testing.T) {
 	if len(p.engine.merged) != 0 {
 		t.Fatalf("merged %v", p.engine.merged)
 	}
+	if !slices.Equal(p.engine.comments, []int{1}) {
+		t.Fatalf("expected one explanation across both runs: %v", p.engine.comments)
+	}
 	// The second run reuses the verdict: the PR's head did not move.
 	if len(a.prompts) != 1 {
 		t.Fatalf("reviewed %d times", len(a.prompts))
 	}
 	if body := p.issues.Get(1).Body; !strings.Contains(body, "rejected by qwen-test") || !strings.Contains(body, "lib 2 is fine here") {
 		t.Fatalf("body:\n%s", body)
+	}
+}
+
+func TestPauseDuringReviewBlocksExplanationAndMerge(t *testing.T) {
+	repo, heads := remote(t, 1)
+	s, p := setup(t, true, "mode: merge\nagent_review: true\n", major(1, heads[0]))
+	ctx := context.Background()
+	s.Store.InstallationAdded(ctx, 1, "o", time.Now())
+	a := &agent{decision: "approve", onRun: func() {
+		if err := s.Store.Pause(ctx, 1, "stop", time.Now()); err != nil {
+			t.Error(err)
+		}
+	}}
+	withReview(t, s, a, repo, 10)
+	s.RunRepo(ctx, 1, "o/r", "test")
+	if len(p.engine.comments) != 0 || len(p.engine.merged) != 0 || !slices.Contains(writes(t, s), "review-comment-refused #1") {
+		t.Fatalf("comments %v; merges %v; writes %v", p.engine.comments, p.engine.merged, writes(t, s))
 	}
 }
 

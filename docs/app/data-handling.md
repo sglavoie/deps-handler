@@ -61,7 +61,7 @@ number of reviews a day.
 | --- | --- | --- |
 | Metadata | read | required by GitHub for every App |
 | Contents | read and write | read the policy file; merge pull requests |
-| Pull requests | read and write | read Dependabot's pull requests; merge them |
+| Pull requests | read and write | read Dependabot's pull requests; post review explanations; merge them |
 | Issues | read and write | keep the "Dependency health" issue |
 | Checks, Commit statuses | read | tell whether a pull request's CI passed |
 | Actions | read | tell reruns of a check apart from the original |
@@ -83,8 +83,15 @@ re-check a repository when one of its Dependabot pull requests changes.
   by default). The App merges one pull request at a time, pinned to the
   commit it checked.
 
-It never comments, pushes commits, approves pull requests, or changes
-settings.
+- **Agent review comments**, when merging and agent review are enabled,
+  explaining the verdict and concerns before merging or leaving the PR
+  alone. Failed reviews post their error. Cached verdicts are included;
+  identical recent comments are reused. A failed comment stops processing
+  that repository before merging. Pausing the installation stops these
+  comments too.
+
+It never posts Dependabot commands, pushes commits, submits approving
+pull request reviews, or changes settings.
 
 ## What it stores, and where
 

@@ -17,7 +17,7 @@ func TestDemo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	for _, want := range []string{"merged", "rebase-requested", "approved by claude", "rejected by the agent", `check "lint" fails`} {
+	for _, want := range []string{"merged", "rebase-requested", "approved by claude", "rejected by claude", `check "lint" fails`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("demo output lacks %q:\n%s", want, out)
 		}

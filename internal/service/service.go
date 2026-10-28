@@ -396,18 +396,18 @@ func (s *Service) record(ctx context.Context, log *slog.Logger, w store.Write) {
 	}
 }
 
-// ErrPaused is a merge refused because the installation's writes are
+// ErrPaused is a write refused because the installation's writes are
 // paused, or merging is not enabled.
 var ErrPaused = errors.New("writes are paused for this installation")
 
 // ErrNoComments is a comment the App refused to post: Dependabot ignores
-// an App's commands, so the App posts none.
-var ErrNoComments = errors.New("the App posts no comments, as Dependabot ignores an App's commands; set dependabot_commands: false")
+// an App's commands, so only review explanations are allowed.
+var ErrNoComments = errors.New("the App posts only agent review explanations, as Dependabot ignores an App's commands; set dependabot_commands: false")
 
 // guarded is the engine's client for one run: every merge first checks
 // that merging is still allowed, the kill switch included, so a pause
 // stops a run part way, and is recorded with the head it was pinned to.
-// No comment is ever posted.
+// Review comments check the same pause; Dependabot commands are refused.
 type guarded struct {
 	github.Client
 	s            *Service
@@ -466,6 +466,23 @@ func (g *guarded) Merge(ctx context.Context, owner, name string, number int, met
 	return err
 }
 
-func (g *guarded) Comment(context.Context, string, string, int, string) error {
-	return ErrNoComments
+func (g *guarded) Comment(ctx context.Context, owner, name string, number int, body string) error {
+	if !strings.HasPrefix(body, runner.ReviewCommentPrefix) {
+		return ErrNoComments
+	}
+	paused, err := g.s.Store.Paused(ctx, g.installation)
+	switch {
+	case err != nil:
+		return fmt.Errorf("checking the pause: %w", err)
+	case paused || !g.s.AllowMerge:
+		g.s.record(ctx, g.log, store.Write{RunID: g.runID, Repo: g.repo, Kind: "review-comment-refused", Number: number, Detail: "paused"})
+		return ErrPaused
+	}
+	err = g.Client.Comment(ctx, owner, name, number, body)
+	w := store.Write{RunID: g.runID, Repo: g.repo, Kind: "review-comment", Number: number}
+	if err != nil {
+		w.Kind, w.Detail = "review-comment-attempted", err.Error()
+	}
+	g.s.record(ctx, g.log, w)
+	return err
 }

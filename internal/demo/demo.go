@@ -188,11 +188,13 @@ func (c *Client) Merge(ctx context.Context, owner, name string, number int, _, _
 	return nil
 }
 
-func (c *Client) Comment(ctx context.Context, owner, name string, number int, _ string) error {
+func (c *Client) Comment(ctx context.Context, owner, name string, number int, body string) error {
 	pause(ctx, 200*time.Millisecond)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.rebased[key(owner, name, number)] = time.Now()
+	if body == "@dependabot rebase" {
+		c.rebased[key(owner, name, number)] = time.Now()
+	}
 	return nil
 }
 

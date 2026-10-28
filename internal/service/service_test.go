@@ -75,10 +75,16 @@ func (e *engine) Merge(_ context.Context, _, _ string, n int, _, _ string) error
 	return nil
 }
 
-func (e *engine) Comment(_ context.Context, _, _ string, n int, _ string) error {
+func (e *engine) Comment(_ context.Context, _, _ string, n int, body string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.comments = append(e.comments, n)
+	for i := range e.prs {
+		if e.prs[i].Number == n {
+			e.prs[i].Comments = append(e.prs[i].Comments, github.Comment{Author: login, Body: body})
+			e.prs[i].CommentCount++
+		}
+	}
 	return nil
 }
 
@@ -263,7 +269,7 @@ func TestPauseStopsARunPartWay(t *testing.T) {
 	}
 }
 
-func TestTheAppNeverComments(t *testing.T) {
+func TestTheAppNeverPostsDependabotCommands(t *testing.T) {
 	// A repository that turns Dependabot commands back on: the PR behind
 	// its base would get @dependabot rebase from the CLI, but not from
 	// the App.
