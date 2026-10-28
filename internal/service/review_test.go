@@ -166,9 +166,29 @@ func TestKnownVerdictsStandWhileTheModelIsUnavailable(t *testing.T) {
 	s.RunRepo(ctx, 1, "o/r", "test")
 	before := p.issues.Get(1).Body
 	s.Review.Available = func(context.Context) error { return errors.New("connection refused") }
+	s.Review.Model = "replacement-model"
 	s.RunRepo(ctx, 1, "o/r", "test")
-	if len(a.prompts) != 1 || p.issues.Get(1).Body != before || !strings.Contains(before, "rejected by the agent") {
+	if len(a.prompts) != 1 || p.issues.Get(1).Body != before || !strings.Contains(before, "rejected by qwen-test") {
 		t.Fatalf("reviews %d; issue before:\n%s\nafter:\n%s", len(a.prompts), before, p.issues.Get(1).Body)
+	}
+}
+
+func TestReportIssueNamesAgentOnCachedApproval(t *testing.T) {
+	repo, heads := remote(t, 1)
+	s, p := setup(t, false, "agent_review: true\n", major(1, heads[0]))
+	a := &agent{decision: "approve"}
+	withReview(t, s, a, repo, 10)
+	ctx := context.Background()
+	s.RunRepo(ctx, 1, "o/r", "test")
+	before := p.issues.Get(1).Body
+	if !strings.Contains(before, "approved by qwen-test") {
+		t.Fatalf("issue does not name the reviewer:\n%s", before)
+	}
+	s.Review.Model = "replacement-model"
+	s.Review.Available = func(context.Context) error { return errors.New("connection refused") }
+	s.RunRepo(ctx, 1, "o/r", "test")
+	if len(a.prompts) != 1 || p.issues.Get(1).Body != before {
+		t.Fatalf("cached approval changed reviewer in issue:\nbefore:\n%s\nafter:\n%s", before, p.issues.Get(1).Body)
 	}
 }
 
@@ -187,7 +207,7 @@ func TestReviewRejectionHoldsThePRAndIsCached(t *testing.T) {
 	if len(a.prompts) != 1 {
 		t.Fatalf("reviewed %d times", len(a.prompts))
 	}
-	if body := p.issues.Get(1).Body; !strings.Contains(body, "rejected by agent") || !strings.Contains(body, "lib 2 is fine here") {
+	if body := p.issues.Get(1).Body; !strings.Contains(body, "rejected by qwen-test") || !strings.Contains(body, "lib 2 is fine here") {
 		t.Fatalf("body:\n%s", body)
 	}
 }

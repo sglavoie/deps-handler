@@ -697,7 +697,7 @@ func TestAgentFailureSurvivesChangedSnapshot(t *testing.T) {
 				}
 			}}
 			res := reviewRunner(c, rv, false).RunRepo(context.Background(), repoCfg)
-			if !res.Failed() || !strings.Contains(res.Error, "#1: agent review failed: claude: exit status 1") {
+			if !res.Failed() || !strings.Contains(res.Error, "#1: agent review failed: claude: exit status 1 (agent: claude)") {
 				t.Fatalf("review failure disappeared after %s: %+v", change, res)
 			}
 			if change == "fetch failed" && !strings.Contains(res.Error, "repository unavailable") {
@@ -903,6 +903,25 @@ func TestAgentApprovalIsNamedOnTheMerge(t *testing.T) {
 	res := reviewRunner(c, &fakeReviewer{}, true).RunRepo(context.Background(), repoCfg)
 	if len(res.Events) != 1 || res.Events[0].Detail != "squash, approved by claude" {
 		t.Fatalf("events %+v", res.Events)
+	}
+}
+
+func TestCachedAgentApprovalNamesOriginalReviewerOnTheMerge(t *testing.T) {
+	c := &fakeClient{repo: testutil.Repo(testutil.PR(1, "lib:major"))}
+	rv := &fakeReviewer{}
+	r := reviewRunner(c, rv, true)
+	cache, err := review.OpenCache(t.TempDir() + "/verdicts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := policy.Evaluate(c.repo, repoCfg.Policy, "me", func(policy.Decision) *policy.Verdict { return nil })[0]
+	if err := cache.Put(review.NewRequest(repoCfg, d).Key(), d.PR.HeadOID, "original-model", policy.Verdict{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	r.Verdicts = cache
+	res := r.RunRepo(context.Background(), repoCfg)
+	if len(rv.calls) != 0 || len(res.Events) != 1 || res.Events[0].Detail != "squash, approved by original-model" {
+		t.Fatalf("review calls %v, events %+v", rv.calls, res.Events)
 	}
 }
 

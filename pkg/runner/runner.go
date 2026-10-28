@@ -409,6 +409,9 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 				needsSummary = true
 			}
 			msg := fmt.Sprintf("#%d: agent review failed: %s", failure.number, failure.message)
+			if r.AgentName != "" {
+				msg += " (agent: " + r.AgentName + ")"
+			}
 			if !seen[msg] {
 				failures = append(failures, msg)
 				seen[msg] = true
@@ -704,10 +707,14 @@ func (r *Runner) approval(d policy.Decision) string {
 	if d.Verdict == nil || !d.Verdict.Approved {
 		return ""
 	}
-	if r.AgentName == "" {
+	name := d.Verdict.Agent
+	if name == "" {
+		name = r.AgentName
+	}
+	if name == "" {
 		return "approved by agent"
 	}
-	return "approved by " + r.AgentName
+	return "approved by " + name
 }
 
 // joinDetail joins the non-empty parts of an event's detail.
@@ -778,7 +785,9 @@ func (r *Runner) reviewNext(ctx context.Context, rc config.Repo, decisions []pol
 		}
 		if err != nil {
 			v = policy.Verdict{Concerns: []string{}, Error: errText(ctx, err)}
-		} else if r.Verdicts != nil {
+		}
+		v.Agent = r.AgentName
+		if err == nil && r.Verdicts != nil {
 			r.verdictsMu.Lock()
 			err := r.Verdicts.Put(key, req.HeadOID, r.AgentName, v)
 			recovered := r.Verdicts.TakeRecovered()

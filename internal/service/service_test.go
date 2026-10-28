@@ -183,6 +183,27 @@ func TestReportModeWritesOnlyTheIssue(t *testing.T) {
 	}
 }
 
+func TestOnceReportsInaccessibleRepository(t *testing.T) {
+	s, p := setup(t, true, "mode: merge\n", pr(1))
+	err := s.Once(context.Background(), []string{"other/repo"})
+	if err == nil || !strings.Contains(err.Error(), "other/repo is not accessible to this App") {
+		t.Fatalf("Once error = %v", err)
+	}
+	if len(p.engine.merged) != 0 || len(writes(t, s)) != 0 {
+		t.Fatalf("Once changed a repository that was not requested")
+	}
+}
+
+func TestOnceRunsRequestedRepository(t *testing.T) {
+	s, p := setup(t, true, "mode: merge\n", pr(1))
+	if err := s.Once(context.Background(), []string{"o/r"}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(p.engine.merged, []int{1}) {
+		t.Fatalf("merged = %v", p.engine.merged)
+	}
+}
+
 func TestMergeModeMerges(t *testing.T) {
 	s, p := setup(t, true, "mode: merge\n", pr(1), pr(2))
 	s.RunRepo(context.Background(), 1, "o/r", "test")

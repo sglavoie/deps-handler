@@ -175,6 +175,7 @@ func (c *Cache) Get(key, head string) *policy.Verdict {
 		return nil
 	}
 	e.Verdict.Concerns = slices.Clone(e.Verdict.Concerns)
+	e.Verdict.Agent = e.Agent
 	return &e.Verdict
 }
 

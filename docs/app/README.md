@@ -73,6 +73,17 @@ still needs `agent_review: true` to request reviews. The recipe calls
 processes. The server sweeps installed
 repositories at startup and every four hours by default.
 
+The default `dev.env` belongs to the private development App. A private
+GitHub App can only be installed on its owner's account, so testing a
+repository in another organization requires an App installed there. Use
+that App's environment file. For example:
+
+```sh
+DMC_ENV="$HOME/.config/deps-merger-cloud/prod.env" just app-local codex
+```
+
+The CLI agent must also be logged in locally.
+
 With `DMC_DB` set to the running server's database:
 
 ```sh
@@ -85,7 +96,8 @@ go run ./cmd/admin resume <installation-id>
 Pausing stops merges immediately while reports continue. To run a
 repository once without serving webhooks, use
 `go run ./cmd/server -once owner/repo`; `-once -all` runs every
-installed repository.
+installed repository. A named repository that the App cannot access is
+reported as an error.
 
 The Raspberry Pi deployment in `deploy/pi/` uses systemd and a
 Cloudflare tunnel. `./scripts/deploy-pi.sh [host]` builds the server and

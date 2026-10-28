@@ -82,7 +82,9 @@ const (
 
 // Verdict is what the AI agent concluded about one update.
 type Verdict struct {
-	Approved bool     `json:"approved"`
+	Approved bool `json:"approved"`
+	// Agent is the reviewer that gave this verdict, including a cached one.
+	Agent    string   `json:"agent,omitempty"`
 	Summary  string   `json:"summary"`
 	Concerns []string `json:"concerns"`
 	// Error says why the review could not be done; Approved is then false.
@@ -369,9 +371,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 			}
 			return skip("%s", oversized)
 		case v != nil && v.Error != "":
-			return skip("%s; agent review failed: %s", oversized, v.Error)
+			return skip("%s; %s review failed: %s", oversized, agentName(v), v.Error)
 		case v != nil && !v.Approved:
-			return skip("%s; rejected by agent", oversized)
+			return skip("%s; rejected by %s", oversized, agentName(v))
 		}
 	}
 
@@ -488,9 +490,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 			safe.Action, safe.Reason = ActionReview, oversized+AwaitingReview
 		} else if safe.Action == ActionMerge {
 			// "checks green" or "no checks ran", as within policy.
-			safe.Reason = strings.TrimSuffix(safe.Reason, "within policy") + fmt.Sprintf("%s update approved by agent", safe.Grade)
+			safe.Reason = strings.TrimSuffix(safe.Reason, "within policy") + fmt.Sprintf("%s update approved by %s", safe.Grade, agentName(safe.Verdict))
 		} else {
-			safe.Reason += fmt.Sprintf(" (%s update approved by agent)", safe.Grade)
+			safe.Reason += fmt.Sprintf(" (%s update approved by %s)", safe.Grade, agentName(safe.Verdict))
 		}
 	}
 	if !repo.CanWrite() {
@@ -499,11 +501,25 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		safe.Action, safe.Reason = ActionSkip, "behind base branch; rebase left to a human (dependabot_commands: false)"
 		if oversized != "" {
 			// Whoever rebases it should know the approval carries over.
-			safe.Reason += fmt.Sprintf("; %s update approved by agent", safe.Grade)
+			safe.Reason += fmt.Sprintf("; %s update approved by %s", safe.Grade, agentName(safe.Verdict))
 		}
 		safe.behind = true
 	}
 	return safe
+}
+
+func agentName(v *Verdict) string {
+	if v != nil && v.Agent != "" {
+		return v.Agent
+	}
+	return "agent"
+}
+
+func agentReference(v *Verdict) string {
+	if v != nil && v.Agent != "" {
+		return v.Agent
+	}
+	return "the agent"
 }
 
 // lacksWrite says what access the viewer has instead of write access.

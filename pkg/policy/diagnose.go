@@ -155,13 +155,13 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 		case d.Verdict != nil && d.Verdict.Error != "":
 			out = append(out, Finding{
 				Kind:    FindingAgentFailed,
-				Summary: fmt.Sprintf("#%d (%s): the agent could not review it: %s", d.Number, d.Grade, d.Verdict.Error),
+				Summary: fmt.Sprintf("#%d (%s): %s could not review it: %s", d.Number, d.Grade, agentReference(d.Verdict), d.Verdict.Error),
 				PRs:     []int{d.Number},
 			})
 		case d.Verdict != nil && !d.Verdict.Approved:
 			out = append(out, Finding{
 				Kind:    FindingAgentRejected,
-				Summary: fmt.Sprintf("#%d (%s) rejected by the agent: %s", d.Number, d.Grade, d.Verdict.Summary),
+				Summary: fmt.Sprintf("#%d (%s) rejected by %s: %s", d.Number, d.Grade, agentReference(d.Verdict), d.Verdict.Summary),
 				PRs:     []int{d.Number},
 				Details: d.Verdict.Concerns,
 			})

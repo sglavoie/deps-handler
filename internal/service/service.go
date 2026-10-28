@@ -58,7 +58,7 @@ type Service struct {
 
 // Base is the policy a repository gets before its own files: report
 // mode, no Dependabot commands (Dependabot ignores an App's), and no
-// agent review, which is not offered yet.
+// agent review until the repository opts in.
 func Base() config.Policy {
 	p := config.Builtin
 	p.Mode, p.DependabotCommands, p.AgentReview = config.ModeReport, false, false
@@ -140,18 +140,41 @@ func (s *Service) Once(ctx context.Context, only []string) error {
 	if err != nil {
 		return err
 	}
+	type target struct {
+		installation int64
+		repo         string
+	}
+	var targets []target
+	found := make(map[string]bool)
 	for _, id := range ids {
 		repos, err := s.Platform.Repos(ctx, id)
 		if err != nil {
 			return err
 		}
 		for _, r := range repos {
-			if len(only) == 0 || slices.ContainsFunc(only, func(o string) bool { return strings.EqualFold(o, r) }) {
-				if s.runs(r) {
-					s.RunRepo(ctx, id, r, "once")
-				}
+			if len(only) > 0 && !slices.ContainsFunc(only, func(o string) bool { return strings.EqualFold(o, r) }) {
+				continue
 			}
+			found[strings.ToLower(r)] = true
+			if !s.runs(r) {
+				if len(only) > 0 {
+					return fmt.Errorf("repository %s is excluded by DMC_REPOS", r)
+				}
+				continue
+			}
+			targets = append(targets, target{id, r})
 		}
+	}
+	for _, r := range only {
+		if !found[strings.ToLower(r)] {
+			return fmt.Errorf("repository %s is not accessible to this App; check that the App is installed on its owner and granted access to the repository", r)
+		}
+	}
+	if len(targets) == 0 {
+		return errors.New("no repositories available to run; check the App's installations and DMC_REPOS")
+	}
+	for _, t := range targets {
+		s.RunRepo(ctx, t.installation, t.repo, "once")
 	}
 	return ctx.Err()
 }
