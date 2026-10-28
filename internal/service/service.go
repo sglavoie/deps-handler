@@ -173,17 +173,25 @@ func (s *Service) Once(ctx context.Context, only []string) error {
 	if len(targets) == 0 {
 		return errors.New("no repositories available to run; check the App's installations and DMC_REPOS")
 	}
+	var failures []error
 	for _, t := range targets {
-		s.RunRepo(ctx, t.installation, t.repo, "once")
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(failures, err)...)
+		}
+		if err := s.RunRepo(ctx, t.installation, t.repo, "once"); err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", t.repo, err))
+		}
 	}
-	return ctx.Err()
+	return errors.Join(append(failures, ctx.Err())...)
 }
 
 // Run does a queued job: one repository, or each of the installation's.
 func (s *Service) Run(ctx context.Context, j jobs.Job) {
 	if j.Repo != "" {
 		if s.runs(j.Repo) {
-			s.RunRepo(ctx, j.Installation, j.Repo, j.Trigger)
+			if err := s.RunRepo(ctx, j.Installation, j.Repo, j.Trigger); err != nil {
+				s.Log.Error("run repository", "repo", j.Repo, "err", err)
+			}
 		}
 		return
 	}
@@ -197,7 +205,9 @@ func (s *Service) Run(ctx context.Context, j jobs.Job) {
 			return
 		}
 		if s.runs(r) {
-			s.RunRepo(ctx, j.Installation, r, j.Trigger)
+			if err := s.RunRepo(ctx, j.Installation, r, j.Trigger); err != nil {
+				s.Log.Error("run repository", "repo", r, "err", err)
+			}
 		}
 	}
 }
@@ -205,23 +215,24 @@ func (s *Service) Run(ctx context.Context, j jobs.Job) {
 // RunRepo runs the engine on one repository and brings its issue up to
 // date. The engine merges only when merging is allowed, the installation
 // is not paused, and the repository's policy says mode: merge.
-func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger string) {
+func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger string) (runErr error) {
 	log := s.Log.With("installation", installation, "repo", repo, "trigger", trigger)
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
 		log.Error("bad repository name")
-		return
+		return errors.New("bad repository name")
 	}
 	started := time.Now()
 	runID, err := s.Store.StartRun(ctx, installation, repo, trigger, started)
 	if err != nil {
 		log.Error("record run", "err", err)
-		return
+		return err
 	}
 	outcome := store.RunOutcome{}
 	defer func() {
 		if err := s.Store.FinishRun(context.WithoutCancel(ctx), runID, outcome, time.Now()); err != nil {
 			log.Error("record run", "err", err)
+			runErr = errors.Join(runErr, fmt.Errorf("record run: %w", err))
 		}
 	}()
 
@@ -229,14 +240,14 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	if err != nil {
 		outcome.Error = err.Error()
 		log.Error("run", "err", err)
-		return
+		return err
 	}
 	merging := s.AllowMerge && !paused
 	engine, err := s.Platform.Engine(ctx, installation)
 	if err != nil {
 		outcome.Error = err.Error()
 		log.Error("run", "err", err)
-		return
+		return err
 	}
 	client := &guarded{Client: engine, s: s, installation: installation, repo: repo, runID: runID, log: log}
 	r := runner.New(client, s.Platform.Login(), merging)
@@ -250,6 +261,12 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	res := r.RunRepo(ctx, config.NewRepo(owner, name, Base()))
 
 	outcome.Error = res.Error
+	if res.Failed() {
+		if res.Error == "" {
+			outcome.Error = "one or more PR actions or reviews failed"
+		}
+		runErr = errors.New(outcome.Error)
+	}
 	outcome.PRs = len(res.Decisions)
 	outcome.Findings = len(res.Findings)
 	merged := 0
@@ -275,17 +292,27 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	rest, err := s.Platform.REST(installation)
 	if err != nil {
 		log.Error("issue", "err", err)
-		return
+		if outcome.Error == "" {
+			outcome.Error = "issue: " + err.Error()
+		}
+		return errors.Join(runErr, fmt.Errorf("issue: %w", err))
 	}
 	known, err := s.Store.IssueNumber(ctx, repo)
 	if err != nil {
 		log.Error("issue", "err", err)
-		return
+		if outcome.Error == "" {
+			outcome.Error = "issue: " + err.Error()
+		}
+		return errors.Join(runErr, fmt.Errorf("issue: %w", err))
 	}
 	n, change, err := output.Sync(ctx, rest, s.Platform.Login(), owner, name, known, output.Body(res, repoMerges), output.Wanted(res), res.Error == "")
 	if n != known && n != 0 {
 		if err := s.Store.SetIssueNumber(ctx, repo, n); err != nil {
 			log.Error("record issue", "err", err)
+			runErr = errors.Join(runErr, fmt.Errorf("record issue: %w", err))
+			if outcome.Error == "" {
+				outcome.Error = "record issue: " + err.Error()
+			}
 		}
 	}
 	if change != output.Unchanged {
@@ -293,17 +320,18 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	}
 	if errors.Is(err, output.ErrIssuesDisabled) {
 		log.Info("issues are disabled; nothing to report to")
-		return
+		return runErr
 	}
 	if err != nil {
 		log.Error("issue", "err", err)
 		if outcome.Error == "" {
 			outcome.Error = "issue: " + err.Error()
 		}
-		return
+		return errors.Join(runErr, fmt.Errorf("issue: %w", err))
 	}
 	log.Info("run done", "prs", outcome.PRs, "would_merge", outcome.WouldMerge, "merged", merged, "findings", outcome.Findings,
 		"merging", repoMerges, "issue", n, "change", string(change), "error", res.Error, "took", time.Since(started).Round(time.Millisecond).String())
+	return runErr
 }
 
 // track records the repository's mode and its Dependabot PRs as res saw

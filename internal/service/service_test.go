@@ -120,6 +120,7 @@ type platform struct {
 	engine        *engine
 	issues        *ghfake.Issues
 	rest          *gh.Client
+	restErr       error
 }
 
 func (p *platform) Login() string { return login }
@@ -133,7 +134,7 @@ func (p *platform) Repos(context.Context, int64) ([]string, error) { return []st
 func (p *platform) Engine(context.Context, int64) (github.Client, error) {
 	return p.engine, nil
 }
-func (p *platform) REST(int64) (*gh.Client, error) { return p.rest, nil }
+func (p *platform) REST(int64) (*gh.Client, error) { return p.rest, p.restErr }
 func (p *platform) Token(context.Context, int64) (string, error) {
 	return "ghs_test", nil
 }
@@ -207,6 +208,26 @@ func TestOnceRunsRequestedRepository(t *testing.T) {
 	}
 	if !slices.Equal(p.engine.merged, []int{1}) {
 		t.Fatalf("merged = %v", p.engine.merged)
+	}
+}
+
+func TestOnceReportsRepositoryFailure(t *testing.T) {
+	s, p := setup(t, true, "mode: yolo\n", pr(1))
+	err := s.Once(context.Background(), []string{"o/r"})
+	if err == nil || !strings.Contains(err.Error(), "o/r: ") || !strings.Contains(err.Error(), "invalid mode") {
+		t.Fatalf("Once error = %v", err)
+	}
+	if len(p.engine.merged) != 0 {
+		t.Fatalf("merged = %v", p.engine.merged)
+	}
+}
+
+func TestOnceReportsIssueFailure(t *testing.T) {
+	s, p := setup(t, false, "", pr(1))
+	p.restErr = fmt.Errorf("GitHub issues unavailable")
+	err := s.Once(context.Background(), []string{"o/r"})
+	if err == nil || !strings.Contains(err.Error(), "o/r: issue: GitHub issues unavailable") {
+		t.Fatalf("Once error = %v", err)
 	}
 }
 
