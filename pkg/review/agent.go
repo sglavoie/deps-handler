@@ -88,7 +88,16 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	// is: prefer that to the bare exit status.
 	if perr == nil && res.IsError {
 		if msg := clip(res.Result); msg != "" {
+			if strings.Contains(strings.ToLower(msg), "not logged in") {
+				return Answer{}, errors.New("claude: not logged in; run `claude auth login` with the server's CLAUDE_CONFIG_DIR")
+			}
+			if res.Subtype == "" || res.Subtype == "success" {
+				return Answer{}, fmt.Errorf("claude: %s", msg)
+			}
 			return Answer{}, fmt.Errorf("claude: %s: %s", res.Subtype, msg)
+		}
+		if res.Subtype == "success" {
+			return Answer{}, errors.New("claude: error")
 		}
 		return Answer{}, fmt.Errorf("claude: %s", or(res.Subtype, "error"))
 	}

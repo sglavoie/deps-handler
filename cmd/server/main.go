@@ -129,7 +129,7 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 				}
 			}
 		},
-		Log: log,
+		Log: log.With("app", a.Slug, "app_id", a.ID),
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	srv := &http.Server{Addr: net.JoinHostPort(cfg.host, cfg.port), Handler: mux, ReadHeaderTimeout: 10 * time.Second}

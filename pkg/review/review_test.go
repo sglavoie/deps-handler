@@ -310,6 +310,10 @@ func TestClaudeErrors(t *testing.T) {
 	if _, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p"); err == nil || err.Error() != "claude: error_max_turns" {
 		t.Errorf("err = %v; want the subtype", err)
 	}
+	cmd, _ = fakeAgent(t, `echo '{"type":"result","subtype":"success","is_error":true,"result":"Not logged in · Please run /login"}'; exit 1`)
+	if _, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p"); err == nil || err.Error() != "claude: not logged in; run `claude auth login` with the server's CLAUDE_CONFIG_DIR" {
+		t.Errorf("err = %v; want the login instruction without a success label", err)
+	}
 }
 
 func TestCodex(t *testing.T) {

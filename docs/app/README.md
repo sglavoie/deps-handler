@@ -72,15 +72,24 @@ still needs `agent_review: true` to request reviews. The recipe calls
 `DMC_TUNNEL_CONFIG` to use other files. Press Ctrl-C to stop both
 processes. The server sweeps installed
 repositories at startup and every four hours by default.
+The recipe clears inherited server settings before loading `DMC_ENV`, so
+an allowlist or merge setting exported for another App cannot carry over.
 
-The default `dev.env` belongs to the private development App. A private
-GitHub App can only be installed on its owner's account, so testing a
+When `prod.env` exists, set `DMC_ENV` explicitly before running the local
+recipe. The default `dev.env` belongs to the private development App. A
+private GitHub App can only be installed on its owner's account, so testing a
 repository in another organization requires an App installed there. Use
 that App's environment file. For example:
 
 ```sh
 DMC_ENV="$HOME/.config/deps-merger-cloud/prod.env" just app-local codex
 ```
+
+Use a separate webhook hostname and tunnel for the dev App. If the dev and
+production Apps both deliver to the same URL, a server started with one
+App's secret rejects the other's deliveries with HTTP 401. In particular,
+the production hostname requires `prod.env` when running the production
+App locally.
 
 The CLI agent must also be logged in locally.
 
