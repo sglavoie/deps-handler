@@ -668,6 +668,14 @@ func TestPullRequestState(t *testing.T) {
 	}
 }
 
+func TestFetchRepoRejectsMissingCheckRollup(t *testing.T) {
+	resp := strings.Replace(fetchResponse, `"statusCheckRollup":`, `"omittedRollup":`, 1)
+	r, err := gqlClient(t, canned(resp)).FetchRepo(context.Background(), "o", "r")
+	if err == nil || r != nil || !strings.Contains(err.Error(), "incomplete checks") {
+		t.Fatalf("FetchRepo = %+v, %v; missing rollup must not mean no checks", r, err)
+	}
+}
+
 func TestFetchRepoWithoutChecksOrRepository(t *testing.T) {
 	resp := strings.Replace(fetchResponse, `"statusCheckRollup": {`, `"statusCheckRollup": null, "x": {`, 1)
 	gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(resp)})
@@ -986,7 +994,7 @@ func TestNewSelectsGitHubComExplicitly(t *testing.T) {
 	t.Setenv("GH_HOST", "GITHUB.COM")
 	t.Setenv("GH_TOKEN", "public-test-token")
 	t.Setenv("GH_ENTERPRISE_TOKEN", "enterprise-test-token")
-	rec := &authRecorder{canned: canned(`{"data":{"viewer":{"login":"test","repositories":{"nodes":[]}}}}`)}
+	rec := &authRecorder{canned: canned(`{"data":{"viewer":{"login":"test","repositories":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}`)}
 	originalTransport := http.DefaultTransport
 	http.DefaultTransport = rec
 	t.Cleanup(func() { http.DefaultTransport = originalTransport })

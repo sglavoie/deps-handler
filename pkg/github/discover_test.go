@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -91,9 +92,75 @@ func TestDependabotReposOfOwners(t *testing.T) {
 }
 
 func TestDependabotReposStopsAtThePageCap(t *testing.T) {
-	page := `{"data": {"viewer": {"repositories": {"pageInfo": {"hasNextPage": true, "endCursor": "c"}, "nodes": []}}}}`
-	seq := &sequence{responses: slices.Repeat([]string{page}, maxDiscoverPages)}
+	seq := &sequence{}
+	for i := range maxDiscoverPages {
+		seq.responses = append(seq.responses, fmt.Sprintf(`{"data": {"viewer": {"repositories": {"pageInfo": {"hasNextPage": true, "endCursor": "c%d"}, "nodes": []}}}}`, i))
+	}
 	if _, err := gqlClient(t, seq).dependabotRepos(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "name the owners") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDependabotReposRejectsIncompletePages(t *testing.T) {
+	for _, page := range []string{
+		`null`,
+		`{}`,
+		`{"nodes": []}`,
+		`{"pageInfo": null, "nodes": []}`,
+		`{"pageInfo": {}, "nodes": []}`,
+		`{"pageInfo": {"hasNextPage": null}, "nodes": []}`,
+		`{"pageInfo": {"hasNextPage": false}}`,
+		`{"pageInfo": {"hasNextPage": false}, "nodes": null}`,
+	} {
+		for _, owner := range []string{"", "o"} {
+			t.Run(owner+page, func(t *testing.T) {
+				var owners []string
+				root := "viewer"
+				if owner != "" {
+					owners, root = []string{owner}, "repositoryOwner"
+				}
+				seq := &sequence{responses: []string{
+					fmt.Sprintf(`{"data": {%q: {"repositories": {"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"nameWithOwner":"o/a","viewerPermission":"WRITE","yml":{"id":"1"}}]}}}}`, root),
+					fmt.Sprintf(`{"data": {%q: {"repositories": %s}}}`, root, page),
+				}}
+				got, err := gqlClient(t, seq).dependabotRepos(context.Background(), owners)
+				if err == nil || got != nil || !strings.Contains(err.Error(), "incomplete repository listing") {
+					t.Fatalf("repos = %q, err = %v; incomplete discovery must fail", got, err)
+				}
+			})
+		}
+	}
+}
+
+func TestDependabotReposAcceptsExplicitEmptyPage(t *testing.T) {
+	for _, owners := range [][]string{nil, {"o"}} {
+		root := "viewer"
+		if len(owners) > 0 {
+			root = "repositoryOwner"
+		}
+		seq := &sequence{responses: []string{
+			fmt.Sprintf(`{"data": {%q: {"repositories": {"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}`, root),
+		}}
+		got, err := gqlClient(t, seq).dependabotRepos(context.Background(), owners)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("owners = %q: repos = %q, err = %v", owners, got, err)
+		}
+	}
+}
+
+func TestDependabotReposRejectsInvalidCursors(t *testing.T) {
+	for _, cursor := range []string{`null`, `""`, `"c1"`} {
+		t.Run(cursor, func(t *testing.T) {
+			seq := &sequence{responses: []string{
+				`{"data":{"viewer":{"repositories":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"nameWithOwner":"o/a","viewerPermission":"WRITE","yml":{"id":"1"}}]}}}}`,
+				fmt.Sprintf(`{"data":{"viewer":{"repositories":{"pageInfo":{"hasNextPage":true,"endCursor":%s},"nodes":[]}}}}`, cursor),
+			}}
+			// Extra responses keep the unfixed implementation bounded by its page cap.
+			seq.responses = append(seq.responses, slices.Repeat(seq.responses[1:], maxDiscoverPages)...)
+			got, err := gqlClient(t, seq).dependabotRepos(context.Background(), nil)
+			if err == nil || got != nil || !strings.Contains(err.Error(), "cursor") || len(seq.bodies) != 2 {
+				t.Fatalf("repos = %q, err = %v, requests = %d; invalid pagination must stop immediately", got, err, len(seq.bodies))
+			}
+		})
 	}
 }

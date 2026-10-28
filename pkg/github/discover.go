@@ -43,8 +43,8 @@ query($owner: String!, $after: String) {
 }`
 
 type repoPage struct {
-	PageInfo struct {
-		HasNextPage bool
+	PageInfo *struct {
+		HasNextPage *bool
 		EndCursor   string
 	}
 	Nodes []struct {
@@ -111,7 +111,7 @@ func (c *client) dependabotRepos(ctx context.Context, owners []string) ([]string
 			}
 			return raw.RepositoryOwner.Repositories
 		}, add)
-		if err == nil && !found {
+		if !found {
 			err = errors.New("no such user or organisation")
 		}
 		if err != nil {
@@ -126,16 +126,24 @@ func (c *client) dependabotRepos(ctx context.Context, owners []string) ([]string
 // page that page picks out of the response to add. A listing longer than
 // maxDiscoverPages is an error rather than cut short without a word.
 func pages[T any](ctx context.Context, c *client, query string, vars map[string]any, page func(*T) repoPage, add func(repoPage)) error {
+	seen := map[string]bool{}
 	for range maxDiscoverPages {
 		var raw T
 		if err := c.gql.DoWithContext(ctx, query, vars, &raw); err != nil {
 			return c.withReset(ctx, err)
 		}
 		p := page(&raw)
+		if p.PageInfo == nil || p.PageInfo.HasNextPage == nil || p.Nodes == nil {
+			return errors.New("incomplete repository listing")
+		}
 		add(p)
-		if !p.PageInfo.HasNextPage {
+		if !*p.PageInfo.HasNextPage {
 			return nil
 		}
+		if p.PageInfo.EndCursor == "" || seen[p.PageInfo.EndCursor] {
+			return errors.New("invalid repository listing cursor: missing or repeated")
+		}
+		seen[p.PageInfo.EndCursor] = true
 		vars["after"] = p.PageInfo.EndCursor
 	}
 	return fmt.Errorf("more than %d repositories to look through; name the owners to look at", maxDiscoverPages*100)

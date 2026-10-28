@@ -344,6 +344,28 @@ query($owner: String!, $name: String!, $search: String!) {
   }
 }`
 
+type gqlCheckRollup struct {
+	Contexts struct {
+		TotalCount *int
+		Nodes      []struct {
+			Typename   string `json:"__typename"`
+			Name       string
+			Status     string
+			Conclusion string
+			CheckSuite *struct {
+				DatabaseID  int64
+				App         *struct{ DatabaseID int64 }
+				WorkflowRun *struct {
+					Event    string
+					Workflow struct{ DatabaseID int64 }
+				}
+			}
+			Context string
+			State   string
+		}
+	}
+}
+
 type gqlRepo struct {
 	Repository *struct {
 		NameWithOwner      string
@@ -392,27 +414,7 @@ type gqlRepo struct {
 				Nodes []struct {
 					Commit struct {
 						Oid               string
-						StatusCheckRollup *struct {
-							Contexts struct {
-								TotalCount *int
-								Nodes      []struct {
-									Typename   string `json:"__typename"`
-									Name       string
-									Status     string
-									Conclusion string
-									CheckSuite *struct {
-										DatabaseID  int64
-										App         *struct{ DatabaseID int64 }
-										WorkflowRun *struct {
-											Event    string
-											Workflow struct{ DatabaseID int64 }
-										}
-									}
-									Context string
-									State   string
-								}
-							}
-						}
+						StatusCheckRollup json.RawMessage
 					}
 				}
 			}
@@ -530,15 +532,24 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		}
 		for _, ln := range n.Last.Nodes {
 			pr.ChecksOID = ln.Commit.Oid
-			if ln.Commit.StatusCheckRollup == nil {
+			// Explicit null means no checks. An omitted field establishes
+			// nothing, even when policy allows merging without checks.
+			if len(ln.Commit.StatusCheckRollup) == 0 {
+				return nil, fmt.Errorf("%s/%s#%d: incomplete checks", owner, name, n.Number)
+			}
+			var rollup *gqlCheckRollup
+			if err := json.Unmarshal(ln.Commit.StatusCheckRollup, &rollup); err != nil {
+				return nil, fmt.Errorf("%s/%s#%d: incomplete checks: %w", owner, name, n.Number, err)
+			}
+			if rollup == nil {
 				continue
 			}
-			contexts := ln.Commit.StatusCheckRollup.Contexts
+			contexts := rollup.Contexts
 			if contexts.TotalCount == nil || contexts.Nodes == nil || *contexts.TotalCount < len(contexts.Nodes) {
 				return nil, fmt.Errorf("%s/%s#%d: incomplete checks", owner, name, n.Number)
 			}
 			pr.CheckCount = *contexts.TotalCount
-			for _, cx := range ln.Commit.StatusCheckRollup.Contexts.Nodes {
+			for _, cx := range contexts.Nodes {
 				switch cx.Typename {
 				case "StatusContext":
 					pr.Checks = append(pr.Checks, Check{Name: cx.Context, State: statusState(cx.State), Status: true})

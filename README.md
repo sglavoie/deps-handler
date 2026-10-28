@@ -244,6 +244,12 @@ fail the repository read instead of silently hiding PRs.
 Missing commit, check or comment lists or totals also fail the read, as do
 totals smaller than the returned lists. Incomplete responses cannot establish
 that all commits and checks were verified or that no rebase was requested.
+A missing check-summary field also fails the read; only an explicit null
+means the head has no checks, even when checks are optional.
+
+Repository discovery rejects missing lists or pagination fields and missing
+or repeated continuation cursors. If a later page is incomplete,
+`init --discover` fails instead of writing a partial repository list.
 
 Failure diagnosis compares checks by name and their available app, workflow
 and event identities, keeping commit status contexts separate from check runs.
