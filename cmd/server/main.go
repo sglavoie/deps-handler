@@ -46,6 +46,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -128,7 +129,9 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 			}
 			return nil
 		},
-		Log: log.With("app", a.Slug, "app_id", a.ID),
+		RepoAdded:   s.RepositoryAdded,
+		RepoRemoved: s.RepositoryRemoved,
+		Log:         log.With("app", a.Slug, "app_id", a.ID),
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	srv := &http.Server{Addr: net.JoinHostPort(cfg.host, cfg.port), Handler: mux, ReadHeaderTimeout: 10 * time.Second}
@@ -293,10 +296,14 @@ func loadReview(db string) (*service.Review, error) {
 
 // ping asks the model's API for its models, which a server that is up
 // answers at once.
-func ping(ctx context.Context, url, key string) error {
+func ping(ctx context.Context, baseURL, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(url, "/")+"/models", nil)
+	endpoint, err := url.JoinPath(baseURL, "models")
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
 	}
@@ -309,7 +316,7 @@ func ping(ctx context.Context, url, key string) error {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s/models: %s", url, resp.Status)
+		return fmt.Errorf("%s: %s", endpoint, resp.Status)
 	}
 	return nil
 }

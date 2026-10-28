@@ -242,6 +242,60 @@ func TestRetention(t *testing.T) {
 	}
 }
 
+func TestStaleRepositorySweepCannotUndoWebhook(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	if err := s.SeenRepo(ctx, 1, "Acme/App", "merge", true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RepoAccess(ctx, 1, "acme/app", false, t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReconcileRepos(ctx, 1, []string{"ACME/APP"}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.RepoInactive(ctx, 1, "Acme/App"); err != nil || !inactive {
+		t.Fatalf("stale sweep reactivated repository: inactive = %t, %v", inactive, err)
+	}
+	if err := s.RepoAccess(ctx, 1, "ACME/APP", true, t0.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReconcileRepos(ctx, 1, nil, t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.RepoInactive(ctx, 1, "acme/app"); err != nil || inactive {
+		t.Fatalf("stale sweep removed access after add: inactive = %t, %v", inactive, err)
+	}
+}
+
+func TestOpenAddsRepositoryAccessToExistingDatabase(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "dmc.db")
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenRepo(ctx, 1, "acme/app", "merge", true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `DROP TABLE repo_access`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ReconcileRepos(ctx, 1, nil, t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.RepoInactive(ctx, 1, "acme/app"); err != nil || !inactive {
+		t.Fatalf("existing repository inactive = %t, %v", inactive, err)
+	}
+}
+
 func TestForgetInstallation(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	s.InstallationAdded(ctx, 1, "acme", t0)

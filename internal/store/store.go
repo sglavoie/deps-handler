@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS runs (
 	findings        INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS runs_repo ON runs (repo, started_at);
+CREATE INDEX IF NOT EXISTS runs_installation_repo ON runs (installation_id, repo);
 CREATE TABLE IF NOT EXISTS issues (
 	repo   TEXT PRIMARY KEY,
 	number INTEGER NOT NULL
@@ -63,6 +65,15 @@ CREATE TABLE IF NOT EXISTS repos (
 	merge_since     TIMESTAMP,
 	updated_at      TIMESTAMP NOT NULL
 );
+CREATE INDEX IF NOT EXISTS repos_installation_repo ON repos (installation_id, repo);
+CREATE TABLE IF NOT EXISTS repo_access (
+	installation_id INTEGER NOT NULL,
+	repo            TEXT NOT NULL COLLATE NOCASE,
+	active          INTEGER NOT NULL,
+	observed_at     TIMESTAMP NOT NULL,
+	PRIMARY KEY (installation_id, repo)
+);
+CREATE INDEX IF NOT EXISTS prs_installation_repo ON prs (installation_id, repo);
 CREATE TABLE IF NOT EXISTS reviews (
 	id                INTEGER PRIMARY KEY AUTOINCREMENT,
 	installation_id   INTEGER NOT NULL,
@@ -152,6 +163,76 @@ func (s *Store) InstallationInactive(ctx context.Context, id int64) (bool, error
 		return false, nil
 	}
 	return removed.Valid, err
+}
+
+// RepoAccess records whether an installation can currently reach repo.
+// An older sweep result cannot undo a newer repository webhook.
+func (s *Store) RepoAccess(ctx context.Context, installation int64, repo string, active bool, observedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO repo_access (installation_id, repo, active, observed_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (installation_id, repo) DO UPDATE SET active = excluded.active, observed_at = excluded.observed_at
+WHERE repo_access.observed_at < excluded.observed_at`, installation, repo, active, observedAt.UTC())
+	return err
+}
+
+// RepoInactive reports whether access to repo was removed. A repository
+// not yet observed is allowed, as its first webhook may precede a sweep.
+func (s *Store) RepoInactive(ctx context.Context, installation int64, repo string) (bool, error) {
+	var active bool
+	err := s.db.QueryRowContext(ctx, `SELECT active FROM repo_access WHERE installation_id = ? AND repo = ?`, installation, repo).Scan(&active)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return !active, err
+}
+
+// ReconcileRepos updates access for repositories previously seen by this
+// installation. observedAt is taken before listing GitHub's repositories,
+// so a webhook received while that list is in flight wins over it.
+func (s *Store) ReconcileRepos(ctx context.Context, installation int64, accessible []string, observedAt time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `
+SELECT repo FROM repos WHERE installation_id = ?1
+UNION SELECT repo FROM prs WHERE installation_id = ?1
+UNION SELECT repo FROM runs WHERE installation_id = ?1
+UNION SELECT repo FROM repo_access WHERE installation_id = ?1`, installation)
+	if err != nil {
+		return err
+	}
+	var known []string
+	for rows.Next() {
+		var repo string
+		if err := rows.Scan(&repo); err != nil {
+			rows.Close()
+			return err
+		}
+		known = append(known, repo)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	available := make(map[string]bool, len(accessible))
+	for _, repo := range accessible {
+		available[strings.ToLower(repo)] = true
+	}
+	for _, repo := range known {
+		_, err := tx.ExecContext(ctx, `
+INSERT INTO repo_access (installation_id, repo, active, observed_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (installation_id, repo) DO UPDATE SET active = excluded.active, observed_at = excluded.observed_at
+WHERE repo_access.observed_at < excluded.observed_at`, installation, repo, available[strings.ToLower(repo)], observedAt.UTC())
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // Installation is one installation as recorded.
@@ -365,6 +446,7 @@ func (s *Store) ForgetInstallation(ctx context.Context, installation int64) erro
 		`DELETE FROM runs WHERE installation_id = ?1`,
 		`DELETE FROM prs WHERE installation_id = ?1`,
 		`DELETE FROM repos WHERE installation_id = ?1`,
+		`DELETE FROM repo_access WHERE installation_id = ?1`,
 		`DELETE FROM pauses WHERE installation_id = ?1`,
 		`DELETE FROM reviews WHERE installation_id = ?1`,
 	} {

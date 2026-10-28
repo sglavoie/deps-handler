@@ -29,6 +29,8 @@ type Handler struct {
 	// rejects the delivery so it can be inspected and redelivered.
 	Installed   func(ctx context.Context, id int64, account string) error
 	Uninstalled func(ctx context.Context, id int64, deleted bool) error
+	RepoAdded   func(ctx context.Context, id int64, repo string) error
+	RepoRemoved func(ctx context.Context, id int64, repo string) error
 	Log         *slog.Logger
 }
 
@@ -86,9 +88,19 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) error {
 			}
 		}
 	case *gh.InstallationRepositoriesEvent:
-		if e.GetAction() == "added" {
+		switch e.GetAction() {
+		case "added":
 			for _, r := range e.RepositoriesAdded {
+				if err := h.RepoAdded(ctx, e.GetInstallation().GetID(), r.GetFullName()); err != nil {
+					return err
+				}
 				enqueue(e.GetInstallation().GetID(), r.GetFullName())
+			}
+		case "removed":
+			for _, r := range e.RepositoriesRemoved {
+				if err := h.RepoRemoved(ctx, e.GetInstallation().GetID(), r.GetFullName()); err != nil {
+					return err
+				}
 			}
 		}
 	case *gh.PullRequestEvent:

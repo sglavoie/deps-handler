@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,5 +117,23 @@ func TestLoadReviewDefaultAPI(t *testing.T) {
 	a, ok := r.Agent(nil).(review.API)
 	if !ok || a.URL != "http://127.0.0.1:8081/v1" || a.Model != "local-model" || a.Key != "key" || a.Tools {
 		t.Fatalf("API agent = %+v", a)
+	}
+}
+
+func TestPingPreservesModelURLQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" || r.URL.RawQuery != "api-key=secret" {
+			t.Errorf("request URL = %s", r.URL.String())
+			http.Error(w, "wrong URL", http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer token" {
+			t.Errorf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	if err := ping(context.Background(), server.URL+"/v1?api-key=secret", "token"); err != nil {
+		t.Fatal(err)
 	}
 }

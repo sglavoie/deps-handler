@@ -23,6 +23,8 @@ type recorded struct {
 	jobs        []jobs.Job
 	installed   []string
 	uninstalled []string
+	added       []string
+	removed     []string
 }
 
 func handler(rec *recorded, secret []byte) *Handler {
@@ -35,6 +37,14 @@ func handler(rec *recorded, secret []byte) *Handler {
 		},
 		Uninstalled: func(_ context.Context, id int64, deleted bool) error {
 			rec.uninstalled = append(rec.uninstalled, fmt.Sprintf("%d deleted=%t", id, deleted))
+			return nil
+		},
+		RepoAdded: func(_ context.Context, id int64, repo string) error {
+			rec.added = append(rec.added, repo)
+			return nil
+		},
+		RepoRemoved: func(_ context.Context, id int64, repo string) error {
+			rec.removed = append(rec.removed, repo)
 			return nil
 		},
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -115,6 +125,12 @@ func TestRouting(t *testing.T) {
 		if !slices.Equal(got, c.want) || (code != http.StatusAccepted && code != http.StatusNoContent) {
 			t.Errorf("%s: %d, queued %v, want %v", c.name, code, got, c.want)
 		}
+		if c.name == "repos removed" && !slices.Equal(rec.removed, []string{"acme/a"}) {
+			t.Errorf("removed repositories = %v", rec.removed)
+		}
+		if c.name == "repos added" && !slices.Equal(rec.added, []string{"acme/a", "acme/b"}) {
+			t.Errorf("added repositories = %v", rec.added)
+		}
 	}
 }
 
@@ -138,6 +154,24 @@ func TestInstallationPersistenceFailureRejectsDelivery(t *testing.T) {
 			h.Uninstalled = func(context.Context, int64, bool) error { return fmt.Errorf("database unavailable") }
 			body := `{"action": "` + action + `", ` + inst + `}`
 			if code := deliver(h, "installation", body, secret); code != http.StatusInternalServerError {
+				t.Fatalf("status = %d", code)
+			}
+			if len(rec.jobs) != 0 {
+				t.Fatalf("queued after persistence failure: %+v", rec.jobs)
+			}
+		})
+	}
+}
+
+func TestRepositoryPersistenceFailureRejectsDelivery(t *testing.T) {
+	for _, action := range []string{"added", "removed"} {
+		t.Run(action, func(t *testing.T) {
+			rec := &recorded{}
+			h := handler(rec, secret)
+			h.RepoAdded = func(context.Context, int64, string) error { return fmt.Errorf("database unavailable") }
+			h.RepoRemoved = func(context.Context, int64, string) error { return fmt.Errorf("database unavailable") }
+			body := `{"action": "` + action + `", "repositories_` + action + `": [{"full_name": "acme/a"}], ` + inst + `}`
+			if code := deliver(h, "installation_repositories", body, secret); code != http.StatusInternalServerError {
 				t.Fatalf("status = %d", code)
 			}
 			if len(rec.jobs) != 0 {

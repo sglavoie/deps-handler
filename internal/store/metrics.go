@@ -69,7 +69,10 @@ func (s *Store) Metrics(ctx context.Context, now time.Time) ([]Metrics, error) {
 			kept := in.RemovedAt == nil || in.RemovedAt.Sub(in.AddedAt) >= RetentionDays*24*time.Hour
 			m.Retained = &kept
 		}
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(merging), 0) FROM repos WHERE installation_id = ?`, in.ID).
+		if err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*), COALESCE(SUM(r.merging), 0) FROM repos r
+LEFT JOIN repo_access a ON a.installation_id = r.installation_id AND a.repo = r.repo
+WHERE r.installation_id = ? AND COALESCE(a.active, 1) = 1`, in.ID).
 			Scan(&m.Repos, &m.ReposMerging); err != nil {
 			return nil, err
 		}
@@ -92,7 +95,10 @@ FROM reviews WHERE installation_id = ?`, in.ID).Scan(&m.Reviews, &m.ReviewsAppro
 }
 
 func (s *Store) prMetrics(ctx context.Context, m *Metrics, now time.Time) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT opened_at, first_seen_at, closed_at, outcome FROM prs WHERE installation_id = ?`, m.ID)
+	rows, err := s.db.QueryContext(ctx, `
+SELECT p.opened_at, p.first_seen_at, p.closed_at, p.outcome, COALESCE(a.active, 1)
+FROM prs p LEFT JOIN repo_access a ON a.installation_id = p.installation_id AND a.repo = p.repo
+WHERE p.installation_id = ?`, m.ID)
 	if err != nil {
 		return err
 	}
@@ -102,7 +108,8 @@ func (s *Store) prMetrics(ctx context.Context, m *Metrics, now time.Time) error 
 		var opened, firstSeen time.Time
 		var closed sql.NullTime
 		var outcome string
-		if err := rows.Scan(&opened, &firstSeen, &closed, &outcome); err != nil {
+		var active bool
+		if err := rows.Scan(&opened, &firstSeen, &closed, &outcome, &active); err != nil {
 			return err
 		}
 		m.PRs++
@@ -112,8 +119,10 @@ func (s *Store) prMetrics(ctx context.Context, m *Metrics, now time.Time) error 
 		}
 		switch outcome {
 		case PROpen:
-			m.Open++
-			openNow = append(openNow, now.Sub(opened))
+			if active {
+				m.Open++
+				openNow = append(openNow, now.Sub(opened))
+			}
 		case PRMergedByApp:
 			m.MergedByApp++
 			if closed.Valid {

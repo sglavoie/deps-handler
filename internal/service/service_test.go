@@ -54,6 +54,7 @@ type engine struct {
 	gone map[int]bool
 	// onMerge runs after a merge goes through.
 	onMerge  func(n int)
+	onState  func()
 	mergeErr error
 }
 
@@ -101,6 +102,9 @@ func (e *engine) PullRequestDetails(context.Context, string, string, int) (*gith
 }
 
 func (e *engine) PullRequestState(_ context.Context, _, _ string, n int) (github.PRState, error) {
+	if e.onState != nil {
+		e.onState()
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if slices.Contains(e.merged, n) {
@@ -125,6 +129,7 @@ func (e *engine) FileText(_ context.Context, owner, name, path string) ([]byte, 
 type platform struct {
 	// installations, when set, replace the one installation, 1 on "o".
 	installations []app.Installation
+	repos         []string
 	onList        func()
 	dbPath        string
 	engine        *engine
@@ -143,7 +148,12 @@ func (p *platform) Installations(context.Context) ([]app.Installation, error) {
 	}
 	return []app.Installation{{ID: 1, Account: "o"}}, nil
 }
-func (p *platform) Repos(context.Context, int64) ([]string, error) { return []string{"o/r"}, nil }
+func (p *platform) Repos(context.Context, int64) ([]string, error) {
+	if p.repos != nil {
+		return slices.Clone(p.repos), nil
+	}
+	return []string{"o/r"}, nil
+}
 func (p *platform) Engine(context.Context, int64) (github.Client, error) {
 	return p.engine, nil
 }
@@ -463,6 +473,93 @@ func TestInterruptedRunsStillRecordTheirMerges(t *testing.T) {
 	ms, _ := s.Store.Metrics(ctx, time.Now())
 	if m := ms[0]; m.MergedByApp != 3 || m.MergedOther != 0 {
 		t.Fatalf("by the App %d, by others %d; want 3 and 0", m.MergedByApp, m.MergedOther)
+	}
+}
+
+func TestCancellationDuringTrackingRecordsFailedRun(t *testing.T) {
+	s, p := setup(t, false, "", pr(1))
+	ctx := context.Background()
+	if err := s.Store.InstallationAdded(ctx, 1, "o", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RunRepo(ctx, 1, "o/r", "test"); err != nil {
+		t.Fatal(err)
+	}
+	p.engine.leave(1, false)
+	run, cancel := context.WithCancel(ctx)
+	defer cancel()
+	p.engine.onState = cancel
+	if err := s.RunRepo(run, 1, "o/r", "test"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled run error = %v", err)
+	}
+	db, err := sql.Open("sqlite", p.dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var recorded string
+	if err := db.QueryRow("SELECT error FROM runs ORDER BY id DESC LIMIT 1").Scan(&recorded); err != nil || !strings.Contains(recorded, "context canceled") {
+		t.Fatalf("recorded error = %q, %v", recorded, err)
+	}
+}
+
+func TestRepositoryRemovalUpdatesCurrentMetricsAndStopsRuns(t *testing.T) {
+	s, _ := setup(t, false, "", pr(1))
+	ctx := context.Background()
+	if err := s.Store.InstallationAdded(ctx, 1, "o", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RunRepo(ctx, 1, "o/r", "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RepositoryRemoved(ctx, 1, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := s.Store.Metrics(ctx, time.Now())
+	if err != nil || len(ms) != 1 || ms[0].Repos != 0 || ms[0].Open != 0 || ms[0].PRs != 1 {
+		t.Fatalf("removed repository metrics = %+v, %v", ms, err)
+	}
+	if err := s.RunRepo(ctx, 1, "o/r", "stale webhook"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RepositoryAdded(ctx, 1, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RunRepo(ctx, 1, "o/r", "added"); err != nil {
+		t.Fatal(err)
+	}
+	ms, err = s.Store.Metrics(ctx, time.Now())
+	if err != nil || len(ms) != 1 || ms[0].Repos != 1 || ms[0].Open != 1 {
+		t.Fatalf("readded repository metrics = %+v, %v", ms, err)
+	}
+}
+
+func TestScheduledRunReconcilesMissedRepositoryRemoval(t *testing.T) {
+	s, p := setup(t, false, "", pr(1))
+	ctx := context.Background()
+	if err := s.Store.InstallationAdded(ctx, 1, "o", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RunRepo(ctx, 1, "o/r", "test"); err != nil {
+		t.Fatal(err)
+	}
+	p.repos = []string{}
+	if err := s.Run(ctx, jobs.Job{Installation: 1, Trigger: "schedule"}); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.RepoInactive(ctx, 1, "o/r"); err != nil || !inactive {
+		t.Fatalf("repository inactive = %t, %v", inactive, err)
+	}
+	ms, err := s.Store.Metrics(ctx, time.Now())
+	if err != nil || ms[0].Repos != 0 || ms[0].Open != 0 {
+		t.Fatalf("reconciled metrics = %+v, %v", ms, err)
+	}
+	p.repos = []string{"o/r"}
+	if err := s.Run(ctx, jobs.Job{Installation: 1, Trigger: "schedule"}); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.RepoInactive(ctx, 1, "o/r"); err != nil || inactive {
+		t.Fatalf("repository inactive after access restored = %t, %v", inactive, err)
 	}
 }
 

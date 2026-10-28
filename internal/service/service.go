@@ -65,11 +65,13 @@ type installationGate struct {
 	run          sync.Mutex
 	write        sync.Mutex
 	activeMu     sync.Mutex
+	activeRepo   string
 	activeCancel context.CancelFunc
 }
 
-func (g *installationGate) start(cancel context.CancelFunc) {
+func (g *installationGate) start(repo string, cancel context.CancelFunc) {
 	g.activeMu.Lock()
+	g.activeRepo = repo
 	g.activeCancel = cancel
 	g.activeMu.Unlock()
 }
@@ -82,8 +84,17 @@ func (g *installationGate) stop() {
 	g.activeMu.Unlock()
 }
 
+func (g *installationGate) stopRepo(repo string) {
+	g.activeMu.Lock()
+	if g.activeCancel != nil && strings.EqualFold(g.activeRepo, repo) {
+		g.activeCancel()
+	}
+	g.activeMu.Unlock()
+}
+
 func (g *installationGate) finish() {
 	g.activeMu.Lock()
+	g.activeRepo = ""
 	g.activeCancel = nil
 	g.activeMu.Unlock()
 }
@@ -125,6 +136,27 @@ func (s *Service) InstallationRemoved(ctx context.Context, id int64, deleted boo
 		return err
 	}
 	return s.Forget(context.WithoutCancel(ctx), id)
+}
+
+// RepositoryAdded and RepositoryRemoved update access before the queued
+// work can run. Removal cancels an in-flight run of that repository and
+// prevents further writes from starting.
+func (s *Service) RepositoryAdded(ctx context.Context, installation int64, repo string) error {
+	g := s.gate(installation)
+	g.write.Lock()
+	defer g.write.Unlock()
+	return s.Store.RepoAccess(ctx, installation, repo, true, time.Now())
+}
+
+func (s *Service) RepositoryRemoved(ctx context.Context, installation int64, repo string) error {
+	g := s.gate(installation)
+	g.write.Lock()
+	err := s.Store.RepoAccess(ctx, installation, repo, false, time.Now())
+	g.write.Unlock()
+	if err == nil {
+		g.stopRepo(repo)
+	}
+	return err
 }
 
 // Base is the policy a repository gets before its own files: report
@@ -224,9 +256,13 @@ func (s *Service) Once(ctx context.Context, only []string) error {
 	var targets []target
 	found := make(map[string]bool)
 	for _, id := range ids {
+		observedAt := time.Now()
 		repos, err := s.Platform.Repos(ctx, id)
 		if err != nil {
 			return err
+		}
+		if err := s.Store.ReconcileRepos(ctx, id, repos, observedAt); err != nil {
+			return fmt.Errorf("reconcile installation %d repositories: %w", id, err)
 		}
 		for _, r := range repos {
 			if len(only) > 0 && !slices.ContainsFunc(only, func(o string) bool { return strings.EqualFold(o, r) }) {
@@ -281,10 +317,14 @@ func (s *Service) Run(ctx context.Context, j jobs.Job) error {
 		}
 		return nil
 	}
+	observedAt := time.Now()
 	repos, err := s.Platform.Repos(ctx, j.Installation)
 	if err != nil {
 		s.Log.Error("list repositories", "installation", j.Installation, "err", err)
 		return err
+	}
+	if err := s.Store.ReconcileRepos(ctx, j.Installation, repos, observedAt); err != nil {
+		return fmt.Errorf("reconcile repositories: %w", err)
 	}
 	var failures []error
 	for _, r := range repos {
@@ -309,7 +349,7 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	g.run.Lock()
 	defer g.run.Unlock()
 	ctx, cancel := context.WithCancel(ctx)
-	g.start(cancel)
+	g.start(repo, cancel)
 	defer func() { g.finish(); cancel() }()
 	inactive, err := s.Store.InstallationInactive(ctx, installation)
 	if err != nil {
@@ -317,6 +357,14 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	}
 	if inactive {
 		s.Log.Info("installation inactive; repository skipped", "installation", installation, "repo", repo)
+		return nil
+	}
+	inactive, err = s.Store.RepoInactive(ctx, installation, repo)
+	if err != nil {
+		return fmt.Errorf("check repository access: %w", err)
+	}
+	if inactive {
+		s.Log.Info("repository access removed; skipped", "installation", installation, "repo", repo)
 		return nil
 	}
 	log := s.Log.With("installation", installation, "repo", repo, "trigger", trigger)
@@ -333,6 +381,9 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	}
 	outcome := store.RunOutcome{}
 	defer func() {
+		if ctx.Err() != nil && runErr == nil {
+			runErr = ctx.Err()
+		}
 		if runErr != nil {
 			outcome.Error = runErr.Error()
 		}
@@ -440,6 +491,15 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	if stateErr != nil {
 		g.write.Unlock()
 		return errors.Join(runErr, fmt.Errorf("check installation: %w", stateErr))
+	}
+	if inactive {
+		g.write.Unlock()
+		return runErr
+	}
+	inactive, stateErr = s.Store.RepoInactive(ctx, installation, repo)
+	if stateErr != nil {
+		g.write.Unlock()
+		return errors.Join(runErr, fmt.Errorf("check repository access: %w", stateErr))
 	}
 	if inactive {
 		g.write.Unlock()
@@ -646,6 +706,13 @@ func (g *guarded) Merge(ctx context.Context, owner, name string, number int, met
 	if inactive {
 		return ErrPaused
 	}
+	inactive, err = g.s.Store.RepoInactive(ctx, g.installation, g.repo)
+	if err != nil {
+		return fmt.Errorf("checking repository access: %w", err)
+	}
+	if inactive {
+		return ErrPaused
+	}
 	paused, err := g.s.Store.Paused(ctx, g.installation)
 	switch {
 	case err != nil:
@@ -681,6 +748,13 @@ func (g *guarded) Comment(ctx context.Context, owner, name string, number int, b
 	inactive, err := g.s.Store.InstallationInactive(ctx, g.installation)
 	if err != nil {
 		return fmt.Errorf("checking the installation: %w", err)
+	}
+	if inactive {
+		return ErrPaused
+	}
+	inactive, err = g.s.Store.RepoInactive(ctx, g.installation, g.repo)
+	if err != nil {
+		return fmt.Errorf("checking repository access: %w", err)
 	}
 	if inactive {
 		return ErrPaused
