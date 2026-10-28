@@ -230,6 +230,9 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	}
 	outcome := store.RunOutcome{}
 	defer func() {
+		if runErr != nil {
+			outcome.Error = runErr.Error()
+		}
 		if err := s.Store.FinishRun(context.WithoutCancel(ctx), runID, outcome, time.Now()); err != nil {
 			log.Error("record run", "err", err)
 			runErr = errors.Join(runErr, fmt.Errorf("record run: %w", err))
@@ -263,9 +266,26 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	outcome.Error = res.Error
 	if res.Failed() {
 		if res.Error == "" {
-			outcome.Error = "one or more PR actions or reviews failed"
+			var failures []string
+			for _, d := range res.Decisions {
+				if d.Verdict != nil && d.Verdict.Error != "" {
+					failures = append(failures, fmt.Sprintf("#%d: agent review failed: %s", d.Number, d.Verdict.Error))
+				}
+			}
+			for _, ev := range res.Events {
+				if ev.Kind == runner.EventMergeFailed || ev.Kind == runner.EventRebaseFailed {
+					failures = append(failures, fmt.Sprintf("#%d: %s: %s", ev.Number, ev.Kind, ev.Detail))
+				}
+			}
+			if len(failures) == 0 {
+				failures = append(failures, "one or more PR actions or reviews failed")
+			}
+			outcome.Error = strings.Join(failures, "; ")
 		}
 		runErr = errors.New(outcome.Error)
+	}
+	if err := client.recordError(); err != nil {
+		runErr = errors.Join(runErr, err)
 	}
 	outcome.PRs = len(res.Decisions)
 	outcome.Findings = len(res.Findings)
@@ -284,7 +304,12 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	// What a failed or interrupted run read and merged happened all the
 	// same: it is recorded, past the run's end if need be.
 	complete := res.Error == "" && ctx.Err() == nil
-	s.track(context.WithoutCancel(ctx), log, engine, installation, repo, res, client.seen, client.merged, repoMerges, complete)
+	if err := s.track(context.WithoutCancel(ctx), log, engine, installation, repo, res, client.seen, client.merged, repoMerges, complete); err != nil {
+		runErr = errors.Join(runErr, err)
+	}
+	if runErr != nil {
+		outcome.Error = runErr.Error()
+	}
 	if ctx.Err() != nil {
 		return
 	}
@@ -316,7 +341,10 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 		}
 	}
 	if change != output.Unchanged {
-		s.record(ctx, log, store.Write{RunID: runID, Repo: repo, Kind: string(change), Number: n})
+		if err := s.record(ctx, log, store.Write{RunID: runID, Repo: repo, Kind: string(change), Number: n}); err != nil {
+			runErr = errors.Join(runErr, err)
+			outcome.Error = runErr.Error()
+		}
 	}
 	if errors.Is(err, output.ErrIssuesDisabled) {
 		log.Info("issues are disabled; nothing to report to")
@@ -340,17 +368,22 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 // those, as merged or closed, and a merge the App's writes record is the
 // App's. Only a complete run records the mode or judges which PRs left,
 // and none when the PRs read were cut short (over 100).
-func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Client, installation int64, repo string, res runner.RepoResult, read map[int]github.PullRequest, mergedAt map[int]time.Time, merging, complete bool) {
+func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Client, installation int64, repo string, res runner.RepoResult, read map[int]github.PullRequest, mergedAt map[int]time.Time, merging, complete bool) error {
 	now := time.Now()
+	var failures []error
+	add := func(op string, err error) {
+		log.Error(op, "err", err)
+		failures = append(failures, fmt.Errorf("%s: %w", op, err))
+	}
 	if complete {
 		if err := s.Store.SeenRepo(ctx, installation, repo, res.Policy.Mode, merging, now); err != nil {
-			log.Error("track repository", "err", err)
+			add("track repository", err)
 		}
 	}
 	before, err := s.Store.OpenPRs(ctx, repo)
 	if err != nil {
-		log.Error("track PRs", "err", err)
-		return
+		add("list tracked PRs", err)
+		return errors.Join(failures...)
 	}
 	// Every PR the run read, those it merged part way included, was open
 	// then; those in its last read are open still.
@@ -360,7 +393,7 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 			opened = now
 		}
 		if err := s.Store.SeenPR(ctx, installation, repo, pr.Number, pr.Title, opened, now); err != nil {
-			log.Error("track PRs", "err", err)
+			add(fmt.Sprintf("track PR #%d", pr.Number), err)
 		}
 	}
 	seen := map[int]bool{}
@@ -378,14 +411,14 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 	maps.Copy(byApp, mergedAt)
 	for n, at := range byApp {
 		if err := s.Store.ClosePR(ctx, repo, n, store.PRMergedByApp, at); err != nil {
-			log.Error("track PRs", "err", err)
+			add(fmt.Sprintf("track merged PR #%d", n), err)
 		}
 	}
 	if !complete {
-		return
+		return errors.Join(failures...)
 	}
 	if slices.ContainsFunc(res.Findings, func(f policy.Finding) bool { return f.Kind == policy.FindingTruncated }) {
-		return
+		return errors.Join(failures...)
 	}
 	owner, name, _ := strings.Cut(repo, "/")
 	for _, n := range before {
@@ -394,7 +427,7 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 		}
 		state, err := engine.PullRequestState(ctx, owner, name, n)
 		if err != nil {
-			log.Info("PR left, state unknown", "pr", n, "err", err)
+			add(fmt.Sprintf("check PR #%d state", n), err)
 			continue
 		}
 		outcome, at := store.PRClosed, now
@@ -406,22 +439,26 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 			outcome = store.PRMerged
 			// Merged by a run that could not record it.
 			if t, ok, err := s.Store.AppMerge(ctx, repo, n); err != nil {
-				log.Error("track PRs", "err", err)
+				add(fmt.Sprintf("check PR #%d merge record", n), err)
+				continue
 			} else if ok {
 				outcome, at = store.PRMergedByApp, t
 			}
 		}
 		if err := s.Store.ClosePR(ctx, repo, n, outcome, at); err != nil {
-			log.Error("track PRs", "err", err)
+			add(fmt.Sprintf("track closed PR #%d", n), err)
 		}
 	}
+	return errors.Join(failures...)
 }
 
-func (s *Service) record(ctx context.Context, log *slog.Logger, w store.Write) {
+func (s *Service) record(ctx context.Context, log *slog.Logger, w store.Write) error {
 	w.At = time.Now()
 	if err := s.Store.RecordWrite(context.WithoutCancel(ctx), w); err != nil {
 		log.Error("record write", "err", err, "kind", w.Kind, "number", w.Number)
+		return fmt.Errorf("record %s #%d: %w", w.Kind, w.Number, err)
 	}
+	return nil
 }
 
 // ErrPaused is a write refused because the installation's writes are
@@ -449,7 +486,22 @@ type guarded struct {
 	seen map[int]github.PullRequest
 	// merged are when the run merged each PR it merged: a review can make
 	// a run last long after.
-	merged map[int]time.Time
+	merged   map[int]time.Time
+	auditErr error
+}
+
+func (g *guarded) record(ctx context.Context, w store.Write) {
+	if err := g.s.record(ctx, g.log, w); err != nil {
+		g.mu.Lock()
+		g.auditErr = errors.Join(g.auditErr, err)
+		g.mu.Unlock()
+	}
+}
+
+func (g *guarded) recordError() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.auditErr
 }
 
 func (g *guarded) FetchRepo(ctx context.Context, owner, name string) (*github.Repo, error) {
@@ -473,7 +525,7 @@ func (g *guarded) Merge(ctx context.Context, owner, name string, number int, met
 	case err != nil:
 		return fmt.Errorf("checking the pause: %w", err)
 	case paused || !g.s.AllowMerge:
-		g.s.record(ctx, g.log, store.Write{RunID: g.runID, Repo: g.repo, Kind: "merge-refused", Number: number, Detail: "paused"})
+		g.record(ctx, store.Write{RunID: g.runID, Repo: g.repo, Kind: "merge-refused", Number: number, Detail: "paused"})
 		return ErrPaused
 	}
 	err = g.Client.Merge(ctx, owner, name, number, method, headOID)
@@ -490,7 +542,7 @@ func (g *guarded) Merge(ctx context.Context, owner, name string, number int, met
 		g.merged[number] = time.Now()
 		g.mu.Unlock()
 	}
-	g.s.record(ctx, g.log, w)
+	g.record(ctx, w)
 	return err
 }
 
@@ -503,7 +555,7 @@ func (g *guarded) Comment(ctx context.Context, owner, name string, number int, b
 	case err != nil:
 		return fmt.Errorf("checking the pause: %w", err)
 	case paused || !g.s.AllowMerge:
-		g.s.record(ctx, g.log, store.Write{RunID: g.runID, Repo: g.repo, Kind: "review-comment-refused", Number: number, Detail: "paused"})
+		g.record(ctx, store.Write{RunID: g.runID, Repo: g.repo, Kind: "review-comment-refused", Number: number, Detail: "paused"})
 		return ErrPaused
 	}
 	err = g.Client.Comment(ctx, owner, name, number, body)
@@ -511,6 +563,6 @@ func (g *guarded) Comment(ctx context.Context, owner, name string, number int, b
 	if err != nil {
 		w.Kind, w.Detail = "review-comment-attempted", err.Error()
 	}
-	g.s.record(ctx, g.log, w)
+	g.record(ctx, w)
 	return err
 }

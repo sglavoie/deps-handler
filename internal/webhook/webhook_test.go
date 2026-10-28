@@ -27,11 +27,15 @@ type recorded struct {
 
 func handler(rec *recorded, secret []byte) *Handler {
 	return &Handler{
-		Secret:    secret,
-		Enqueue:   func(j jobs.Job) { rec.jobs = append(rec.jobs, j) },
-		Installed: func(_ context.Context, id int64, account string) { rec.installed = append(rec.installed, account) },
-		Uninstalled: func(_ context.Context, id int64, deleted bool) {
+		Secret:  secret,
+		Enqueue: func(j jobs.Job) { rec.jobs = append(rec.jobs, j) },
+		Installed: func(_ context.Context, id int64, account string) error {
+			rec.installed = append(rec.installed, account)
+			return nil
+		},
+		Uninstalled: func(_ context.Context, id int64, deleted bool) error {
 			rec.uninstalled = append(rec.uninstalled, fmt.Sprintf("%d deleted=%t", id, deleted))
+			return nil
 		},
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -120,5 +124,23 @@ func TestInstallationLifecycle(t *testing.T) {
 	deliver(h, "installation", `{"action": "deleted", `+inst+`}`, secret)
 	if !slices.Equal(rec.installed, []string{"acme"}) || !slices.Equal(rec.uninstalled, []string{"7 deleted=false", "7 deleted=true"}) {
 		t.Fatalf("installed %v, uninstalled %v", rec.installed, rec.uninstalled)
+	}
+}
+
+func TestInstallationPersistenceFailureRejectsDelivery(t *testing.T) {
+	for _, action := range []string{"created", "deleted", "suspend"} {
+		t.Run(action, func(t *testing.T) {
+			rec := &recorded{}
+			h := handler(rec, secret)
+			h.Installed = func(context.Context, int64, string) error { return fmt.Errorf("database unavailable") }
+			h.Uninstalled = func(context.Context, int64, bool) error { return fmt.Errorf("database unavailable") }
+			body := `{"action": "` + action + `", ` + inst + `}`
+			if code := deliver(h, "installation", body, secret); code != http.StatusInternalServerError {
+				t.Fatalf("status = %d", code)
+			}
+			if len(rec.jobs) != 0 {
+				t.Fatalf("queued after persistence failure: %+v", rec.jobs)
+			}
+		})
 	}
 }

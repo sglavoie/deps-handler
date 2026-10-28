@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"log/slog"
@@ -117,6 +118,7 @@ func (e *engine) FileText(_ context.Context, owner, name, path string) ([]byte, 
 type platform struct {
 	// installations, when set, replace the one installation, 1 on "o".
 	installations []app.Installation
+	dbPath        string
 	engine        *engine
 	issues        *ghfake.Issues
 	rest          *gh.Client
@@ -141,7 +143,8 @@ func (p *platform) Token(context.Context, int64) (string, error) {
 
 func setup(t *testing.T, allowMerge bool, repoFile string, prs ...github.PullRequest) (*Service, *platform) {
 	t.Helper()
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "dmc.db"))
+	dbPath := filepath.Join(t.TempDir(), "dmc.db")
+	st, err := store.Open(context.Background(), dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +154,7 @@ func setup(t *testing.T, allowMerge bool, repoFile string, prs ...github.PullReq
 	if repoFile != "" {
 		e.files["o/r:.github/deps-merger.yml"] = repoFile
 	}
-	p := &platform{engine: e, issues: issues, rest: issues.Client(t)}
+	p := &platform{dbPath: dbPath, engine: e, issues: issues, rest: issues.Client(t)}
 	s := &Service{
 		Platform: p, Store: st, AllowMerge: allowMerge,
 		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -228,6 +231,49 @@ func TestOnceReportsIssueFailure(t *testing.T) {
 	err := s.Once(context.Background(), []string{"o/r"})
 	if err == nil || !strings.Contains(err.Error(), "o/r: issue: GitHub issues unavailable") {
 		t.Fatalf("Once error = %v", err)
+	}
+}
+
+func rejectInsert(t *testing.T, dbPath, table string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	query := fmt.Sprintf("CREATE TRIGGER fail_insert BEFORE INSERT ON %s BEGIN SELECT RAISE(FAIL, 'database write unavailable'); END", table)
+	if _, err := db.Exec(query); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+func TestOnceReportsTrackingFailure(t *testing.T) {
+	s, p := setup(t, false, "", pr(1))
+	db := rejectInsert(t, p.dbPath, "repos")
+	err := s.Once(context.Background(), []string{"o/r"})
+	if err == nil || !strings.Contains(err.Error(), "track repository:") || !strings.Contains(err.Error(), "database write unavailable") {
+		t.Fatalf("Once error = %v", err)
+	}
+	var recorded string
+	if err := db.QueryRow("SELECT error FROM runs ORDER BY id DESC LIMIT 1").Scan(&recorded); err != nil || !strings.Contains(recorded, "track repository") {
+		t.Fatalf("recorded error = %q, %v", recorded, err)
+	}
+}
+
+func TestOnceReportsAuditFailureWithoutRetryingMerge(t *testing.T) {
+	s, p := setup(t, true, "mode: merge\n", pr(1))
+	db := rejectInsert(t, p.dbPath, "writes")
+	err := s.Once(context.Background(), []string{"o/r"})
+	if err == nil || !strings.Contains(err.Error(), "record merge #1:") || !strings.Contains(err.Error(), "database write unavailable") {
+		t.Fatalf("Once error = %v", err)
+	}
+	if !slices.Equal(p.engine.merged, []int{1}) {
+		t.Fatalf("merges = %v", p.engine.merged)
+	}
+	var recorded string
+	if err := db.QueryRow("SELECT error FROM runs ORDER BY id DESC LIMIT 1").Scan(&recorded); err != nil || !strings.Contains(recorded, "record merge #1") {
+		t.Fatalf("recorded error = %q, %v", recorded, err)
 	}
 }
 

@@ -129,6 +129,7 @@ func (m *metered) Run(ctx context.Context, dir, prompt string) (review.Answer, e
 		Took: time.Since(started), At: time.Now()}
 	if rerr := m.s.Store.RecordReview(context.WithoutCancel(ctx), rec); rerr != nil {
 		m.log.Error("record review", "err", rerr)
+		err = errors.Join(err, fmt.Errorf("record review: %w", rerr))
 	}
 	m.log.Info("agent review", "pr", n, "verdict", verdict, "prompt_tokens", used.PromptTokens,
 		"completion_tokens", used.CompletionTokens, "took", time.Since(started).Round(time.Second).String())

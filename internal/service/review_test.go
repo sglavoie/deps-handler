@@ -119,6 +119,21 @@ func TestReviewApprovesAMajorThatThenMerges(t *testing.T) {
 	}
 }
 
+func TestReviewRecordFailurePreventsMerge(t *testing.T) {
+	repo, heads := remote(t, 1)
+	s, p := setup(t, true, "mode: merge\nagent_review: true\n", major(1, heads[0]))
+	a := &agent{decision: "approve"}
+	withReview(t, s, a, repo, 10)
+	rejectInsert(t, p.dbPath, "reviews")
+	err := s.Once(context.Background(), []string{"o/r"})
+	if err == nil || !strings.Contains(err.Error(), "record review") {
+		t.Fatalf("Once error = %v", err)
+	}
+	if len(p.engine.merged) != 0 {
+		t.Fatalf("merged without a review record: %v", p.engine.merged)
+	}
+}
+
 func TestAppMergesAreTimedWhenTheyHappen(t *testing.T) {
 	repo, heads := remote(t, 2)
 	start := time.Now()

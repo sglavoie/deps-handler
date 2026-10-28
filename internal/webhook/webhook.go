@@ -25,9 +25,10 @@ type Handler struct {
 	// Enqueue asks for a run.
 	Enqueue func(jobs.Job)
 	// Installed and Uninstalled record an installation coming and going:
-	// deleted when it was uninstalled, rather than suspended.
-	Installed   func(ctx context.Context, id int64, account string)
-	Uninstalled func(ctx context.Context, id int64, deleted bool)
+	// deleted when it was uninstalled, rather than suspended. An error
+	// rejects the delivery so it can be inspected and redelivered.
+	Installed   func(ctx context.Context, id int64, account string) error
+	Uninstalled func(ctx context.Context, id int64, deleted bool) error
 	Log         *slog.Logger
 }
 
@@ -54,11 +55,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	h.handle(r.Context(), kind, event)
+	if err := h.handle(r.Context(), kind, event); err != nil {
+		h.Log.Error("webhook processing failed", "err", err, "delivery", r.Header.Get("X-GitHub-Delivery"))
+		http.Error(w, "webhook processing failed", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func (h *Handler) handle(ctx context.Context, kind string, event any) {
+func (h *Handler) handle(ctx context.Context, kind string, event any) error {
 	enqueue := func(installation int64, repo string) {
 		if installation == 0 {
 			return
@@ -71,10 +76,14 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) {
 		id := e.GetInstallation().GetID()
 		switch e.GetAction() {
 		case "created", "unsuspend", "new_permissions_accepted":
-			h.Installed(ctx, id, e.GetInstallation().GetAccount().GetLogin())
+			if err := h.Installed(ctx, id, e.GetInstallation().GetAccount().GetLogin()); err != nil {
+				return err
+			}
 			enqueue(id, "")
 		case "deleted", "suspend":
-			h.Uninstalled(ctx, id, e.GetAction() == "deleted")
+			if err := h.Uninstalled(ctx, id, e.GetAction() == "deleted"); err != nil {
+				return err
+			}
 		}
 	case *gh.InstallationRepositoriesEvent:
 		if e.GetAction() == "added" {
@@ -102,4 +111,5 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) {
 			enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 		}
 	}
+	return nil
 }

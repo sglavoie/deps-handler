@@ -110,24 +110,22 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 	mux.Handle("/webhook", &webhook.Handler{
 		Secret:  cfg.secret,
 		Enqueue: q.Enqueue,
-		Installed: func(ctx context.Context, id int64, account string) {
-			if err := st.InstallationAdded(ctx, id, account, time.Now()); err != nil {
-				log.Error("record installation", "installation", id, "err", err)
-			}
+		Installed: func(ctx context.Context, id int64, account string) error {
+			return st.InstallationAdded(ctx, id, account, time.Now())
 		},
-		Uninstalled: func(ctx context.Context, id int64, deleted bool) {
+		Uninstalled: func(ctx context.Context, id int64, deleted bool) error {
 			if err := st.InstallationRemoved(ctx, id, time.Now()); err != nil {
-				log.Error("record uninstall", "installation", id, "err", err)
+				return err
 			}
 			// Uninstalled, not suspended: what was kept about its
 			// repositories goes, as the data-handling note says.
 			if deleted {
 				if err := s.Forget(ctx, id); err != nil {
-					log.Error("forget installation", "installation", id, "err", err)
-				} else {
-					log.Info("installation forgotten", "installation", id)
+					return err
 				}
+				log.Info("installation forgotten", "installation", id)
 			}
+			return nil
 		},
 		Log: log.With("app", a.Slug, "app_id", a.ID),
 	})
