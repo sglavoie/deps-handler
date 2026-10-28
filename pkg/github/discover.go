@@ -1,7 +1,9 @@
 package github
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -47,13 +49,44 @@ type repoPage struct {
 		HasNextPage *bool
 		EndCursor   string
 	}
-	Nodes []struct {
-		NameWithOwner    string
-		IsArchived       bool
-		IsFork           bool
-		ViewerPermission string
-		Yml, Yaml        *struct{ ID string }
+	Nodes []discoveredRepo
+}
+
+type discoveredRepo struct {
+	NameWithOwner    string
+	IsArchived       bool
+	IsFork           bool
+	ViewerPermission string
+	Yml, Yaml        *struct{ ID string }
+}
+
+// UnmarshalJSON checks each item before filtering can discard it. Missing
+// fields cannot establish that a repository has no Dependabot config or
+// is eligible for discovery. Permission and file lookups may explicitly
+// be null, but archive and fork flags must always be known.
+func (r *discoveredRepo) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
 	}
+	for _, key := range []string{"nameWithOwner", "isArchived", "isFork", "viewerPermission", "yml", "yaml"} {
+		value, ok := fields[key]
+		if !ok || (key == "nameWithOwner" || key == "isArchived" || key == "isFork") && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return fmt.Errorf("incomplete repository listing: missing %s", key)
+		}
+	}
+	type plain discoveredRepo
+	if err := json.Unmarshal(data, (*plain)(r)); err != nil {
+		return err
+	}
+	owner, name, ok := strings.Cut(r.NameWithOwner, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return errors.New("incomplete repository listing: invalid nameWithOwner")
+	}
+	if r.Yml != nil && r.Yml.ID == "" || r.Yaml != nil && r.Yaml.ID == "" {
+		return errors.New("incomplete repository listing: unidentified Dependabot config")
+	}
+	return nil
 }
 
 // DependabotRepos lists, as owner/name, the repositories of owners, or

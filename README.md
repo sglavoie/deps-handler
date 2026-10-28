@@ -255,7 +255,10 @@ A missing check-summary field also fails the read; only an explicit null
 means the head has no checks, even when checks are optional.
 
 Repository discovery rejects missing lists or pagination fields and missing
-or repeated continuation cursors. If a later page is incomplete,
+or repeated continuation cursors. It also rejects null or unidentified
+repository entries, missing archive or fork flags, and omitted permission
+or Dependabot-config lookups. Explicit null permissions and config lookups
+remain valid and are filtered normally. If a later page is incomplete,
 `init --discover` fails instead of writing a partial repository list.
 
 Failure diagnosis compares checks by name and their available app, workflow

@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,62 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/api"
 )
+
+func TestDependabotReposRejectsIncompleteEntries(t *testing.T) {
+	valid := `{"nameWithOwner":"o/a","isArchived":false,"isFork":false,"viewerPermission":"WRITE","yml":{"id":"1"},"yaml":null}`
+	invalid := map[string]string{"null node": "null", "empty node": "{}"}
+	for _, field := range []string{"nameWithOwner", "isArchived", "isFork", "viewerPermission", "yml", "yaml"} {
+		var node map[string]any
+		if err := json.Unmarshal([]byte(valid), &node); err != nil {
+			t.Fatal(err)
+		}
+		delete(node, field)
+		data, _ := json.Marshal(node)
+		invalid["missing "+field] = string(data)
+		if field == "nameWithOwner" || field == "isArchived" || field == "isFork" {
+			node[field] = nil
+			data, _ = json.Marshal(node)
+			invalid["null "+field] = string(data)
+		}
+	}
+	invalid["empty name"] = strings.Replace(valid, `"o/a"`, `""`, 1)
+	invalid["missing owner"] = strings.Replace(valid, `"o/a"`, `"/a"`, 1)
+	invalid["missing repo"] = strings.Replace(valid, `"o/a"`, `"o/"`, 1)
+	invalid["unidentified config"] = strings.Replace(valid, `{"id":"1"}`, `{}`, 1)
+	for label, node := range invalid {
+		for _, root := range []string{"viewer", "repositoryOwner"} {
+			t.Run(root+"/"+label, func(t *testing.T) {
+				var owners []string
+				if root == "repositoryOwner" {
+					owners = []string{"o"}
+				}
+				seq := &sequence{responses: []string{
+					fmt.Sprintf(`{"data":{%q:{"repositories":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[%s]}}}}`, root, valid),
+					fmt.Sprintf(`{"data":{%q:{"repositories":{"pageInfo":{"hasNextPage":false},"nodes":[%s]}}}}`, root, node),
+				}}
+				got, err := gqlClient(t, seq).dependabotRepos(context.Background(), owners)
+				if err == nil || got != nil {
+					t.Fatalf("repos = %q, err = %v; incomplete entry must discard the entire listing", got, err)
+				}
+			})
+		}
+	}
+}
+
+func TestDependabotReposAcceptsExplicitNullPermissionAndConfigs(t *testing.T) {
+	for _, node := range []string{
+		`{"nameWithOwner":"o/a","isArchived":false,"isFork":false,"viewerPermission":null,"yml":{"id":"1"},"yaml":null}`,
+		`{"nameWithOwner":"o/a","isArchived":false,"isFork":false,"viewerPermission":"WRITE","yml":null,"yaml":null}`,
+	} {
+		seq := &sequence{responses: []string{
+			fmt.Sprintf(`{"data":{"viewer":{"repositories":{"pageInfo":{"hasNextPage":false},"nodes":[%s]}}}}`, node),
+		}}
+		got, err := gqlClient(t, seq).dependabotRepos(context.Background(), nil)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("repos = %q, err = %v; explicitly ineligible repository should be filtered", got, err)
+		}
+	}
+}
 
 // sequence answers each GraphQL request with the next of its responses,
 // recording the request bodies.
@@ -42,14 +99,14 @@ func gqlClient(t *testing.T, rt http.RoundTripper) *client {
 func TestDependabotReposFollowsPagesAndFilters(t *testing.T) {
 	seq := &sequence{responses: []string{
 		`{"data": {"viewer": {"repositories": {"pageInfo": {"hasNextPage": true, "endCursor": "c1"}, "nodes": [
-		  {"nameWithOwner": "o/zeta", "viewerPermission": "ADMIN", "yml": {"id": "1"}, "yaml": null},
-		  {"nameWithOwner": "o/no-config", "viewerPermission": "ADMIN", "yml": null, "yaml": null},
-		  {"nameWithOwner": "o/archived", "isArchived": true, "viewerPermission": "ADMIN", "yml": {"id": "2"}},
-		  {"nameWithOwner": "o/fork", "isFork": true, "viewerPermission": "ADMIN", "yml": {"id": "3"}}
+		  {"nameWithOwner":"o/zeta","viewerPermission":"ADMIN","yml":{"id":"1"},"yaml":null,"isArchived":false,"isFork":false},
+		  {"nameWithOwner":"o/no-config","viewerPermission":"ADMIN","yml":null,"yaml":null,"isArchived":false,"isFork":false},
+		  {"nameWithOwner":"o/archived","isArchived":true,"viewerPermission":"ADMIN","yml":{"id":"2"},"isFork":false,"yaml":null},
+		  {"nameWithOwner":"o/fork","isFork":true,"viewerPermission":"ADMIN","yml":{"id":"3"},"isArchived":false,"yaml":null}
 		]}}}}`,
 		`{"data": {"viewer": {"repositories": {"pageInfo": {"hasNextPage": false}, "nodes": [
-		  {"nameWithOwner": "O/Alpha", "viewerPermission": "WRITE", "yml": null, "yaml": {"id": "4"}},
-		  {"nameWithOwner": "p/read-only", "viewerPermission": "READ", "yml": {"id": "5"}}
+		  {"nameWithOwner":"O/Alpha","viewerPermission":"WRITE","yml":null,"yaml":{"id":"4"},"isArchived":false,"isFork":false},
+		  {"nameWithOwner":"p/read-only","viewerPermission":"READ","yml":{"id":"5"},"isArchived":false,"isFork":false,"yaml":null}
 		]}}}}`,
 	}}
 	got, err := gqlClient(t, seq).dependabotRepos(context.Background(), nil)
@@ -68,8 +125,8 @@ func TestDependabotReposOfOwners(t *testing.T) {
 	seq := &sequence{responses: []string{
 		// A user's listing holds the repositories they collaborate on too.
 		`{"data": {"repositoryOwner": {"repositories": {"pageInfo": {"hasNextPage": false}, "nodes": [
-		  {"nameWithOwner": "me/a", "viewerPermission": "ADMIN", "yml": {"id": "1"}},
-		  {"nameWithOwner": "someone/b", "viewerPermission": "WRITE", "yml": {"id": "2"}}
+		  {"nameWithOwner":"me/a","viewerPermission":"ADMIN","yml":{"id":"1"},"isArchived":false,"isFork":false,"yaml":null},
+		  {"nameWithOwner":"someone/b","viewerPermission":"WRITE","yml":{"id":"2"},"isArchived":false,"isFork":false,"yaml":null}
 		]}}}}`,
 		`{"data": {"repositoryOwner": null}}`,
 	}}
@@ -82,8 +139,8 @@ func TestDependabotReposOfOwners(t *testing.T) {
 	}
 
 	seq = &sequence{responses: []string{`{"data": {"repositoryOwner": {"repositories": {"pageInfo": {"hasNextPage": false}, "nodes": [
-	  {"nameWithOwner": "me/a", "viewerPermission": "ADMIN", "yml": {"id": "1"}},
-	  {"nameWithOwner": "someone/b", "viewerPermission": "WRITE", "yml": {"id": "2"}}
+	  {"nameWithOwner":"me/a","viewerPermission":"ADMIN","yml":{"id":"1"},"isArchived":false,"isFork":false,"yaml":null},
+	  {"nameWithOwner":"someone/b","viewerPermission":"WRITE","yml":{"id":"2"},"isArchived":false,"isFork":false,"yaml":null}
 	]}}}}`}}
 	got, err = gqlClient(t, seq).dependabotRepos(context.Background(), []string{"Me"})
 	if err != nil || !slices.Equal(got, []string{"me/a"}) {
@@ -120,7 +177,7 @@ func TestDependabotReposRejectsIncompletePages(t *testing.T) {
 					owners, root = []string{owner}, "repositoryOwner"
 				}
 				seq := &sequence{responses: []string{
-					fmt.Sprintf(`{"data": {%q: {"repositories": {"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"nameWithOwner":"o/a","viewerPermission":"WRITE","yml":{"id":"1"}}]}}}}`, root),
+					fmt.Sprintf(`{"data": {%q: {"repositories": {"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"nameWithOwner":"o/a","viewerPermission":"WRITE","yml":{"id":"1"},"isArchived":false,"isFork":false,"yaml":null}]}}}}`, root),
 					fmt.Sprintf(`{"data": {%q: {"repositories": %s}}}`, root, page),
 				}}
 				got, err := gqlClient(t, seq).dependabotRepos(context.Background(), owners)
@@ -152,7 +209,7 @@ func TestDependabotReposRejectsInvalidCursors(t *testing.T) {
 	for _, cursor := range []string{`null`, `""`, `"c1"`} {
 		t.Run(cursor, func(t *testing.T) {
 			seq := &sequence{responses: []string{
-				`{"data":{"viewer":{"repositories":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"nameWithOwner":"o/a","viewerPermission":"WRITE","yml":{"id":"1"}}]}}}}`,
+				`{"data":{"viewer":{"repositories":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"nameWithOwner":"o/a","viewerPermission":"WRITE","yml":{"id":"1"},"isArchived":false,"isFork":false,"yaml":null}]}}}}`,
 				fmt.Sprintf(`{"data":{"viewer":{"repositories":{"pageInfo":{"hasNextPage":true,"endCursor":%s},"nodes":[]}}}}`, cursor),
 			}}
 			// Extra responses keep the unfixed implementation bounded by its page cap.
