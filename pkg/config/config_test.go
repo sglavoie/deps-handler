@@ -94,6 +94,22 @@ func TestParseAcceptsEveryEntryField(t *testing.T) {
 	}
 }
 
+func TestParseRejectsNullSkip(t *testing.T) {
+	for name, input := range map[string]string{
+		"empty": "repos: [{repo: a/b, skip: }]",
+		"null":  "repos: [{repo: a/b, skip: null}]",
+		"tilde": "repos: [{repo: a/b, skip: ~}]",
+		"alias": "agent: {use: &unset null}\nrepos: [{repo: a/b, skip: *unset}]",
+		"merge": "repos: [{repo: a/b, <<: {skip: null}}]",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := Parse([]byte(input)); err == nil || !strings.Contains(err.Error(), "skip has no value") {
+				t.Fatalf("Parse = %v; want an error rather than silently including the repository", err)
+			}
+		})
+	}
+}
+
 func TestParseFollowsMergeKeys(t *testing.T) {
 	in := `repos:
   - &strict {repo: a/b, max_update_type: patch, agent_review: false}

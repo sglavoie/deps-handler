@@ -286,6 +286,8 @@ func checkEntryKeys(n *yaml.Node) error { return checkKeys(n, entryKeys, " in re
 // checkKeys rejects keys of a mapping outside keys, and policy fields given
 // no value ("max_update_type:" or "~"), which would decode as unset and
 // inherit without a word, though an empty string is rejected as invalid.
+// A null skip is rejected too: decoding it as false would include a
+// repository whose entry never explicitly allowed it to run.
 // It follows YAML merge keys ("<<: *shared") into the mappings they pull
 // in. where follows "unknown field" in an error.
 func checkKeys(n *yaml.Node, keys map[string]bool, where string) error {
@@ -326,6 +328,8 @@ func checkKeysVisited(n *yaml.Node, keys map[string]bool, where string, visited 
 				}
 			case !keys[k.Value]:
 				return fmt.Errorf("line %d: unknown field %q%s", k.Line, k.Value, where)
+			case k.Value == "skip" && v.Tag == "!!null":
+				return fmt.Errorf("line %d: skip has no value; use true or false, or remove it to include the repository", k.Line)
 			case policyKeys[k.Value] && v.Tag == "!!null":
 				return fmt.Errorf("line %d: %s has no value; give it one, or remove it to inherit", k.Line, k.Value)
 			}

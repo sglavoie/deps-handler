@@ -81,7 +81,9 @@ func (r Request) Key() string {
 		// Quote each component so separators inside names or versions
 		// cannot impersonate another dependency or its version boundary.
 		deps = append(deps, fmt.Sprintf("%q@%q", d.Name, d.Version))
-		versioned = versioned && d.Version != ""
+		// A blank version establishes no update identity, just as an
+		// omitted version does. Pin it to the reviewed head instead.
+		versioned = versioned && strings.TrimSpace(d.Version) != ""
 	}
 	slices.Sort(deps)
 	// Older keys could be created against hosts other than github.com,

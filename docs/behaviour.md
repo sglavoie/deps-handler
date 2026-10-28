@@ -271,7 +271,7 @@ repository reviews its PRs one after another, so more reviews than
 `~/.local/state/deps-merger/verdicts.json`, keyed by the PR (ignoring the
 case of `owner/name`), the target branch (case-sensitive), and the versions
 it moves to: a new version or a change of target branch is always reviewed
-again. Keys carry a `v2` marker and quote each dependency name and version,
+again. Keys carry a `v3` marker and quote each dependency name and version,
 so embedded separators cannot identify a different update. Older cached
 verdicts are not reused: each update needs one fresh review after upgrading.
 The key leaves out the agent, so a verdict one agent gave is
@@ -279,8 +279,9 @@ reused when another runs. An approval survives a rebase; a
 rejection does not, since the base branch the PR now sits on may have
 dealt with what the agent objected to. The exception is an update whose
 versions Dependabot does not record (a Docker digest, an action pinned by
-commit): the head commit stands in for them in the key, so a rebase has
-it reviewed again even once approved. A verdict that cannot be saved is
+commit), or records as whitespace only: the head commit stands in for
+them in the key, so a rebase has it reviewed again even once approved.
+A verdict that cannot be saved is
 reported as a warning (and under `warnings` in `--json`); a verdict file
 that cannot be read is moved aside to `verdicts.json.corrupt-TIMESTAMP`
 (with `-2`, `-3`… added should one be found twice in a second),
@@ -456,6 +457,9 @@ repos:
   - repo: acme/Mirror
     skip: true
 ```
+
+An empty `skip:` value, `null` or `~` is rejected rather than treated as
+`false`. Use an explicit boolean or omit the field to include the repository.
 
 `deps-merger run -r Mirror` still runs a skipped repo when you ask for it
 by name, and `deps-merger run --include-skipped` runs every repo, skipped

@@ -188,6 +188,8 @@ change of target branch is always reviewed again, and a rejection lasts
 only until Dependabot rebases the PR. `deps-merger verdicts` lists them and
 `deps-merger verdicts forget acme/Storefront#42` drops them. Set
 `agent_review: false` on a repo to keep the agent out of it.
+Missing or whitespace-only dependency versions pin the verdict to the
+reviewed commit, so a changed head requires a fresh review.
 
 Overlapping review runs cannot share checkouts, even when they use different
 state directories for their verdict caches.
@@ -299,6 +301,8 @@ repos:
 
 `deps-merger run -r Billing` runs one repo and `--owner acme` every repo
 of an owner. [Config](docs/behaviour.md#config) has every rule.
+A `skip:` field with no value (including `null` or `~`) is an error;
+use `true` or `false`, or omit the field to include the repository.
 
 A repository can also set its own policy in `.github/deps-merger.yml` on
 its default branch, and an owner for all its repositories in

@@ -136,3 +136,26 @@ func TestCacheOwnsVerdictConcerns(t *testing.T) {
 		})
 	}
 }
+
+func TestCachePinsBlankVersionsToReviewedHead(t *testing.T) {
+	for _, version := range []string{"", " ", "\t\n"} {
+		t.Run(version, func(t *testing.T) {
+			c, err := OpenCache(filepath.Join(t.TempDir(), "verdicts.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := request()
+			r.Dependencies = []dependabot.Dependency{{Name: "lib", Version: version}}
+			if err := c.Put(r.Key(), r.HeadOID, "agent", policy.Verdict{Approved: true}); err != nil {
+				t.Fatal(err)
+			}
+			if c.Get(r.Key(), r.HeadOID) == nil {
+				t.Fatal("same head must reuse its approval")
+			}
+			r.HeadOID = "new-head"
+			if c.Get(r.Key(), r.HeadOID) != nil {
+				t.Fatal("blank version reused approval after the head changed")
+			}
+		})
+	}
+}
