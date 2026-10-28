@@ -240,7 +240,7 @@ const fetchResponse = `{"data": {
   "repository": {"nameWithOwner": "o/r", "isArchived": false, "viewerPermission": "WRITE",
     "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": true},
   "search": {"issueCount": 3, "nodes": [
-    {},
+    {"number": 8, "state": "MERGED"},
     {"number": 7, "state": "CLOSED"},
     {"number": 5, "state": "OPEN", "title": "bump lib", "url": "u", "isDraft": false,
      "createdAt": "2026-10-01T12:00:00Z", "headRefOid": "abc", "baseRefName": "main",
@@ -719,6 +719,8 @@ func TestFetchRepoRequiresCompleteSearch(t *testing.T) {
 		`, "search": {"issueCount": null, "nodes": []}`,
 		`, "search": {"issueCount": 0}`,
 		`, "search": {"issueCount": 0, "nodes": null}`,
+		`, "search": {"issueCount": -1, "nodes": []}`,
+		`, "search": {"issueCount": 0, "nodes": [{"number": 7, "state": "CLOSED"}]}`,
 	} {
 		t.Run(search, func(t *testing.T) {
 			body := `{"data":{"repository":{"nameWithOwner":"o/r","isArchived":false}` + search + `}}`
@@ -736,6 +738,24 @@ func TestFetchRepoRequiresCompleteSearch(t *testing.T) {
 		if err != nil || r.OpenPRCount != count || len(r.PullRequests) != 0 {
 			t.Fatalf("count %d: FetchRepo = %+v, %v", count, r, err)
 		}
+	}
+}
+
+func TestFetchRepoRejectsInvalidSearchItems(t *testing.T) {
+	for _, item := range []string{
+		`null`,
+		`{}`,
+		`{"number": null, "state": "OPEN"}`,
+		`{"number": 0, "state": "OPEN"}`,
+		`{"number": -1, "state": "OPEN"}`,
+	} {
+		t.Run(item, func(t *testing.T) {
+			body := fmt.Sprintf(`{"data":{"repository":{"nameWithOwner":"o/r","isArchived":false},"search":{"issueCount":1,"nodes":[%s]}}}`, item)
+			r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")
+			if err == nil || r != nil || !strings.Contains(err.Error(), "pull request number") {
+				t.Fatalf("FetchRepo = %+v, %v; an unidentified search item must not disappear from the report", r, err)
+			}
+		})
 	}
 }
 

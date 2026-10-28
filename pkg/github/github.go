@@ -459,6 +459,9 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 	if resp.Search == nil || resp.Search.IssueCount == nil || resp.Search.Nodes == nil {
 		return nil, fmt.Errorf("%s/%s: incomplete pull request search", owner, name)
 	}
+	if *resp.Search.IssueCount < len(resp.Search.Nodes) {
+		return nil, fmt.Errorf("%s/%s: incomplete pull request search: count smaller than returned list", owner, name)
+	}
 	r := &Repo{
 		FullName:      resp.Repository.NameWithOwner,
 		Archived:      *resp.Repository.IsArchived,
@@ -471,8 +474,11 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		FetchedAt:     time.Now(),
 	}
 	for _, n := range resp.Search.Nodes {
-		if n.Number == 0 {
-			continue // non-PR hit
+		if n.Number <= 0 {
+			// The search requests only PRs. An unidentified result cannot
+			// be counted as read and then silently dropped: --open could
+			// otherwise hide a repository whose PRs were never evaluated.
+			return nil, fmt.Errorf("%s/%s: incomplete pull request search: invalid pull request number %d", owner, name, n.Number)
 		}
 		switch n.State {
 		case "OPEN":

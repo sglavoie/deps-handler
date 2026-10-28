@@ -243,6 +243,9 @@ the fetched search page has closed since GitHub indexed it. An incomplete
 search is not reported as having no open PRs.
 Missing search results, counts or lists, and unknown states on returned PRs,
 fail the repository read instead of silently hiding PRs.
+Null or unidentified search items, non-positive PR numbers and search counts
+smaller than the returned list also fail the read, so `--open` cannot hide
+an incomplete response as a repository with nothing to process.
 Missing or null archive and draft flags also fail the read rather than
 treating a repository as active or a PR as ready for merging.
 Missing commit, check or comment lists or totals also fail the read, as do
