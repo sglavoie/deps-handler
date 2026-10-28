@@ -139,6 +139,9 @@ func (m *metered) Run(ctx context.Context, dir, prompt string) (review.Answer, e
 // Forget deletes what is kept about installation's repositories: its
 // records, checkouts and cached verdicts. The installation itself stays.
 func (s *Service) Forget(ctx context.Context, installation int64) error {
+	g := s.gate(installation)
+	g.run.Lock()
+	defer g.run.Unlock()
 	if err := s.Store.ForgetInstallation(ctx, installation); err != nil {
 		return err
 	}

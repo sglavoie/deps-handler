@@ -125,6 +125,7 @@ func (e *engine) FileText(_ context.Context, owner, name, path string) ([]byte, 
 type platform struct {
 	// installations, when set, replace the one installation, 1 on "o".
 	installations []app.Installation
+	onList        func()
 	dbPath        string
 	engine        *engine
 	issues        *ghfake.Issues
@@ -134,6 +135,9 @@ type platform struct {
 
 func (p *platform) Login() string { return login }
 func (p *platform) Installations(context.Context) ([]app.Installation, error) {
+	if p.onList != nil {
+		p.onList()
+	}
 	if p.installations != nil {
 		return p.installations, nil
 	}
@@ -484,5 +488,64 @@ func TestSweepForgetsUninstalledButNotSuspended(t *testing.T) {
 	}
 	if ms[0].PRs != 1 || ms[1].PRs != 0 {
 		t.Fatalf("suspended kept %d PRs, uninstalled kept %d", ms[0].PRs, ms[1].PRs)
+	}
+}
+
+func TestQueuedJobSkipsSuspendedInstallation(t *testing.T) {
+	s, p := setup(t, true, "mode: merge\n", pr(1))
+	ctx := context.Background()
+	if err := s.InstallationAdded(ctx, 1, "o"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InstallationRemoved(ctx, 1, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Run(ctx, jobs.Job{Installation: 1, Repo: "o/r", Trigger: "stale webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.engine.merged) != 0 || len(writes(t, s)) != 0 {
+		t.Fatalf("inactive installation merged %v, wrote %v", p.engine.merged, writes(t, s))
+	}
+	ms, err := s.Store.Metrics(ctx, time.Now())
+	if err != nil || len(ms) != 1 || ms[0].Repos != 0 {
+		t.Fatalf("metrics = %+v, %v", ms, err)
+	}
+}
+
+func TestSweepSnapshotCannotUndoUninstallWebhook(t *testing.T) {
+	s, p := setup(t, false, "", pr(1))
+	ctx := context.Background()
+	if err := s.InstallationAdded(ctx, 1, "o"); err != nil {
+		t.Fatal(err)
+	}
+	p.onList = func() {
+		if err := s.InstallationRemoved(ctx, 1, true); err != nil {
+			t.Error(err)
+		}
+	}
+	active, err := s.SyncInstallations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("stale sweep returned active installations: %v", active)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || !inactive {
+		t.Fatalf("stale sweep reactivated installation: inactive = %t, %v", inactive, err)
+	}
+	if err := s.Run(ctx, jobs.Job{Installation: 1, Repo: "o/r"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(writes(t, s)) != 0 {
+		t.Fatalf("stale sweep caused writes: %v", writes(t, s))
+	}
+}
+
+func TestQueuedJobReturnsRepositoryFailureForRetry(t *testing.T) {
+	s, p := setup(t, false, "", pr(1))
+	p.restErr = errors.New("issues temporarily unavailable")
+	err := s.Run(context.Background(), jobs.Job{Installation: 1, Repo: "o/r", Trigger: "webhook"})
+	if err == nil || !strings.Contains(err.Error(), "issues temporarily unavailable") {
+		t.Fatalf("queued run error = %v", err)
 	}
 }

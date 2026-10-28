@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -19,7 +20,7 @@ type recorder struct {
 	hold    time.Duration
 }
 
-func (r *recorder) run(_ context.Context, j Job) {
+func (r *recorder) run(_ context.Context, j Job) error {
 	r.mu.Lock()
 	r.jobs = append(r.jobs, j)
 	a, ok := r.active[j.Installation]
@@ -33,6 +34,7 @@ func (r *recorder) run(_ context.Context, j Job) {
 	}
 	time.Sleep(r.hold)
 	a.Add(-1)
+	return nil
 }
 
 func (r *recorder) seen() []Job {
@@ -126,4 +128,57 @@ func TestNothingRunsAfterStop(t *testing.T) {
 	if len(r.seen()) != 0 || q.Pending() != 1 {
 		t.Fatalf("runs %v, pending %d", r.seen(), q.Pending())
 	}
+}
+
+func TestFailedJobRetriesAndStopsAfterSuccess(t *testing.T) {
+	var calls atomic.Int32
+	q := &Queues{Debounce: 0, RetryDelays: []time.Duration{5 * time.Millisecond, 10 * time.Millisecond}}
+	q.Run = func(context.Context, Job) error {
+		if calls.Add(1) < 3 {
+			return errors.New("temporary failure")
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	q.Start(ctx)
+	t.Cleanup(func() { cancel(); q.Wait() })
+	q.Enqueue(Job{Installation: 1, Repo: "o/a"})
+	eventually(t, "successful retry", func() bool { return calls.Load() == 3 && q.Pending() == 0 })
+	time.Sleep(25 * time.Millisecond)
+	if got := calls.Load(); got != 3 {
+		t.Fatalf("runs = %d, want 3", got)
+	}
+}
+
+func TestFailedJobHasBoundedRetries(t *testing.T) {
+	var calls atomic.Int32
+	q := &Queues{Debounce: 0, RetryDelays: []time.Duration{5 * time.Millisecond, 10 * time.Millisecond},
+		Run: func(context.Context, Job) error { calls.Add(1); return errors.New("persistent failure") }}
+	ctx, cancel := context.WithCancel(context.Background())
+	q.Start(ctx)
+	t.Cleanup(func() { cancel(); q.Wait() })
+	q.Enqueue(Job{Installation: 1, Repo: "o/a"})
+	eventually(t, "last retry", func() bool { return calls.Load() == 3 && q.Pending() == 0 })
+	time.Sleep(25 * time.Millisecond)
+	if got := calls.Load(); got != 3 {
+		t.Fatalf("runs = %d, want 3", got)
+	}
+}
+
+func TestFreshEventAdvancesPendingRetry(t *testing.T) {
+	var calls atomic.Int32
+	q := &Queues{Debounce: 0, RetryDelays: []time.Duration{time.Hour},
+		Run: func(context.Context, Job) error {
+			if calls.Add(1) == 1 {
+				return errors.New("temporary failure")
+			}
+			return nil
+		}}
+	ctx, cancel := context.WithCancel(context.Background())
+	q.Start(ctx)
+	t.Cleanup(func() { cancel(); q.Wait() })
+	q.Enqueue(Job{Installation: 1, Repo: "o/a"})
+	eventually(t, "pending retry", func() bool { return calls.Load() == 1 && q.Pending() == 1 })
+	q.Enqueue(Job{Installation: 1, Repo: "o/a", Trigger: "new event"})
+	eventually(t, "new event run", func() bool { return calls.Load() == 2 && q.Pending() == 0 })
 }

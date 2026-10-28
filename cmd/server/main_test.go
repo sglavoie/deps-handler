@@ -1,14 +1,43 @@
 package main
 
 import (
+	"context"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/sglavoie/deps-merger/internal/jobs"
 	"github.com/sglavoie/deps-merger/pkg/review"
 )
+
+func TestListenerFailureStopsQueuedWorkers(t *testing.T) {
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	q := &jobs.Queues{Run: func(context.Context, jobs.Job) error { return nil }, Debounce: time.Hour}
+	q.Start(ctx)
+	q.Enqueue(jobs.Job{Installation: 1, Repo: "o/r"})
+	done := make(chan error, 1)
+	go func() {
+		done <- listenAndDrain(&http.Server{Addr: occupied.Addr().String()}, q, cancel)
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "address already in use") {
+			t.Fatalf("listener error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("listener failure left a queued worker running")
+	}
+}
 
 func TestLoadReviewBackends(t *testing.T) {
 	for _, backend := range []string{"claude", "codex"} {

@@ -53,7 +53,78 @@ type Service struct {
 	Sleep func(context.Context, time.Duration) error
 	// Review, when set, lets an agent judge updates the policy alone would
 	// not merge, in repositories that ask for it with agent_review: true.
-	Review *Review
+	Review  *Review
+	gatesMu sync.Mutex
+	gates   map[int64]*installationGate
+}
+
+// An installation's runs and cleanup cannot overlap. Removal may still
+// mark it inactive during a run; write serializes that change with GitHub
+// writes so no new write starts after removal has been recorded.
+type installationGate struct {
+	run          sync.Mutex
+	write        sync.Mutex
+	activeMu     sync.Mutex
+	activeCancel context.CancelFunc
+}
+
+func (g *installationGate) start(cancel context.CancelFunc) {
+	g.activeMu.Lock()
+	g.activeCancel = cancel
+	g.activeMu.Unlock()
+}
+
+func (g *installationGate) stop() {
+	g.activeMu.Lock()
+	if g.activeCancel != nil {
+		g.activeCancel()
+	}
+	g.activeMu.Unlock()
+}
+
+func (g *installationGate) finish() {
+	g.activeMu.Lock()
+	g.activeCancel = nil
+	g.activeMu.Unlock()
+}
+
+func (s *Service) gate(id int64) *installationGate {
+	s.gatesMu.Lock()
+	defer s.gatesMu.Unlock()
+	if s.gates == nil {
+		s.gates = make(map[int64]*installationGate)
+	}
+	if s.gates[id] == nil {
+		s.gates[id] = new(installationGate)
+	}
+	return s.gates[id]
+}
+
+func (s *Service) InstallationAdded(ctx context.Context, id int64, account string) error {
+	return s.installationAddedAt(ctx, id, account, time.Now())
+}
+
+func (s *Service) installationAddedAt(ctx context.Context, id int64, account string, observedAt time.Time) error {
+	g := s.gate(id)
+	g.write.Lock()
+	defer g.write.Unlock()
+	return s.Store.InstallationAdded(ctx, id, account, observedAt)
+}
+
+// InstallationRemoved stops future writes and, for an uninstall, waits for
+// the current run before deleting its records and review files.
+func (s *Service) InstallationRemoved(ctx context.Context, id int64, deleted bool) error {
+	g := s.gate(id)
+	g.write.Lock()
+	err := s.Store.InstallationRemoved(ctx, id, time.Now())
+	g.write.Unlock()
+	if err == nil {
+		g.stop()
+	}
+	if err != nil || !deleted {
+		return err
+	}
+	return s.Forget(context.WithoutCancel(ctx), id)
 }
 
 // Base is the policy a repository gets before its own files: report
@@ -99,19 +170,25 @@ func (s *Service) SweepEvery(ctx context.Context, period time.Duration, enqueue 
 // repositories is forgotten, as on the webhook. A suspended one is
 // listed, and only stops running.
 func (s *Service) SyncInstallations(ctx context.Context) ([]int64, error) {
+	observedAt := time.Now()
 	ins, err := s.Platform.Installations(ctx)
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
 	var active []int64
 	for _, in := range ins {
 		if in.Suspended {
 			continue
 		}
-		active = append(active, in.ID)
-		if err := s.Store.InstallationAdded(ctx, in.ID, in.Account, now); err != nil {
+		if err := s.installationAddedAt(ctx, in.ID, in.Account, observedAt); err != nil {
 			return nil, err
+		}
+		inactive, err := s.Store.InstallationInactive(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !inactive {
+			active = append(active, in.ID)
 		}
 	}
 	known, err := s.Store.Installations(ctx)
@@ -120,7 +197,7 @@ func (s *Service) SyncInstallations(ctx context.Context) ([]int64, error) {
 	}
 	for _, k := range known {
 		if k.RemovedAt == nil && !slices.Contains(active, k.ID) {
-			if err := s.Store.InstallationRemoved(ctx, k.ID, now); err != nil {
+			if err := s.InstallationRemoved(ctx, k.ID, false); err != nil {
 				return nil, err
 			}
 		}
@@ -186,36 +263,62 @@ func (s *Service) Once(ctx context.Context, only []string) error {
 }
 
 // Run does a queued job: one repository, or each of the installation's.
-func (s *Service) Run(ctx context.Context, j jobs.Job) {
+// Errors return to the queue so it can retry before the next sweep.
+func (s *Service) Run(ctx context.Context, j jobs.Job) error {
+	inactive, err := s.Store.InstallationInactive(ctx, j.Installation)
+	if err != nil {
+		return fmt.Errorf("check installation: %w", err)
+	}
+	if inactive {
+		return nil
+	}
 	if j.Repo != "" {
 		if s.runs(j.Repo) {
 			if err := s.RunRepo(ctx, j.Installation, j.Repo, j.Trigger); err != nil {
 				s.Log.Error("run repository", "repo", j.Repo, "err", err)
+				return err
 			}
 		}
-		return
+		return nil
 	}
 	repos, err := s.Platform.Repos(ctx, j.Installation)
 	if err != nil {
 		s.Log.Error("list repositories", "installation", j.Installation, "err", err)
-		return
+		return err
 	}
+	var failures []error
 	for _, r := range repos {
 		if ctx.Err() != nil {
-			return
+			return ctx.Err()
 		}
 		if s.runs(r) {
 			if err := s.RunRepo(ctx, j.Installation, r, j.Trigger); err != nil {
 				s.Log.Error("run repository", "repo", r, "err", err)
+				failures = append(failures, fmt.Errorf("%s: %w", r, err))
 			}
 		}
 	}
+	return errors.Join(failures...)
 }
 
 // RunRepo runs the engine on one repository and brings its issue up to
 // date. The engine merges only when merging is allowed, the installation
 // is not paused, and the repository's policy says mode: merge.
 func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger string) (runErr error) {
+	g := s.gate(installation)
+	g.run.Lock()
+	defer g.run.Unlock()
+	ctx, cancel := context.WithCancel(ctx)
+	g.start(cancel)
+	defer func() { g.finish(); cancel() }()
+	inactive, err := s.Store.InstallationInactive(ctx, installation)
+	if err != nil {
+		return fmt.Errorf("check installation: %w", err)
+	}
+	if inactive {
+		s.Log.Info("installation inactive; repository skipped", "installation", installation, "repo", repo)
+		return nil
+	}
 	log := s.Log.With("installation", installation, "repo", repo, "trigger", trigger)
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
@@ -252,7 +355,7 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 		log.Error("run", "err", err)
 		return err
 	}
-	client := &guarded{Client: engine, s: s, installation: installation, repo: repo, runID: runID, log: log}
+	client := &guarded{Client: engine, s: s, gate: g, installation: installation, repo: repo, runID: runID, log: log}
 	r := runner.New(client, s.Platform.Login(), merging)
 	r.Parallel = 1
 	if s.Sleep != nil {
@@ -330,7 +433,20 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 		}
 		return errors.Join(runErr, fmt.Errorf("issue: %w", err))
 	}
+	// An uninstall or suspension can arrive while this run is reporting.
+	// Hold the same gate used to mark removal across the issue write.
+	g.write.Lock()
+	inactive, stateErr := s.Store.InstallationInactive(ctx, installation)
+	if stateErr != nil {
+		g.write.Unlock()
+		return errors.Join(runErr, fmt.Errorf("check installation: %w", stateErr))
+	}
+	if inactive {
+		g.write.Unlock()
+		return runErr
+	}
 	n, change, err := output.Sync(ctx, rest, s.Platform.Login(), owner, name, known, output.Body(res, repoMerges), output.Wanted(res), res.Error == "")
+	g.write.Unlock()
 	if n != known && n != 0 {
 		if err := s.Store.SetIssueNumber(ctx, repo, n); err != nil {
 			log.Error("record issue", "err", err)
@@ -476,6 +592,7 @@ var ErrNoComments = errors.New("the App posts only agent review explanations, as
 type guarded struct {
 	github.Client
 	s            *Service
+	gate         *installationGate
 	installation int64
 	repo         string
 	runID        int64
@@ -520,6 +637,15 @@ func (g *guarded) FetchRepo(ctx context.Context, owner, name string) (*github.Re
 }
 
 func (g *guarded) Merge(ctx context.Context, owner, name string, number int, method, headOID string) error {
+	g.gate.write.Lock()
+	defer g.gate.write.Unlock()
+	inactive, err := g.s.Store.InstallationInactive(ctx, g.installation)
+	if err != nil {
+		return fmt.Errorf("checking the installation: %w", err)
+	}
+	if inactive {
+		return ErrPaused
+	}
 	paused, err := g.s.Store.Paused(ctx, g.installation)
 	switch {
 	case err != nil:
@@ -549,6 +675,15 @@ func (g *guarded) Merge(ctx context.Context, owner, name string, number int, met
 func (g *guarded) Comment(ctx context.Context, owner, name string, number int, body string) error {
 	if !strings.HasPrefix(body, runner.ReviewCommentPrefix) {
 		return ErrNoComments
+	}
+	g.gate.write.Lock()
+	defer g.gate.write.Unlock()
+	inactive, err := g.s.Store.InstallationInactive(ctx, g.installation)
+	if err != nil {
+		return fmt.Errorf("checking the installation: %w", err)
+	}
+	if inactive {
+		return ErrPaused
 	}
 	paused, err := g.s.Store.Paused(ctx, g.installation)
 	switch {

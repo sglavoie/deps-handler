@@ -123,19 +123,35 @@ func Open(ctx context.Context, path string) (*Store, error) {
 func (s *Store) Close() error { return s.db.Close() }
 
 // InstallationAdded records an installation as active, keeping when it
-// was first added.
+// was first added. An observation older than a removal cannot reactivate it:
+// a sweep may have fetched its list just before an uninstall webhook.
 func (s *Store) InstallationAdded(ctx context.Context, id int64, account string, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO installations (id, account, added_at) VALUES (?, ?, ?)
-ON CONFLICT (id) DO UPDATE SET account = excluded.account, removed_at = NULL`, id, account, at.UTC())
+ON CONFLICT (id) DO UPDATE SET account = excluded.account, removed_at = NULL
+WHERE installations.removed_at IS NULL OR installations.removed_at < excluded.added_at`, id, account, at.UTC())
 	return err
 }
 
 // InstallationRemoved records an installation as gone (uninstalled or
 // suspended).
 func (s *Store) InstallationRemoved(ctx context.Context, id int64, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE installations SET removed_at = ? WHERE id = ? AND removed_at IS NULL`, at.UTC(), id)
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO installations (id, account, added_at, removed_at) VALUES (?, '', ?, ?)
+ON CONFLICT (id) DO UPDATE SET removed_at = COALESCE(installations.removed_at, excluded.removed_at)`, id, at.UTC(), at.UTC())
 	return err
+}
+
+// InstallationInactive reports whether a known installation was suspended
+// or removed. An installation not yet seen by the sweep is allowed: GitHub
+// can deliver a repository event before its installation event arrives.
+func (s *Store) InstallationInactive(ctx context.Context, id int64) (bool, error) {
+	var removed sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT removed_at FROM installations WHERE id = ?`, id).Scan(&removed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return removed.Valid, err
 }
 
 // Installation is one installation as recorded.

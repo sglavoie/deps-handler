@@ -41,6 +41,25 @@ func TestInstallationsComeAndGo(t *testing.T) {
 	}
 }
 
+func TestStaleSweepCannotReactivateRemovedInstallation(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	if err := s.InstallationRemoved(ctx, 7, t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InstallationAdded(ctx, 7, "stale", t0); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.InstallationInactive(ctx, 7); err != nil || !inactive {
+		t.Fatalf("after stale sweep: inactive = %t, %v", inactive, err)
+	}
+	if err := s.InstallationAdded(ctx, 7, "current", t0.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.InstallationInactive(ctx, 7); err != nil || inactive {
+		t.Fatalf("after fresh observation: inactive = %t, %v", inactive, err)
+	}
+}
+
 func TestRunsIssuesAndWrites(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	id, err := s.StartRun(ctx, 1, "acme/app", "schedule", t0)

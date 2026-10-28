@@ -108,25 +108,22 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 		return s.Once(ctx, only)
 	}
 
+	workCtx, stopWork := context.WithCancel(ctx)
+	defer stopWork()
 	q := &jobs.Queues{Run: s.Run, Debounce: cfg.debounce}
-	q.Start(ctx)
+	q.Start(workCtx)
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", &webhook.Handler{
 		Secret:  cfg.secret,
 		Enqueue: q.Enqueue,
 		Installed: func(ctx context.Context, id int64, account string) error {
-			return st.InstallationAdded(ctx, id, account, time.Now())
+			return s.InstallationAdded(ctx, id, account)
 		},
 		Uninstalled: func(ctx context.Context, id int64, deleted bool) error {
-			if err := st.InstallationRemoved(ctx, id, time.Now()); err != nil {
+			if err := s.InstallationRemoved(ctx, id, deleted); err != nil {
 				return err
 			}
-			// Uninstalled, not suspended: what was kept about its
-			// repositories goes, as the data-handling note says.
 			if deleted {
-				if err := s.Forget(ctx, id); err != nil {
-					return err
-				}
 				log.Info("installation forgotten", "installation", id)
 			}
 			return nil
@@ -135,16 +132,27 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	srv := &http.Server{Addr: net.JoinHostPort(cfg.host, cfg.port), Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	shutdownDone := make(chan struct{})
 	go func() {
-		<-ctx.Done()
+		defer close(shutdownDone)
+		<-workCtx.Done()
 		shut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		srv.Shutdown(shut)
 	}()
-	go s.SweepEvery(ctx, cfg.sweep, q.Enqueue)
+	go s.SweepEvery(workCtx, cfg.sweep, q.Enqueue)
 
 	log.Info("listening", "port", cfg.port)
-	err = srv.ListenAndServe()
+	err = listenAndDrain(srv, q, stopWork)
+	<-shutdownDone
+	return err
+}
+
+// listenAndDrain always stops the workers when the listener exits, including
+// startup failures such as an occupied port.
+func listenAndDrain(srv *http.Server, q *jobs.Queues, stop context.CancelFunc) error {
+	err := srv.ListenAndServe()
+	stop()
 	q.Wait()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil

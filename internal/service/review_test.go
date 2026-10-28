@@ -182,6 +182,76 @@ func TestNoReviewWhileTheModelIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestSuspensionDuringReviewBlocksGitHubWrites(t *testing.T) {
+	repo, heads := remote(t, 1)
+	s, p := setup(t, true, "mode: merge\nagent_review: true\n", major(1, heads[0]))
+	ctx := context.Background()
+	if err := s.InstallationAdded(ctx, 1, "o"); err != nil {
+		t.Fatal(err)
+	}
+	a := &agent{decision: "approve"}
+	withReview(t, s, a, repo, 10)
+	a.onRun = func() {
+		if err := s.InstallationRemoved(ctx, 1, false); err != nil {
+			t.Error(err)
+		}
+	}
+	s.RunRepo(ctx, 1, "o/r", "test")
+	if len(p.engine.merged) != 0 || len(p.engine.comments) != 0 || len(writes(t, s)) != 0 {
+		t.Fatalf("suspended installation merged %v, commented %v, wrote %v", p.engine.merged, p.engine.comments, writes(t, s))
+	}
+}
+
+func TestUninstallDuringReviewCleansUpAfterRun(t *testing.T) {
+	repo, heads := remote(t, 1)
+	s, p := setup(t, true, "mode: merge\nagent_review: true\n", major(1, heads[0]))
+	ctx := context.Background()
+	if err := s.InstallationAdded(ctx, 1, "o"); err != nil {
+		t.Fatal(err)
+	}
+	a := &agent{decision: "approve"}
+	withReview(t, s, a, repo, 10)
+	removed := make(chan error, 1)
+	a.onRun = func() {
+		go func() { removed <- s.InstallationRemoved(ctx, 1, true) }()
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			inactive, err := s.Store.InstallationInactive(ctx, 1)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if inactive {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Error("uninstall did not mark the installation inactive")
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	s.RunRepo(ctx, 1, "o/r", "test")
+	select {
+	case err := <-removed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("uninstall did not finish after the run")
+	}
+	if len(p.engine.merged) != 0 || len(p.engine.comments) != 0 || len(writes(t, s)) != 0 {
+		t.Fatalf("uninstalled installation merged %v, commented %v, wrote %v", p.engine.merged, p.engine.comments, writes(t, s))
+	}
+	ms, err := s.Store.Metrics(ctx, time.Now())
+	if err != nil || len(ms) != 1 || ms[0].Repos != 0 || ms[0].PRs != 0 || ms[0].Reviews != 0 {
+		t.Fatalf("retained repository data: %+v, %v", ms, err)
+	}
+	if _, err := os.Stat(s.Review.checkouts(1)); !os.IsNotExist(err) {
+		t.Fatalf("checkout after uninstall: %v", err)
+	}
+}
+
 func TestKnownVerdictsStandWhileTheModelIsUnavailable(t *testing.T) {
 	repo, heads := remote(t, 1)
 	s, p := setup(t, true, "mode: merge\nagent_review: true\n", major(1, heads[0]))
