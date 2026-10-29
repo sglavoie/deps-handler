@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -62,6 +63,8 @@ type Queues struct {
 }
 
 type worker struct {
+	// GitHub repository identities ignore case; jobs retain their spelling
+	// for the callback while pending uses lower-case keys.
 	pending map[string]pendingJob
 	wake    chan struct{}
 }
@@ -135,6 +138,7 @@ func (q *Queues) Enqueue(job Job) error {
 }
 
 func (q *Queues) enqueueLocked(job Job, due time.Time, id int64) {
+	key := strings.ToLower(job.Repo)
 	w, ok := q.workers[job.Installation]
 	if !ok {
 		w = &worker{pending: map[string]pendingJob{}, wake: make(chan struct{}, 1)}
@@ -155,25 +159,25 @@ func (q *Queues) enqueueLocked(job Job, due time.Time, id int64) {
 		q.wake(w)
 		return
 	}
-	if p, waiting := w.pending[job.Repo]; waiting && p.attempts > 0 {
+	if p, waiting := w.pending[key]; waiting && p.attempts > 0 {
 		p.due = minTime(p.due, due)
 		p.attempts = 0
 		p.job = job
 		if id != 0 {
 			p.ids = append(p.ids, id)
 		}
-		w.pending[job.Repo] = p
+		w.pending[key] = p
 	} else if waiting {
 		if id != 0 {
 			p.ids = append(p.ids, id)
-			w.pending[job.Repo] = p
+			w.pending[key] = p
 		}
 	} else if !waiting {
 		p := pendingJob{job: job, due: due}
 		if id != 0 {
 			p.ids = []int64{id}
 		}
-		w.pending[job.Repo] = p
+		w.pending[key] = p
 	}
 	if job.Repo == "" {
 		all := w.pending[""]
@@ -214,9 +218,10 @@ func (q *Queues) retry(w *worker, p pendingJob) {
 		w.pending[""] = current
 		return
 	}
-	if current, waiting := w.pending[p.job.Repo]; waiting {
+	key := strings.ToLower(p.job.Repo)
+	if current, waiting := w.pending[key]; waiting {
 		current.ids = append(current.ids, p.ids...)
-		w.pending[p.job.Repo] = current
+		w.pending[key] = current
 		return
 	}
 	p.due = q.Now().Add(q.RetryDelays[p.attempts])
@@ -228,7 +233,7 @@ func (q *Queues) retry(w *worker, p pendingJob) {
 			delete(w.pending, repo)
 		}
 	}
-	w.pending[p.job.Repo] = p
+	w.pending[key] = p
 	q.wake(w)
 }
 
@@ -281,7 +286,7 @@ func (q *Queues) work(id int64, w *worker) {
 		if next != nil {
 			wait = next.due.Sub(q.Now())
 			if wait <= 0 {
-				delete(w.pending, next.job.Repo)
+				delete(w.pending, strings.ToLower(next.job.Repo))
 			}
 		}
 		q.mu.Unlock()

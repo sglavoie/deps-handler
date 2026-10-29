@@ -52,7 +52,7 @@ func TestAgentSucceedsDespiteChildHoldingOutput(t *testing.T) {
 	dir := t.TempDir()
 	// The child keeps stdout open after the agent exits 0.
 	cmd, _ := fakeAgent(t, `sleep 30 & echo $! > "`+dir+`/child"
-echo '{"is_error":false,"structured_output":{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":[]}}'
+echo '{"type":"result","subtype":"success","is_error":false,"structured_output":{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":[]}}'
 exit 0`)
 	a, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p")
 	if err != nil || a.Decision != "approve" {

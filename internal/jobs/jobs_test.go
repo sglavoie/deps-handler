@@ -80,6 +80,18 @@ func TestBurstBecomesOneRun(t *testing.T) {
 	eventually(t, "the third run", func() bool { return len(r.seen()) == 3 })
 }
 
+func TestRepositoryCaseVariantsBecomeOneRun(t *testing.T) {
+	q, _ := start(t, time.Hour, 0)
+	for _, repo := range []string{"Acme/Storefront", "acme/storefront", "ACME/STOREFRONT"} {
+		if err := q.Enqueue(Job{Installation: 1, Repo: repo}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := q.Pending(); got != 1 {
+		t.Fatalf("pending jobs = %d, want one repository", got)
+	}
+}
+
 func TestInstallationRunsNeverOverlap(t *testing.T) {
 	q, r := start(t, 0, 20*time.Millisecond)
 	for _, repo := range []string{"o/a", "o/b", "o/c"} {
@@ -193,8 +205,8 @@ func TestFreshEventAdvancesPendingRetry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	q.Start(ctx)
 	t.Cleanup(func() { cancel(); q.Wait() })
-	q.Enqueue(Job{Installation: 1, Repo: "o/a"})
+	q.Enqueue(Job{Installation: 1, Repo: "Acme/Storefront"})
 	eventually(t, "pending retry", func() bool { return calls.Load() == 1 && q.Pending() == 1 })
-	q.Enqueue(Job{Installation: 1, Repo: "o/a", Trigger: "new event"})
+	q.Enqueue(Job{Installation: 1, Repo: "acme/storefront", Trigger: "new event"})
 	eventually(t, "new event run", func() bool { return calls.Load() == 2 && q.Pending() == 0 })
 }

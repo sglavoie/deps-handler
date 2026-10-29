@@ -78,7 +78,8 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	}
 	out, runErr := run(cmd)
 	var res struct {
-		IsError          bool            `json:"is_error"`
+		Type             string          `json:"type"`
+		IsError          *bool           `json:"is_error"`
 		Subtype          string          `json:"subtype"`
 		Result           string          `json:"result"`
 		StructuredOutput json.RawMessage `json:"structured_output"`
@@ -86,7 +87,7 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	perr := json.Unmarshal(out, &res)
 	// claude exits 1 on an error it reports in its JSON, where the reason
 	// is: prefer that to the bare exit status.
-	if perr == nil && res.IsError {
+	if perr == nil && res.IsError != nil && *res.IsError {
 		if msg := clip(res.Result); msg != "" {
 			if strings.Contains(strings.ToLower(msg), "not logged in") {
 				return Answer{}, errors.New("claude: not logged in; run `claude auth login` with the server's CLAUDE_CONFIG_DIR")
@@ -106,6 +107,12 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	}
 	if perr != nil {
 		return Answer{}, fmt.Errorf("claude: unreadable output: %w", perr)
+	}
+	// A structured verdict does not establish that the review completed.
+	// Limit failures can still carry output; missing flags must not become
+	// an implicit success and allow that output to authorize a merge.
+	if res.Type != "result" || res.Subtype != "success" || res.IsError == nil {
+		return Answer{}, fmt.Errorf("claude: incomplete or unsuccessful result (type %q, subtype %q)", Clean(res.Type), Clean(res.Subtype))
 	}
 	if len(res.StructuredOutput) == 0 || bytes.Equal(res.StructuredOutput, []byte("null")) {
 		return Answer{}, errors.New("claude: no structured output")

@@ -298,7 +298,7 @@ func TestClaude(t *testing.T) {
 func TestClaudeErrors(t *testing.T) {
 	for name, body := range map[string]string{
 		"error result":  `echo '{"is_error":true,"subtype":"error_max_budget_usd","result":"budget"}'`,
-		"no structure":  `echo '{"is_error":false,"subtype":"success","result":"approve"}'`,
+		"no structure":  `echo '{"type":"result","is_error":false,"subtype":"success","result":"approve"}'`,
 		"not json":      `echo 'oops'`,
 		"exit non-zero": `echo 'not logged in' >&2; exit 1`,
 	} {
@@ -325,6 +325,27 @@ func TestClaudeErrors(t *testing.T) {
 	cmd, _ = fakeAgent(t, `echo '{"type":"result","subtype":"success","is_error":true,"result":"Not logged in · Please run /login"}'; exit 1`)
 	if _, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "p"); err == nil || err.Error() != "claude: not logged in; run `claude auth login` with the server's CLAUDE_CONFIG_DIR" {
 		t.Errorf("err = %v; want the login instruction without a success label", err)
+	}
+}
+
+func TestClaudeRequiresSuccessfulResult(t *testing.T) {
+	const answer = `"structured_output":{"decision":"approve","summary":"ok","breaking_changes":[],"concerns":[]}`
+	for name, envelope := range map[string]string{
+		"turn limit":          `"type":"result","subtype":"error_max_turns","is_error":false`,
+		"budget limit":        `"type":"result","subtype":"error_max_budget_usd","is_error":false`,
+		"unknown subtype":     `"type":"result","subtype":"unknown","is_error":false`,
+		"missing subtype":     `"type":"result","is_error":false`,
+		"missing error flag":  `"type":"result","subtype":"success"`,
+		"null error flag":     `"type":"result","subtype":"success","is_error":null`,
+		"wrong result type":   `"type":"assistant","subtype":"success","is_error":false`,
+		"missing result type": `"subtype":"success","is_error":false`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd, _ := fakeAgent(t, "printf '%s\\n' '{"+envelope+","+answer+"}'")
+			if got, err := (Claude{Command: cmd}).Run(context.Background(), t.TempDir(), "review"); err == nil {
+				t.Fatalf("accepted unsuccessful or incomplete result: %+v", got)
+			}
+		})
 	}
 }
 
@@ -397,7 +418,7 @@ func TestCLIAgentsRequireCompleteAnswers(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Both command adapters must validate what the process actually
 			// returned, even though they requested schema-constrained output.
-			body := "printf '%s\\n' '{\"is_error\":false,\"structured_output\":" + answer + "}'\n" +
+			body := "printf '%s\\n' '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":" + answer + "}'\n" +
 				`while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && out=$2; shift; done` + "\n" +
 				"if [ -n \"$out\" ]; then printf '%s\\n' '" + answer + "' > \"$out\"; fi"
 			cmd, _ := fakeAgent(t, body)
@@ -427,7 +448,7 @@ func TestAgentEnvLacksGitHubTokens(t *testing.T) {
 		Claude{ConfigDir: "/cfg/claude"},
 		Codex{Home: "/cfg/codex"},
 	} {
-		body := `echo '{"is_error":false,"structured_output":{"decision":"approve","summary":"","breaking_changes":[],"concerns":[]}}'
+		body := `echo '{"type":"result","subtype":"success","is_error":false,"structured_output":{"decision":"approve","summary":"","breaking_changes":[],"concerns":[]}}'
 while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && out=$2; shift; done
 [ -n "$out" ] && echo '{"decision":"approve","summary":"","breaking_changes":[],"concerns":[]}' > "$out"; exit 0`
 		cmd, dir := fakeAgent(t, body)

@@ -12,6 +12,8 @@ reports into a Dependency health issue and merges only in repositories
 that opt in. See [GitHub App setup and operation](docs/app/README.md).
 The App also reruns when a Dependabot PR leaves draft state, is edited,
 or receives an approval or review dismissal.
+Queued webhook events and retries recognize repository names regardless
+of capitalization, including when replayed after a restart.
 Incomplete installation or repository lists stop reconciliation, preserving
 stored data and access state until GitHub returns a complete list.
 Large Dependency health reports keep complete lines within a 60,000-byte
@@ -189,7 +191,10 @@ read-only, without your customizations and without a GitHub token:
   Responses over 16 MiB also fail rather than accepting a truncated JSON prefix.
   Query parameters in `api.url` are preserved when requesting chat completions.
   Claude Code and Codex verdicts undergo the same field
-  validation; malformed verdicts fail the review. File reads and searches
+  validation; malformed verdicts fail the review.
+  Claude Code must also explicitly report a successful completed result;
+  incomplete results and results reporting a limit or other failure cannot
+  approve an update even if they contain a valid verdict. File reads and searches
   stop when the review is cancelled or its timeout expires.
   API file tools preserve leading and trailing whitespace in filenames,
   so they read the exact path requested.

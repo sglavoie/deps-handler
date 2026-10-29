@@ -109,7 +109,9 @@ func TestInterruptedRunReplaysButNewEventIsSeparate(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("first run did not start")
 	}
-	if err := q.Enqueue(jobs.Job{Installation: 2, Repo: "o/r", Trigger: "second"}); err != nil {
+	// GitHub webhooks and repository listings can spell the same name
+	// differently. Replay must still coalesce both accepted events.
+	if err := q.Enqueue(jobs.Job{Installation: 2, Repo: "O/R", Trigger: "second"}); err != nil {
 		t.Fatal(err)
 	}
 	cancel()
