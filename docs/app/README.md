@@ -87,6 +87,11 @@ they are queued. Pending jobs, including a run interrupted by a restart,
 resume when the server starts again. Failed runs retry after 30 seconds,
 two minutes, and ten minutes; after those attempts, the next sweep is the
 fallback.
+Installation and repository listings are validated before reconciliation.
+Missing lists, invalid entries, inconsistent repository counts, and broken
+pagination fail the read and are retried; they cannot establish an uninstall
+or loss of repository access. An incomplete later page discards the entire
+listing, preserving the previously recorded state and review files.
 Installation tokens refresh for API requests and checkout fetches during
 long review runs, including when the token used to start the run expires.
 The recipe clears inherited server settings before loading `DMC_ENV`, so

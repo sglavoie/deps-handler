@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,11 +62,32 @@ type Installation struct {
 // Installations lists the App's installations.
 func (a *App) Installations(ctx context.Context) ([]Installation, error) {
 	var out []Installation
-	for in, err := range a.api.Apps.ListInstallationsIter(ctx, &gh.ListOptions{PerPage: 100}) {
+	seen := make(map[int64]bool)
+	opts := &gh.ListOptions{PerPage: 100, Page: 1}
+	for {
+		page, resp, err := a.api.Apps.ListInstallations(ctx, opts)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, Installation{ID: in.GetID(), Account: in.GetAccount().GetLogin(), Suspended: in.SuspendedAt != nil})
+		// A missing list must never look like every installation was
+		// uninstalled: the service deletes their records and review files.
+		if page == nil {
+			return nil, fmt.Errorf("list installations: missing installation list")
+		}
+		for _, in := range page {
+			if in == nil || in.GetID() <= 0 || strings.TrimSpace(in.GetAccount().GetLogin()) == "" || seen[in.GetID()] {
+				return nil, fmt.Errorf("list installations: invalid or repeated installation")
+			}
+			seen[in.GetID()] = true
+			out = append(out, Installation{ID: in.GetID(), Account: in.GetAccount().GetLogin(), Suspended: in.SuspendedAt != nil})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		if resp.NextPage != opts.Page+1 || len(page) == 0 {
+			return nil, fmt.Errorf("list installations: invalid pagination")
+		}
+		opts.Page = resp.NextPage
 	}
 	return out, nil
 }
@@ -98,13 +120,48 @@ func (a *App) Repos(ctx context.Context, id int64) ([]string, error) {
 		return nil, err
 	}
 	var out []string
-	for r, err := range c.Apps.ListReposIter(ctx, &gh.ListOptions{PerPage: 100}) {
+	seenIDs, seenNames := make(map[int64]bool), make(map[string]bool)
+	opts := &gh.ListOptions{PerPage: 100, Page: 1}
+	total, read := -1, 0
+	for {
+		page, resp, err := c.Apps.ListRepos(ctx, opts)
 		if err != nil {
 			return nil, fmt.Errorf("installation %d: %w", id, err)
 		}
-		if !r.GetArchived() {
-			out = append(out, r.GetFullName())
+		// Keep the envelope until it is validated. The iterator discards
+		// it, making omitted repositories look like revoked access.
+		if page == nil || page.Repositories == nil || page.TotalCount == nil || page.GetTotalCount() < 0 {
+			return nil, fmt.Errorf("installation %d: incomplete repository list", id)
 		}
+		if total < 0 {
+			total = page.GetTotalCount()
+		}
+		read += len(page.Repositories)
+		if page.GetTotalCount() != total || read > total {
+			return nil, fmt.Errorf("installation %d: inconsistent repository count", id)
+		}
+		for _, r := range page.Repositories {
+			owner, name, ok := strings.Cut(r.GetFullName(), "/")
+			key := strings.ToLower(r.GetFullName())
+			validName := ok && strings.TrimSpace(owner) != "" && strings.TrimSpace(name) != "" && !strings.Contains(name, "/")
+			if r == nil || r.GetID() <= 0 || !validName || r.Archived == nil || seenIDs[r.GetID()] || seenNames[key] {
+				return nil, fmt.Errorf("installation %d: invalid or repeated repository", id)
+			}
+			seenIDs[r.GetID()], seenNames[key] = true, true
+			if !r.GetArchived() {
+				out = append(out, r.GetFullName())
+			}
+		}
+		if resp.NextPage == 0 {
+			if read != total {
+				return nil, fmt.Errorf("installation %d: incomplete repository list (read %d of %d)", id, read, total)
+			}
+			break
+		}
+		if resp.NextPage != opts.Page+1 || len(page.Repositories) == 0 {
+			return nil, fmt.Errorf("installation %d: invalid pagination", id)
+		}
+		opts.Page = resp.NextPage
 	}
 	return out, nil
 }
