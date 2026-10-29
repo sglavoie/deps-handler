@@ -111,8 +111,11 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 
 	workCtx, stopWork := context.WithCancel(ctx)
 	defer stopWork()
-	q := &jobs.Queues{Run: s.Run, Debounce: cfg.debounce}
-	q.Start(workCtx)
+	q := &jobs.Queues{Run: s.Run, Debounce: cfg.debounce, Journal: st,
+		OnError: func(err error) { log.Error("queued job", "err", err) }}
+	if err := q.Start(workCtx); err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", &webhook.Handler{
 		Secret:  cfg.secret,
@@ -128,7 +131,8 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 		Log:         log.With("app", a.Slug, "app_id", a.ID),
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
-	srv := &http.Server{Addr: net.JoinHostPort(cfg.host, cfg.port), Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: net.JoinHostPort(cfg.host, cfg.port), Handler: mux,
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, IdleTimeout: 2 * time.Minute}
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
@@ -137,7 +141,11 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 		defer cancel()
 		srv.Shutdown(shut)
 	}()
-	go s.SweepEvery(workCtx, cfg.sweep, q.Enqueue)
+	go s.SweepEvery(workCtx, cfg.sweep, func(j jobs.Job) {
+		if err := q.Enqueue(j); err != nil && workCtx.Err() == nil {
+			log.Error("queue scheduled run", "err", err, "installation", j.Installation)
+		}
+	})
 
 	log.Info("listening", "port", cfg.port)
 	err = listenAndDrain(srv, q, stopWork)

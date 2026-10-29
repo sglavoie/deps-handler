@@ -101,6 +101,14 @@ CREATE TABLE IF NOT EXISTS writes (
 	detail TEXT NOT NULL DEFAULT '',
 	at     TIMESTAMP NOT NULL
 );
+CREATE TABLE IF NOT EXISTS queued_jobs (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	installation_id INTEGER NOT NULL,
+	repo            TEXT NOT NULL,
+	trigger         TEXT NOT NULL,
+	due_at          TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS queued_jobs_installation ON queued_jobs (installation_id, id);
 `
 
 // Open opens or creates the database at path.
@@ -479,6 +487,7 @@ func (s *Store) ForgetInstallation(ctx context.Context, installation int64) erro
 		`DELETE FROM repo_access WHERE installation_id = ?1`,
 		`DELETE FROM pauses WHERE installation_id = ?1`,
 		`DELETE FROM reviews WHERE installation_id = ?1`,
+		`DELETE FROM queued_jobs WHERE installation_id = ?1`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, installation); err != nil {
 			return err

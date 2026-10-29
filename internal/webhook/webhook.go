@@ -23,7 +23,7 @@ type Handler struct {
 	// delivery: go-github checks no signature when no secret is given.
 	Secret []byte
 	// Enqueue asks for a run.
-	Enqueue func(jobs.Job)
+	Enqueue func(jobs.Job) error
 	// Installed and Uninstalled record an installation coming and going:
 	// deleted when it was uninstalled, rather than suspended. An error
 	// rejects the delivery so it can be inspected and redelivered.
@@ -77,12 +77,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handle(ctx context.Context, kind string, event any) error {
-	enqueue := func(installation int64, repo string) {
+	enqueue := func(installation int64, repo string) error {
 		if installation == 0 {
-			return
+			return nil
 		}
 		h.Log.Info("run queued", "installation", installation, "repo", repo, "trigger", kind)
-		h.Enqueue(jobs.Job{Installation: installation, Repo: repo, Trigger: kind})
+		return h.Enqueue(jobs.Job{Installation: installation, Repo: repo, Trigger: kind})
 	}
 	switch e := event.(type) {
 	case *gh.InstallationEvent:
@@ -92,7 +92,7 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) error {
 			if err := h.Installed(ctx, id, e.GetInstallation().GetAccount().GetLogin()); err != nil {
 				return err
 			}
-			enqueue(id, "")
+			return enqueue(id, "")
 		case "deleted", "suspend":
 			if err := h.Uninstalled(ctx, id, e.GetAction() == "deleted"); err != nil {
 				return err
@@ -105,7 +105,9 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) error {
 				if err := h.RepoAdded(ctx, e.GetInstallation().GetID(), r.GetFullName()); err != nil {
 					return err
 				}
-				enqueue(e.GetInstallation().GetID(), r.GetFullName())
+				if err := enqueue(e.GetInstallation().GetID(), r.GetFullName()); err != nil {
+					return err
+				}
 			}
 		case "removed":
 			for _, r := range e.RepositoriesRemoved {
@@ -118,24 +120,24 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) error {
 		switch e.GetAction() {
 		case "opened", "reopened", "synchronize", "closed":
 			if e.GetPullRequest().GetUser().GetLogin() == dependabot {
-				enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
+				return enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 			}
 		}
 	case *gh.CheckSuiteEvent:
 		// A suite on a pull request's head: one of its checks may decide
 		// whether a Dependabot PR is safe.
 		if e.GetAction() == "completed" && len(e.GetCheckSuite().PullRequests) > 0 {
-			enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
+			return enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 		}
 	case *gh.StatusEvent:
 		// Commit statuses are separate from check suites. A repository
 		// relying on them must be checked again when one changes.
-		enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
+		return enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 	case *gh.PushEvent:
 		// The default branch moved: PRs may be behind, and the policy file
 		// may have changed.
 		if e.GetRef() == "refs/heads/"+e.GetRepo().GetDefaultBranch() {
-			enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
+			return enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 		}
 	}
 	return nil

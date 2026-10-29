@@ -30,7 +30,7 @@ type recorded struct {
 func handler(rec *recorded, secret []byte) *Handler {
 	return &Handler{
 		Secret:  secret,
-		Enqueue: func(j jobs.Job) { rec.jobs = append(rec.jobs, j) },
+		Enqueue: func(j jobs.Job) error { rec.jobs = append(rec.jobs, j); return nil },
 		Installed: func(_ context.Context, id int64, account string) error {
 			rec.installed = append(rec.installed, account)
 			return nil
@@ -195,5 +195,15 @@ func TestRepositoryPersistenceFailureRejectsDelivery(t *testing.T) {
 				t.Fatalf("queued after persistence failure: %+v", rec.jobs)
 			}
 		})
+	}
+}
+
+func TestQueuePersistenceFailureRejectsDelivery(t *testing.T) {
+	rec := &recorded{}
+	h := handler(rec, secret)
+	h.Enqueue = func(jobs.Job) error { return fmt.Errorf("database unavailable") }
+	body := `{"action": "opened", "pull_request": {"user": {"login": "dependabot[bot]"}}, ` + repo + `, ` + inst + `}`
+	if code := deliver(h, "pull_request", body, secret); code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", code)
 	}
 }

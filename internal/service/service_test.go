@@ -137,6 +137,7 @@ type platform struct {
 	issues        *ghfake.Issues
 	rest          *gh.Client
 	restErr       error
+	tokenErr      error
 }
 
 func (p *platform) Login() string { return login }
@@ -163,6 +164,9 @@ func (p *platform) Engine(context.Context, int64) (github.Client, error) {
 }
 func (p *platform) REST(int64) (*gh.Client, error) { return p.rest, p.restErr }
 func (p *platform) Token(context.Context, int64) (string, error) {
+	if p.tokenErr != nil {
+		return "", p.tokenErr
+	}
 	return "ghs_test", nil
 }
 

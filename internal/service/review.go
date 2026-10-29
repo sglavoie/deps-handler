@@ -51,28 +51,28 @@ func (r *Review) verdicts(installation int64) string {
 
 // setupReview gives the run cached verdicts even when no new reviews are
 // available. New reviews check PRs out with the installation's token.
-func (s *Service) setupReview(ctx context.Context, log *slog.Logger, r *runner.Runner, engine github.Client, installation int64, repo string) {
+func (s *Service) setupReview(ctx context.Context, log *slog.Logger, r *runner.Runner, engine github.Client, installation int64, repo string) error {
 	rv := s.Review
 	done, err := s.Store.ReviewsSince(ctx, installation, time.Now().Add(-24*time.Hour))
 	if err != nil {
 		log.Error("count reviews", "err", err)
-		return
+		return fmt.Errorf("count reviews: %w", err)
 	}
 	verdicts, err := review.OpenCache(rv.verdicts(installation))
 	if err != nil {
 		log.Error("no agent review", "err", err)
-		return
+		return fmt.Errorf("open verdict cache: %w", err)
 	}
 	r.AgentName, r.Verdicts = rv.Model, verdicts
 	left := rv.PerDay - done
 	if left <= 0 {
 		log.Info("no agent review: the installation's reviews for the day are used", "per_day", rv.PerDay)
-		return
+		return nil
 	}
 	token, err := s.Platform.Token(ctx, installation)
 	if err != nil {
 		log.Error("no agent review", "err", err)
-		return
+		return fmt.Errorf("installation checkout token: %w", err)
 	}
 	r.Reviewer = &review.AgentReviewer{
 		Agent:     &metered{s: s, log: log, installation: installation, repo: repo},
@@ -90,6 +90,7 @@ func (s *Service) setupReview(ctx context.Context, log *slog.Logger, r *runner.R
 	}
 	// One at a time: a local model serves one request at a time anyway.
 	r.MaxReviews, r.ReviewParallel = left, 1
+	return nil
 }
 
 // unavailable is the reviewer while the model does not answer.

@@ -530,10 +530,17 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	if s.Sleep != nil {
 		r.Sleep = s.Sleep
 	}
+	var reviewSetupErr error
 	if s.Review != nil {
-		s.setupReview(ctx, log, r, client, installation, repo)
+		reviewSetupErr = s.setupReview(ctx, log, r, client, installation, repo)
 	}
 	res := r.RunRepo(ctx, config.NewRepo(owner, name, Base()))
+	if reviewSetupErr != nil {
+		if res.Error != "" {
+			res.Error += "; "
+		}
+		res.Error += "agent review setup: " + reviewSetupErr.Error()
+	}
 
 	outcome.Error = res.Error
 	if res.Failed() {

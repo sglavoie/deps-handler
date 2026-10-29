@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"os/exec"
@@ -131,6 +132,49 @@ func TestReviewRecordFailurePreventsMerge(t *testing.T) {
 	}
 	if len(p.engine.merged) != 0 {
 		t.Fatalf("merged without a review record: %v", p.engine.merged)
+	}
+}
+
+func TestReviewSetupFailureFailsRunAndLeavesReviewablePR(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		breakSetup func(*testing.T, *Service, *platform)
+	}{
+		{"review count", "count reviews", func(t *testing.T, _ *Service, p *platform) {
+			db, err := sql.Open("sqlite", p.dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err := db.Exec(`DROP TABLE reviews`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"verdict cache", "open verdict cache", func(t *testing.T, s *Service, _ *platform) {
+			path := filepath.Join(t.TempDir(), "file")
+			if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			s.Review.Dir = path
+		}},
+		{"checkout token", "installation checkout token", func(_ *testing.T, _ *Service, p *platform) {
+			p.tokenErr = errors.New("token unavailable")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, heads := remote(t, 1)
+			s, p := setup(t, true, "mode: merge\nagent_review: true\n", major(1, heads[0]))
+			a := &agent{decision: "approve"}
+			withReview(t, s, a, repo, 10)
+			tc.breakSetup(t, s, p)
+			err := s.RunRepo(context.Background(), 1, "o/r", "test")
+			if err == nil || !strings.Contains(err.Error(), "agent review setup: "+tc.want) {
+				t.Fatalf("run error = %v", err)
+			}
+			if len(a.prompts) != 0 || len(p.engine.merged) != 0 {
+				t.Fatalf("reviews %d, merges %v", len(a.prompts), p.engine.merged)
+			}
+		})
 	}
 }
 

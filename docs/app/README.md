@@ -74,8 +74,11 @@ processes. The server sweeps installed
 repositories at startup and every four hours by default.
 If a sweep fails, it retries after one, two, five, then fifteen minutes
 (capped by `DMC_SWEEP`); a successful sweep restores the usual schedule.
-Failed queued runs retry after 30 seconds, two minutes, and ten minutes;
-the next sweep remains the fallback after those attempts or a restart.
+Accepted webhook and sweep jobs are saved in the SQLite database before
+they are queued. Pending jobs, including a run interrupted by a restart,
+resume when the server starts again. Failed runs retry after 30 seconds,
+two minutes, and ten minutes; after those attempts, the next sweep is the
+fallback.
 The recipe clears inherited server settings before loading `DMC_ENV`, so
 an allowlist or merge setting exported for another App cannot carry over.
 
