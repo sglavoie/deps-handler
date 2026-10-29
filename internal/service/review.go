@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sglavoie/deps-merger/internal/store"
@@ -47,6 +48,30 @@ func (r *Review) checkouts(installation int64) string {
 
 func (r *Review) verdicts(installation int64) string {
 	return filepath.Join(r.Dir, "verdicts", strconv.FormatInt(installation, 10)+".json")
+}
+
+func (s *Service) reviewFiles() *Review {
+	if s.Review != nil {
+		return s.Review
+	}
+	if s.ReviewDir != "" {
+		return &Review{Dir: s.ReviewDir}
+	}
+	return nil
+}
+
+// Keep the lock outside the checkout being removed. Never unlink it:
+// another process could still hold its inode while a third creates a new one.
+func (s *Service) lockReviewFiles(installation int64) (func(), error) {
+	rv := s.reviewFiles()
+	if rv == nil {
+		return func() {}, nil
+	}
+	release, err := review.Lock(rv.checkouts(installation) + ".lock")
+	if err != nil {
+		return nil, fmt.Errorf("lock installation review files: %w", err)
+	}
+	return release, nil
 }
 
 // setupReview gives the run cached verdicts even when no new reviews are
@@ -144,8 +169,13 @@ func (s *Service) Forget(ctx context.Context, installation int64) error {
 	g := s.gate(installation)
 	g.run.Lock()
 	defer g.run.Unlock()
+	release, err := s.lockReviewFiles(installation)
+	if err != nil {
+		return err
+	}
+	defer release()
 	g.write.Lock()
-	err := s.Store.ForgetInstallation(ctx, installation)
+	err = s.Store.ForgetInstallation(ctx, installation)
 	g.write.Unlock()
 	if err != nil {
 		return err
@@ -159,6 +189,11 @@ func (s *Service) forgetIfInactiveBefore(ctx context.Context, installation int64
 	g := s.gate(installation)
 	g.run.Lock()
 	defer g.run.Unlock()
+	release, err := s.lockReviewFiles(installation)
+	if err != nil {
+		return err
+	}
+	defer release()
 	g.write.Lock()
 	if g.lastEvent.After(observedAt) {
 		g.write.Unlock()
@@ -176,14 +211,30 @@ func (s *Service) forgetIfInactiveBefore(ctx context.Context, installation int64
 }
 
 func (s *Service) forgetReviewFiles(installation int64) error {
-	if s.Review == nil {
+	rv := s.reviewFiles()
+	if rv == nil {
 		return nil
 	}
-	if err := os.RemoveAll(s.Review.checkouts(installation)); err != nil {
+	if err := os.RemoveAll(rv.checkouts(installation)); err != nil {
 		return fmt.Errorf("checkouts: %w", err)
 	}
-	if err := os.Remove(s.Review.verdicts(installation)); err != nil && !os.IsNotExist(err) {
+	path := rv.verdicts(installation)
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
 		return fmt.Errorf("verdicts: %w", err)
 	}
-	return nil
+	var failures []error
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != filepath.Base(path) && !strings.HasPrefix(name, filepath.Base(path)+".corrupt-") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(filepath.Dir(path), name)); err != nil && !os.IsNotExist(err) {
+			failures = append(failures, fmt.Errorf("verdicts: %w", err))
+		}
+	}
+	return errors.Join(failures...)
 }

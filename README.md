@@ -226,6 +226,12 @@ reviewed commit, so a changed head requires a fresh review.
 
 Overlapping review runs cannot share checkouts, even when they use different
 state directories for their verdict caches.
+The App also locks each installation's review files across processes. A
+conflicting server or `server -once` run fails review setup and can retry;
+updates that pass the ordinary merge policy can still proceed.
+Uninstall cleanup uses the same lock and removes retained checkouts,
+verdicts and recovered cache files, including when reviews are disabled
+in the server configuration.
 
 Cache keys quote dependency names and versions so separators in either
 cannot reuse another update's approval. Older keys, including those created

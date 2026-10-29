@@ -53,9 +53,12 @@ type Service struct {
 	Sleep func(context.Context, time.Duration) error
 	// Review, when set, lets an agent judge updates the policy alone would
 	// not merge, in repositories that ask for it with agent_review: true.
-	Review  *Review
-	gatesMu sync.Mutex
-	gates   map[int64]*installationGate
+	Review *Review
+	// ReviewDir locates retained review files when Review is disabled.
+	// When Review is set, its Dir is used instead.
+	ReviewDir string
+	gatesMu   sync.Mutex
+	gates     map[int64]*installationGate
 }
 
 // An installation's runs and cleanup cannot overlap. Removal may still
@@ -538,8 +541,39 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	if s.Sleep != nil {
 		r.Sleep = s.Sleep
 	}
+	var releaseReview func()
+	defer func() {
+		if releaseReview != nil {
+			releaseReview()
+		}
+	}()
 	res := r.RunRepoWithSetup(ctx, config.NewRepo(owner, name, Base()), func(rc config.Repo) error {
 		if s.Review != nil && rc.Policy.AgentReview {
+			// The in-memory installation gate covers only this Service.
+			// Keep another server or -once process out of the checkout and
+			// verdict cache until this run has finished using them.
+			var err error
+			releaseReview, err = s.lockReviewFiles(installation)
+			if err != nil {
+				return fmt.Errorf("agent review setup: %w", err)
+			}
+			// Another process may have completed uninstall cleanup after
+			// our initial access check but before we acquired the file lock.
+			// Do not recreate its checkouts or verdicts after deletion.
+			inactive, err := s.Store.InstallationInactive(ctx, installation)
+			if err != nil {
+				return fmt.Errorf("agent review setup: check installation: %w", err)
+			}
+			if inactive {
+				return fmt.Errorf("agent review setup: installation inactive")
+			}
+			inactive, err = s.Store.RepoInactive(ctx, installation, repo)
+			if err != nil {
+				return fmt.Errorf("agent review setup: check repository access: %w", err)
+			}
+			if inactive {
+				return fmt.Errorf("agent review setup: repository access removed")
+			}
 			if err := s.setupReview(ctx, log, r, client, installation, repo); err != nil {
 				return fmt.Errorf("agent review setup: %w", err)
 			}

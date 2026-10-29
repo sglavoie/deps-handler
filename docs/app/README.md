@@ -27,7 +27,8 @@ go build -o admin ./cmd/admin
 The App code is in `cmd/{server,admin,hook,register}` and `internal/`.
 The CLI remains at the repository root. The Dockerfile builds the server
 from this same Go module; `fly.toml` is an optional Fly.io deployment
-template.
+template. The runtime image includes Git and HTTPS certificates for API
+agent reviews, whose checkouts run inside the container.
 
 ## Register and configure
 
@@ -109,6 +110,13 @@ and only when the effective policy enables reviews. An opted-out repository
 does not open the review cache, request checkout credentials or probe the
 model. Review setup failures in opted-in repositories still allow updates
 that pass the ordinary merge policy to proceed, while failing the run.
+Each installation's review files have a filesystem lock held through the
+run, so another server or `-once` process cannot replace a checkout while
+an agent reads it. A conflicting run fails review setup and can retry
+after the active run finishes. Uninstall cleanup takes that same lock;
+it retries on a later sweep if another process is using the files.
+Cleanup also removes recovered verdict caches and works after reviews
+have been disabled in the server configuration.
 The recipe clears inherited server settings before loading `DMC_ENV`, so
 an allowlist or merge setting exported for another App cannot carry over.
 

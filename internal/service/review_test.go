@@ -151,11 +151,10 @@ func TestReviewSetupFailureFailsRunAndLeavesReviewablePR(t *testing.T) {
 			}
 		}},
 		{"verdict cache", "open verdict cache", func(t *testing.T, s *Service, _ *platform) {
-			path := filepath.Join(t.TempDir(), "file")
+			path := filepath.Join(s.Review.Dir, "verdicts")
 			if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			s.Review.Dir = path
 		}},
 		{"checkout token", "installation checkout token", func(_ *testing.T, _ *Service, p *platform) {
 			p.tokenErr = errors.New("token unavailable")
@@ -484,6 +483,11 @@ func TestReviewSetupFailureStillAllowsPolicyOnlyMerges(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "agent review setup") || !slices.Equal(p.engine.merged, []int{1}) {
 		t.Fatalf("setup failure changed policy-only actions: %v; merged %v", err, p.engine.merged)
 	}
+	release, err := review.Lock(s.Review.checkouts(1) + ".lock")
+	if err != nil {
+		t.Fatalf("failed setup retained the review file lock: %v", err)
+	}
+	release()
 }
 
 func TestForgetRemovesCheckoutsAndVerdicts(t *testing.T) {

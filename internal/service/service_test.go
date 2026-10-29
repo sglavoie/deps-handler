@@ -56,6 +56,7 @@ type engine struct {
 	// onMerge runs after a merge goes through.
 	onMerge  func(n int)
 	onState  func()
+	onFile   func()
 	mergeErr error
 }
 
@@ -121,6 +122,9 @@ func (e *engine) PullRequestState(_ context.Context, _, _ string, n int) (github
 }
 
 func (e *engine) FileText(_ context.Context, owner, name, path string) ([]byte, error) {
+	if e.onFile != nil {
+		e.onFile()
+	}
 	if s, ok := e.files[owner+"/"+name+":"+path]; ok {
 		return []byte(s), nil
 	}

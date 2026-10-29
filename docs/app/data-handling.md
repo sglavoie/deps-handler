@@ -133,7 +133,10 @@ When you uninstall the App, everything stored about your repositories
 (runs, writes, pull requests, modes, issue numbers, reviews, checkouts
 and verdicts) is deleted. That
 happens as GitHub's uninstall notice arrives, or within four hours if the
-notice is missed. What is kept is the installation's ID, account name, and
+notice is missed. Cleanup includes recovered verdict cache files and
+still runs when agent reviews have been disabled on the server. If another
+server process holds the review files, cleanup retries on a later sweep
+after that run finishes. What is kept is the installation's ID, account name, and
 when it was added and removed, for installation activity metrics.
 
 The "Dependency health" issues stay in your repositories, as GitHub

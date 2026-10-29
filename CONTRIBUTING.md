@@ -10,7 +10,15 @@ You need Go (the version in [`go.mod`](go.mod)) and
 
 ```bash
 just test    # go test -race ./...
-just ci      # everything CI checks: vet (also for Windows), staticcheck, govulncheck, tests, gofmt, go mod tidy
+just ci      # Go CI checks: vet (also for Windows), staticcheck, govulncheck, tests, gofmt, go mod tidy
+```
+
+CI also builds the Docker image and runs a checkout test inside it. To
+check the runtime's Git dependencies locally:
+
+```bash
+docker build -t deps-merger:test .
+sh scripts/test-container.sh deps-merger:test
 ```
 
 ## Trying changes without touching real repositories

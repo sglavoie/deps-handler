@@ -103,7 +103,8 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 		log.Warn("GitHub App is not subscribed to pull request review events; enable pull_request_review in its settings so approvals and dismissals can trigger runs", "app", a.Slug)
 	}
 	log.Info("started", "app", a.Slug, "db", cfg.db, "allow_merge", cfg.allowMerge, "repos", cfg.repos)
-	s := &service.Service{Platform: a, Store: st, Log: log, Allowed: cfg.repos, AllowMerge: cfg.allowMerge, Review: cfg.review}
+	s := &service.Service{Platform: a, Store: st, Log: log, Allowed: cfg.repos, AllowMerge: cfg.allowMerge,
+		Review: cfg.review, ReviewDir: reviewDir(cfg.db)}
 	if cfg.review != nil {
 		log.Info("agent review on", "model", cfg.review.Model, "per_day", cfg.review.PerDay)
 	}
@@ -291,12 +292,15 @@ func loadReview(db string) (*service.Review, error) {
 	if err != nil || timeout < time.Minute {
 		return nil, errors.New("DMC_REVIEW_TIMEOUT: want a duration of at least 1m")
 	}
-	dir := strings.TrimSuffix(db, filepath.Ext(db)) + "-reviews"
 	return &service.Review{
 		Agent: agent,
-		Model: model, PerDay: perDay, Timeout: timeout, Dir: dir,
+		Model: model, PerDay: perDay, Timeout: timeout, Dir: reviewDir(db),
 		Available: available,
 	}, nil
+}
+
+func reviewDir(db string) string {
+	return strings.TrimSuffix(db, filepath.Ext(db)) + "-reviews"
 }
 
 // ping asks the model's API for its models, which a server that is up
