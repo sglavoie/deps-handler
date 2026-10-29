@@ -46,6 +46,69 @@ type limitedPlatform struct {
 
 func (p limitedPlatform) Engine(context.Context, int64) (github.Client, error) { return p.client, nil }
 
+type limitedRepoPlatform struct {
+	*platform
+	err   error
+	calls map[int64]int
+}
+
+func (p *limitedRepoPlatform) Repos(ctx context.Context, installation int64) ([]string, error) {
+	p.calls[installation]++
+	if p.err != nil {
+		return nil, p.err
+	}
+	return p.platform.Repos(ctx, installation)
+}
+
+func TestRepositoryListingsShareInstallationCooldown(t *testing.T) {
+	for _, source := range []string{"repository list", "engine"} {
+		t.Run(source, func(t *testing.T) {
+			s, p := setup(t, false, "", pr(1))
+			ctx := context.Background()
+			limited := &limitedRepoPlatform{platform: p, calls: map[int64]int{}}
+			s.Platform = limited
+			limit := &api.HTTPError{StatusCode: 429, Headers: http.Header{"Retry-After": {"600"}}}
+			wantCalls := 0
+			if source == "repository list" {
+				limited.err = limit
+				if err := s.Run(ctx, jobs.Job{Installation: 1}); err == nil {
+					t.Fatal("expected repository listing rate limit")
+				}
+				limited.err = nil
+				wantCalls = 1
+			} else {
+				s.gate(1).observeRateLimit(limit)
+			}
+			for _, retry := range []struct {
+				name string
+				run  func() error
+			}{
+				{"queued installation retry", func() error { return s.Run(ctx, jobs.Job{Installation: 1}) }},
+				{"once", func() error { return s.Once(ctx, nil) }},
+				{"repository webhook", func() error { return s.SyncRepositoryWebhook(ctx, 1, "o/r") }},
+				{"repository run", func() error { return s.RunRepo(ctx, 1, "o/r", "retry") }},
+			} {
+				if err := retry.run(); err == nil || !strings.Contains(err.Error(), "rate limit") {
+					t.Errorf("%s ignored cooldown: %v", retry.name, err)
+				}
+				if limited.calls[1] != wantCalls {
+					t.Errorf("%s sent a repository list request during cooldown: calls = %d, want %d", retry.name, limited.calls[1], wantCalls)
+				}
+			}
+			if calls := p.issues.TakeCalls(); len(calls) != 0 {
+				t.Fatalf("cooldown allowed issue requests: %v", calls)
+			}
+			if err := s.SyncRepositoryWebhook(ctx, 2, "o/r"); err != nil || limited.calls[2] != 1 {
+				t.Fatalf("other installation was blocked: calls = %d, err = %v", limited.calls[2], err)
+			}
+			expireRateLimit(s, 1)
+			if err := s.SyncRepositoryWebhook(ctx, 1, "o/r"); err != nil || limited.calls[1] != wantCalls+1 {
+				t.Fatalf("expired cooldown still blocked discovery: calls = %d, err = %v", limited.calls[1], err)
+			}
+		})
+	}
+}
+
 func expireRateLimit(s *Service, installation int64) {
 	g := s.gate(installation)
 	g.rateMu.Lock()

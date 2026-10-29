@@ -210,9 +210,10 @@ func (s *Store) RepoInactive(ctx context.Context, installation int64, repo strin
 	return !active, err
 }
 
-// ReconcileRepos updates access for repositories previously seen by this
-// installation. observedAt is taken before listing GitHub's repositories,
-// so a webhook received while that list is in flight wins over it.
+// ReconcileRepos records every accessible repository and revokes access to
+// previously seen repositories absent from the list. observedAt is taken
+// before listing GitHub's repositories, so newer observations win even
+// before a newly discovered repository has had its first run.
 func (s *Store) ReconcileRepos(ctx context.Context, installation int64, accessible []string, observedAt time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -227,14 +228,14 @@ UNION SELECT repo FROM repo_access WHERE installation_id = ?1`, installation)
 	if err != nil {
 		return err
 	}
-	var known []string
+	access := make(map[string]bool, len(accessible))
 	for rows.Next() {
 		var repo string
 		if err := rows.Scan(&repo); err != nil {
 			rows.Close()
 			return err
 		}
-		known = append(known, repo)
+		access[repoKey(repo)] = false
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -243,15 +244,14 @@ UNION SELECT repo FROM repo_access WHERE installation_id = ?1`, installation)
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	available := make(map[string]bool, len(accessible))
 	for _, repo := range accessible {
-		available[repoKey(repo)] = true
+		access[repoKey(repo)] = true
 	}
-	for _, repo := range known {
+	for repo, active := range access {
 		_, err := tx.ExecContext(ctx, `
 INSERT INTO repo_access (installation_id, repo, active, observed_at) VALUES (?, ?, ?, ?)
 ON CONFLICT (installation_id, repo) DO UPDATE SET active = excluded.active, observed_at = excluded.observed_at
-			WHERE repo_access.observed_at < excluded.observed_at`, installation, repoKey(repo), available[repoKey(repo)], observedAt.UTC())
+			WHERE repo_access.observed_at < excluded.observed_at`, installation, repo, active, observedAt.UTC())
 		if err != nil {
 			return err
 		}

@@ -399,6 +399,42 @@ func TestOpenAddsRepositoryAccessToExistingDatabase(t *testing.T) {
 	}
 }
 
+func TestRepositorySweepRecordsAccessBeforeFirstRun(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		later bool
+	}{
+		{name: "older removal cannot undo discovery"},
+		{name: "later sweep can revoke unprocessed repository", later: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			if err := s.ReconcileRepos(ctx, 1, []string{"Acme/New", "ACME/NEW"}, t0); err != nil {
+				t.Fatal(err)
+			}
+			if tc.later {
+				if err := s.ReconcileRepos(ctx, 1, nil, t0.Add(time.Minute)); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := s.RepoAccess(ctx, 1, "acme/new", false, t0.Add(-time.Minute)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if inactive, err := s.RepoInactive(ctx, 1, "ACME/New"); err != nil || inactive != tc.later {
+				t.Fatalf("discovered repository inactive = %t, %v; want %t", inactive, err, tc.later)
+			}
+			// Access observations belong to their installation only.
+			if err := s.ReconcileRepos(ctx, 2, nil, t0.Add(2*time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			if inactive, err := s.RepoInactive(ctx, 1, "acme/new"); err != nil || inactive != tc.later {
+				t.Fatalf("other installation changed access: inactive = %t, %v", inactive, err)
+			}
+		})
+	}
+}
+
 func TestForgetInstallation(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	s.InstallationAdded(ctx, 1, "acme", t0)

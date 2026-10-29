@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -9,6 +10,19 @@ import (
 	gh "github.com/google/go-github/v88/github"
 	"github.com/sglavoie/deps-merger/pkg/github"
 )
+
+// Repository discovery uses the same installation token as the engine
+// and issues. Neither retries nor access webhooks may bypass its cooldown,
+// and a rate limit encountered while listing must pause those callers too.
+func (s *Service) listRepos(ctx context.Context, installation int64) ([]string, error) {
+	g := s.gate(installation)
+	if err := g.checkRateLimit(); err != nil {
+		return nil, err
+	}
+	repos, err := s.Platform.Repos(ctx, installation)
+	g.observeRateLimit(err)
+	return repos, err
+}
 
 // checkRateLimit refuses requests during the installation's cooldown.
 // The runner recognizes the reset time and can wait for a short pause.

@@ -236,7 +236,7 @@ func (s *Service) RepositoryRemoved(ctx context.Context, installation int64, rep
 // time prevents a slower API read from undoing a newer one.
 func (s *Service) SyncRepositoryWebhook(ctx context.Context, installation int64, repo string) error {
 	observedAt := time.Now()
-	repos, err := s.Platform.Repos(ctx, installation)
+	repos, err := s.listRepos(ctx, installation)
 	if err != nil {
 		return fmt.Errorf("list installation %d repositories: %w", installation, err)
 	}
@@ -382,7 +382,7 @@ func (s *Service) Once(ctx context.Context, only []string) error {
 	found := make(map[string]bool)
 	for _, id := range ids {
 		observedAt := time.Now()
-		repos, err := s.Platform.Repos(ctx, id)
+		repos, err := s.listRepos(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -443,7 +443,7 @@ func (s *Service) Run(ctx context.Context, j jobs.Job) error {
 		return nil
 	}
 	observedAt := time.Now()
-	repos, err := s.Platform.Repos(ctx, j.Installation)
+	repos, err := s.listRepos(ctx, j.Installation)
 	if err != nil {
 		s.Log.Error("list repositories", "installation", j.Installation, "err", err)
 		return err

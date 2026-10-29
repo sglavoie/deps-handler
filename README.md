@@ -21,8 +21,11 @@ unknown issue states and broken pagination before creating or editing an issue.
 Unknown PR states also fail tracking and preserve the previously open record
 instead of counting the PR as closed.
 The App shares GitHub's rate-limit cooldown across each installation's
-repositories, retries, review comments and health issues, including issue
-pinning. Other installations keep running with their own quotas.
+repositories, retries, repository listings, review comments and health issues,
+including issue pinning. Other installations keep running with their own quotas.
+Repository reconciliation records access as soon as a repository is discovered,
+so older webhook responses cannot revoke that access before its first run.
+Later sweeps can also revoke access to discovered repositories that have not run yet.
 Repositories with reviews disabled skip review setup, so a broken review
 cache or unavailable checkout credentials cannot fail their reports.
 
