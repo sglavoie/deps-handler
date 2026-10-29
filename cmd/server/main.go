@@ -117,20 +117,14 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 	mux.Handle("/webhook", &webhook.Handler{
 		Secret:  cfg.secret,
 		Enqueue: q.Enqueue,
-		Installed: func(ctx context.Context, id int64, account string) error {
-			return s.InstallationAdded(ctx, id, account)
+		Installed: func(ctx context.Context, id int64, _ string) error {
+			return s.SyncInstallationWebhook(ctx, id)
 		},
-		Uninstalled: func(ctx context.Context, id int64, deleted bool) error {
-			if err := s.InstallationRemoved(ctx, id, deleted); err != nil {
-				return err
-			}
-			if deleted {
-				log.Info("installation forgotten", "installation", id)
-			}
-			return nil
+		Uninstalled: func(ctx context.Context, id int64, _ bool) error {
+			return s.SyncInstallationWebhook(ctx, id)
 		},
-		RepoAdded:   s.RepositoryAdded,
-		RepoRemoved: s.RepositoryRemoved,
+		RepoAdded:   s.SyncRepositoryWebhook,
+		RepoRemoved: s.SyncRepositoryWebhook,
 		Log:         log.With("app", a.Slug, "app_id", a.ID),
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })

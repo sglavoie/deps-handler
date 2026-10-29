@@ -64,8 +64,8 @@ type Service struct {
 type installationGate struct {
 	run   sync.Mutex
 	write sync.Mutex
-	// lastEvent is the latest installation webhook applied by this server.
-	// A sweep fetched before it must not remove or forget the installation.
+	// lastEvent is the latest installation-state observation applied by
+	// this server. A slower API read must not undo it.
 	lastEvent    time.Time // guarded by write
 	activeMu     sync.Mutex
 	activeRepo   string
@@ -126,11 +126,41 @@ func (s *Service) InstallationAdded(ctx context.Context, id int64, account strin
 	return nil
 }
 
+// SyncInstallationWebhook applies GitHub's current installation state
+// instead of a delivery's action. A delayed or redelivered suspend, delete,
+// or unsuspend must not undo a newer change. The observation time is taken
+// before the API read so a newer observation cannot be overwritten by a
+// slower one.
+func (s *Service) SyncInstallationWebhook(ctx context.Context, id int64) error {
+	observedAt := time.Now()
+	installations, err := s.Platform.Installations(ctx)
+	if err != nil {
+		return fmt.Errorf("list installations: %w", err)
+	}
+	for _, in := range installations {
+		if in.ID != id {
+			continue
+		}
+		if in.Suspended {
+			return s.installationSuspendedAt(ctx, id, in.Account, observedAt)
+		}
+		return s.installationAddedAt(ctx, id, in.Account, observedAt)
+	}
+	return s.installationRemovedAt(ctx, id, true, observedAt)
+}
+
 func (s *Service) installationAddedAt(ctx context.Context, id int64, account string, observedAt time.Time) error {
 	g := s.gate(id)
 	g.write.Lock()
 	defer g.write.Unlock()
-	return s.Store.InstallationAdded(ctx, id, account, observedAt)
+	if g.lastEvent.After(observedAt) {
+		return nil
+	}
+	if err := s.Store.InstallationAdded(ctx, id, account, observedAt); err != nil {
+		return err
+	}
+	g.lastEvent = observedAt
+	return nil
 }
 
 func (s *Service) installationSuspendedAt(ctx context.Context, id int64, account string, observedAt time.Time) error {
@@ -143,6 +173,7 @@ func (s *Service) installationSuspendedAt(ctx context.Context, id int64, account
 	if err := s.Store.InstallationSuspended(ctx, id, account, observedAt); err != nil {
 		return err
 	}
+	g.lastEvent = observedAt
 	g.stop()
 	return nil
 }
@@ -150,19 +181,26 @@ func (s *Service) installationSuspendedAt(ctx context.Context, id int64, account
 // InstallationRemoved stops future writes and, for an uninstall, waits for
 // the current run before deleting its records and review files.
 func (s *Service) InstallationRemoved(ctx context.Context, id int64, deleted bool) error {
+	return s.installationRemovedAt(ctx, id, deleted, time.Now())
+}
+
+func (s *Service) installationRemovedAt(ctx context.Context, id int64, deleted bool, observedAt time.Time) error {
 	g := s.gate(id)
 	g.write.Lock()
-	at := time.Now()
-	err := s.Store.InstallationRemoved(ctx, id, at)
+	if g.lastEvent.After(observedAt) {
+		g.write.Unlock()
+		return nil
+	}
+	err := s.Store.InstallationRemoved(ctx, id, observedAt)
 	if err == nil {
-		g.lastEvent = at
+		g.lastEvent = observedAt
 		g.stop()
 	}
 	g.write.Unlock()
 	if err != nil || !deleted {
 		return err
 	}
-	return s.forgetIfInactiveBefore(context.WithoutCancel(ctx), id, at)
+	return s.forgetIfInactiveBefore(context.WithoutCancel(ctx), id, observedAt)
 }
 
 // RepositoryAdded and RepositoryRemoved update access before the queued
@@ -184,6 +222,32 @@ func (s *Service) RepositoryRemoved(ctx context.Context, installation int64, rep
 	}
 	g.write.Unlock()
 	return err
+}
+
+// SyncRepositoryWebhook checks current access rather than trusting a
+// possibly delayed added or removed delivery. RepoAccess's observation
+// time prevents a slower API read from undoing a newer one.
+func (s *Service) SyncRepositoryWebhook(ctx context.Context, installation int64, repo string) error {
+	observedAt := time.Now()
+	repos, err := s.Platform.Repos(ctx, installation)
+	if err != nil {
+		return fmt.Errorf("list installation %d repositories: %w", installation, err)
+	}
+	active := slices.ContainsFunc(repos, func(r string) bool { return strings.EqualFold(r, repo) })
+	g := s.gate(installation)
+	g.write.Lock()
+	defer g.write.Unlock()
+	if err := s.Store.RepoAccess(ctx, installation, repo, active, observedAt); err != nil {
+		return err
+	}
+	inactive, err := s.Store.RepoInactive(ctx, installation, repo)
+	if err != nil {
+		return err
+	}
+	if inactive {
+		g.stopRepo(repo)
+	}
+	return nil
 }
 
 // Base is the policy a repository gets before its own files: report
@@ -277,8 +341,9 @@ func (s *Service) SyncInstallations(ctx context.Context) ([]int64, error) {
 		stale := g.lastEvent.After(observedAt)
 		remove := !stale && k.RemovedAt == nil && !listed
 		if remove {
-			err = s.Store.InstallationRemoved(ctx, k.ID, time.Now())
+			err = s.Store.InstallationRemoved(ctx, k.ID, observedAt)
 			if err == nil {
+				g.lastEvent = observedAt
 				g.stop()
 			}
 		}

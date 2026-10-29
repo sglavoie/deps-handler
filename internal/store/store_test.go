@@ -436,6 +436,50 @@ func TestForgetInstallation(t *testing.T) {
 	}
 }
 
+func TestReinstalledRepositoryKeepsCurrentPRAndIssue(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	for _, id := range []int64{1, 2} {
+		if err := s.InstallationAdded(ctx, id, "acme", t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.StartRun(ctx, 1, "acme/app", "old installation", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetIssueNumber(ctx, "acme/app", 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenPR(ctx, 1, "acme/app", 42, "update", t0, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenRepo(ctx, 1, "acme/app", "merge", true, t0); err != nil {
+		t.Fatal(err)
+	}
+	// A new installation observes the same still-open PR before cleanup
+	// of the old installation (whose uninstall webhook may have been lost).
+	if err := s.SeenPR(ctx, 2, "acme/app", 42, "update", t0, t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenRepo(ctx, 2, "acme/app", "merge", true, t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ForgetInstallation(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.IssueNumber(ctx, "acme/app"); err != nil || n != 7 {
+		t.Fatalf("current installation's issue = %d, %v", n, err)
+	}
+	var owner int64
+	var firstSeen time.Time
+	if err := s.db.QueryRowContext(ctx, `SELECT installation_id, first_seen_at FROM prs WHERE repo = ? AND number = ?`, "acme/app", 42).Scan(&owner, &firstSeen); err != nil || owner != 2 || !firstSeen.Equal(t0.Add(time.Hour)) {
+		t.Fatalf("current PR owner = %d, first seen = %s, err = %v", owner, firstSeen, err)
+	}
+	var repoSeen, mergeSince time.Time
+	if err := s.db.QueryRowContext(ctx, `SELECT first_seen_at, merge_since FROM repos WHERE repo = ?`, "acme/app").Scan(&repoSeen, &mergeSince); err != nil || !repoSeen.Equal(t0.Add(time.Hour)) || !mergeSince.Equal(t0.Add(time.Hour)) {
+		t.Fatalf("new installation repo history: first seen = %s, merging since = %s, err = %v", repoSeen, mergeSince, err)
+	}
+}
+
 func TestReviews(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	s.InstallationAdded(ctx, 1, "acme", t0)

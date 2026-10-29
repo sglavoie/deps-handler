@@ -92,6 +92,22 @@ func TestInstallationRunsNeverOverlap(t *testing.T) {
 	}
 }
 
+func TestIdleWorkerRetiresAndLaterEnqueueStartsAnother(t *testing.T) {
+	q, r := start(t, 0, 0)
+	for want := 1; want <= 3; want++ {
+		q.Enqueue(Job{Installation: 1, Repo: "o/a"})
+		eventually(t, "worker to finish and retire", func() bool {
+			q.mu.Lock()
+			workers := len(q.workers)
+			q.mu.Unlock()
+			return len(r.seen()) == want && workers == 0
+		})
+	}
+	if r.overlap.Load() {
+		t.Fatal("new worker overlapped the previous installation run")
+	}
+}
+
 func TestInstallationsRunSideBySide(t *testing.T) {
 	q, r := start(t, 0, 200*time.Millisecond)
 	began := time.Now()

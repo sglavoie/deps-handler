@@ -170,6 +170,14 @@ func (q *Queues) work(id int64, w *worker) {
 	defer q.wg.Done()
 	for {
 		q.mu.Lock()
+		// Retire an idle worker while holding the same lock Enqueue uses.
+		// An event racing with retirement either joins this worker before
+		// it checks pending, or creates a new one after it is removed.
+		if len(w.pending) == 0 {
+			delete(q.workers, id)
+			q.mu.Unlock()
+			return
+		}
 		var next *pendingJob
 		for _, p := range w.pending {
 			if next == nil || p.due.Before(next.due) {

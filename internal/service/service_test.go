@@ -131,6 +131,7 @@ type platform struct {
 	installations []app.Installation
 	repos         []string
 	onList        func()
+	onRepos       func()
 	dbPath        string
 	engine        *engine
 	issues        *ghfake.Issues
@@ -149,6 +150,9 @@ func (p *platform) Installations(context.Context) ([]app.Installation, error) {
 	return []app.Installation{{ID: 1, Account: "o"}}, nil
 }
 func (p *platform) Repos(context.Context, int64) ([]string, error) {
+	if p.onRepos != nil {
+		p.onRepos()
+	}
 	if p.repos != nil {
 		return slices.Clone(p.repos), nil
 	}
@@ -707,6 +711,107 @@ func TestSweepSnapshotCannotResuspendInstallationAfterUnsuspendWebhook(t *testin
 	}
 	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || inactive {
 		t.Fatalf("unsuspended installation was removed by stale sweep: inactive = %t, %v", inactive, err)
+	}
+}
+
+func TestInstallationWebhookUsesCurrentStateAfterDelayedDelivery(t *testing.T) {
+	s, p := setup(t, false, "")
+	ctx := context.Background()
+	p.installations = []app.Installation{{ID: 1, Account: "o"}}
+	if err := s.SyncInstallationWebhook(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	p.installations[0].Suspended = true
+	if err := s.SyncInstallationWebhook(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || !inactive {
+		t.Fatalf("suspended installation inactive = %t, %v", inactive, err)
+	}
+	p.installations[0].Suspended = false
+	if err := s.SyncInstallationWebhook(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	// An old suspend or delete delivery is processed after the unsuspend.
+	if err := s.SyncInstallationWebhook(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || inactive {
+		t.Fatalf("delayed delivery changed active installation: inactive = %t, %v", inactive, err)
+	}
+	p.installations = []app.Installation{}
+	if err := s.SyncInstallationWebhook(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	// Likewise an old created delivery must not restore an uninstalled App.
+	if err := s.SyncInstallationWebhook(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || !inactive {
+		t.Fatalf("delayed delivery restored deleted installation: inactive = %t, %v", inactive, err)
+	}
+}
+
+func TestInstallationWebhookSnapshotCannotUndoNewerChange(t *testing.T) {
+	s, p := setup(t, false, "")
+	ctx := context.Background()
+	p.installations = []app.Installation{{ID: 1, Account: "o"}}
+	p.onList = func() {
+		p.onList = nil
+		if err := s.InstallationRemoved(ctx, 1, false); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := s.SyncInstallationWebhook(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || !inactive {
+		t.Fatalf("stale snapshot restored suspended installation: inactive = %t, %v", inactive, err)
+	}
+}
+
+func TestRepositoryWebhookUsesCurrentAccessAfterDelayedDelivery(t *testing.T) {
+	s, p := setup(t, false, "")
+	ctx := context.Background()
+	p.repos = []string{"o/r"}
+	if err := s.SyncRepositoryWebhook(ctx, 1, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	p.repos = []string{}
+	if err := s.SyncRepositoryWebhook(ctx, 1, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.RepoInactive(ctx, 1, "o/r"); err != nil || !inactive {
+		t.Fatalf("removed repository inactive = %t, %v", inactive, err)
+	}
+	p.repos = []string{"O/R"}
+	if err := s.SyncRepositoryWebhook(ctx, 1, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	// An old removal after the add still observes current access.
+	if err := s.SyncRepositoryWebhook(ctx, 1, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.RepoInactive(ctx, 1, "o/r"); err != nil || inactive {
+		t.Fatalf("delayed delivery removed current access: inactive = %t, %v", inactive, err)
+	}
+}
+
+func TestRepositoryWebhookSnapshotCannotUndoNewerChange(t *testing.T) {
+	s, p := setup(t, false, "")
+	ctx := context.Background()
+	p.repos = []string{"o/r"}
+	p.onRepos = func() {
+		p.onRepos = nil
+		if err := s.RepositoryRemoved(ctx, 1, "o/r"); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := s.SyncRepositoryWebhook(ctx, 1, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.RepoInactive(ctx, 1, "o/r"); err != nil || !inactive {
+		t.Fatalf("stale snapshot restored repository access: inactive = %t, %v", inactive, err)
 	}
 }
 

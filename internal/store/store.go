@@ -392,7 +392,9 @@ func (s *Store) SeenPR(ctx context.Context, installation int64, repo string, num
 	repo = repoKey(repo)
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO prs (installation_id, repo, number, title, opened_at, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (repo, number) DO UPDATE SET title = excluded.title, last_seen_at = excluded.last_seen_at,
+ON CONFLICT (repo, number) DO UPDATE SET installation_id = excluded.installation_id,
+	title = excluded.title, last_seen_at = excluded.last_seen_at,
+	first_seen_at = CASE WHEN prs.installation_id = excluded.installation_id THEN prs.first_seen_at ELSE excluded.first_seen_at END,
 	outcome = 'open', closed_at = NULL
 WHERE prs.outcome NOT IN ('merged', 'merged-by-app')`, installation, repo, number, title, opened.UTC(), seen.UTC(), seen.UTC())
 	return err
@@ -447,7 +449,9 @@ func (s *Store) SeenRepo(ctx context.Context, installation int64, repo, mode str
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO repos (repo, installation_id, mode, merging, first_seen_at, merge_since, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo) DO UPDATE SET installation_id = excluded.installation_id, mode = excluded.mode, merging = excluded.merging,
-	merge_since = COALESCE(repos.merge_since, excluded.merge_since), updated_at = excluded.updated_at`,
+	first_seen_at = CASE WHEN repos.installation_id = excluded.installation_id THEN repos.first_seen_at ELSE excluded.first_seen_at END,
+	merge_since = CASE WHEN repos.installation_id = excluded.installation_id THEN COALESCE(repos.merge_since, excluded.merge_since) ELSE excluded.merge_since END,
+	updated_at = excluded.updated_at`,
 		repo, installation, mode, merging, at.UTC(), since, at.UTC())
 	return err
 }
@@ -463,7 +467,11 @@ func (s *Store) ForgetInstallation(ctx context.Context, installation int64) erro
 	}
 	defer tx.Rollback()
 	for _, q := range []string{
-		`DELETE FROM issues WHERE repo IN (SELECT repo FROM runs WHERE installation_id = ?1 UNION SELECT repo FROM repos WHERE installation_id = ?1)`,
+		`DELETE FROM issues WHERE repo IN (SELECT repo FROM runs WHERE installation_id = ?1 UNION SELECT repo FROM repos WHERE installation_id = ?1)
+			AND repo NOT IN (SELECT repo FROM runs WHERE installation_id <> ?1
+				UNION SELECT repo FROM repos WHERE installation_id <> ?1
+				UNION SELECT repo FROM prs WHERE installation_id <> ?1
+				UNION SELECT repo FROM repo_access WHERE installation_id <> ?1)`,
 		`DELETE FROM writes WHERE run_id IN (SELECT id FROM runs WHERE installation_id = ?1)`,
 		`DELETE FROM runs WHERE installation_id = ?1`,
 		`DELETE FROM prs WHERE installation_id = ?1`,
