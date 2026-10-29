@@ -3,10 +3,14 @@ package output
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	gh "github.com/google/go-github/v88/github"
 	"github.com/sglavoie/deps-merger/internal/ghfake"
 	"github.com/sglavoie/deps-merger/pkg/config"
 	"github.com/sglavoie/deps-merger/pkg/policy"
@@ -167,5 +171,113 @@ func TestSyncWithIssuesDisabled(t *testing.T) {
 	f.Disable()
 	if _, _, err := Sync(context.Background(), f.Client(t), login, "o", "r", 0, Body(result(1), false), true, true); !errors.Is(err, ErrIssuesDisabled) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSyncRejectsIncompleteIssueReads(t *testing.T) {
+	issue := `{"number":7,"user":{"login":"dmc[bot]"},"body":"` + Marker + `","state":"open"}`
+	for _, tc := range []struct {
+		name  string
+		known int
+		body  string
+	}{
+		{"null list", 0, `null`},
+		{"null item", 0, `[null]`},
+		{"unidentified item", 0, `[{}]`},
+		{"missing number", 0, `[` + strings.Replace(issue, `"number":7,`, "", 1) + `]`},
+		{"missing author", 0, `[` + strings.Replace(issue, `"user":{"login":"dmc[bot]"},`, "", 1) + `]`},
+		{"missing state", 0, `[` + strings.Replace(issue, `,"state":"open"`, "", 1) + `]`},
+		{"unknown state", 0, `[` + strings.Replace(issue, `"open"`, `"unknown"`, 1) + `]`},
+		{"null known issue", 7, `null`},
+		{"empty known issue", 7, `{}`},
+		{"wrong known number", 7, strings.Replace(issue, `"number":7`, `"number":8`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			writes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method != http.MethodGet {
+					writes++
+					fmt.Fprint(w, issue)
+					return
+				}
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			base := srv.URL + "/"
+			c, err := gh.NewClient(gh.WithHTTPClient(srv.Client()), gh.WithURLs(&base, &base))
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, change, err := Sync(context.Background(), c, login, "o", "r", tc.known, "new report", true, true)
+			if err == nil || change != Unchanged || n != tc.known || writes != 0 {
+				t.Fatalf("incomplete read: number %d, change %q, err %v, writes %d", n, change, err, writes)
+			}
+		})
+	}
+}
+
+func TestSyncIssuePagination(t *testing.T) {
+	other := `[{"number":8,"user":{"login":"dmc[bot]"},"body":"another issue","state":"open"}]`
+	body := Marker + "\nreport"
+	ours := `[{"number":7,"user":{"login":"dmc[bot]"},"body":"` + Marker + `\nreport","state":"open"}]`
+	for _, tc := range []struct {
+		name   string
+		first  string
+		link   string
+		second string
+		bad    bool
+	}{
+		{"page numbers", other, "page=2", ours, false},
+		{"cursors", other, "after=next", ours, false},
+		{"null later page", other, "page=2", "null", true},
+		{"empty page with continuation", "[]", "page=2", ours, true},
+		{"repeated page", other, "page=1", ours, true},
+		{"skipped page", other, "page=3", ours, true},
+		{"repeated cursor", other, "after=next", other, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reads, writes := 0, 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method != http.MethodGet {
+					writes++
+					http.Error(w, "unexpected write", http.StatusInternalServerError)
+					return
+				}
+				reads++
+				if reads > 3 {
+					http.Error(w, "pagination did not stop", http.StatusInternalServerError)
+					return
+				}
+				if reads == 1 || tc.name == "repeated cursor" {
+					w.Header().Set("Link", "<"+"http://"+r.Host+r.URL.Path+"?"+tc.link+">; rel=\"next\"")
+				}
+				if reads == 1 {
+					fmt.Fprint(w, tc.first)
+				} else {
+					if !strings.Contains(r.URL.RawQuery, tc.link) {
+						t.Errorf("next request lost pagination: %s", r.URL)
+					}
+					fmt.Fprint(w, tc.second)
+				}
+			}))
+			defer srv.Close()
+			base := srv.URL + "/"
+			c, err := gh.NewClient(gh.WithHTTPClient(srv.Client()), gh.WithURLs(&base, &base))
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, change, err := Sync(context.Background(), c, login, "o", "r", 0, body, true, true)
+			if (err != nil) != tc.bad || change != Unchanged || writes != 0 {
+				t.Fatalf("number %d, change %q, err %v, writes %d", n, change, err, writes)
+			}
+			if !tc.bad && (n != 7 || reads != 2) {
+				t.Fatalf("did not find the existing health issue: number %d, reads %d", n, reads)
+			}
+			if tc.name == "repeated cursor" && reads != 2 {
+				t.Fatalf("did not stop at the repeated cursor: %d reads", reads)
+			}
+		})
 	}
 }

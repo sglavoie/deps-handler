@@ -20,6 +20,7 @@ import (
 	"github.com/sglavoie/deps-merger/internal/jobs"
 	"github.com/sglavoie/deps-merger/internal/store"
 	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-merger/pkg/runner"
 )
 
 const login = "dmc[bot]"
@@ -428,6 +429,36 @@ func TestRunsTrackPRsForTheMetrics(t *testing.T) {
 	}
 	if m.Repos != 1 || m.ReposMerging != 1 || m.Merges != 1 {
 		t.Fatalf("repos %d, merging %d, merges %d", m.Repos, m.ReposMerging, m.Merges)
+	}
+}
+
+type stateClient struct {
+	github.Client
+	state github.PRState
+}
+
+func (c stateClient) PullRequestState(context.Context, string, string, int) (github.PRState, error) {
+	return c.state, nil
+}
+
+func TestTrackingUnknownPRStateKeepsPROpen(t *testing.T) {
+	for _, state := range []github.PRState{"", "UNKNOWN"} {
+		t.Run(string(state), func(t *testing.T) {
+			s, p := setup(t, false, "")
+			ctx := context.Background()
+			if err := s.Store.SeenPR(ctx, 1, "o/r", 1, "bump lib", t0, t0); err != nil {
+				t.Fatal(err)
+			}
+			client := stateClient{Client: p.engine, state: state}
+			err := s.track(ctx, s.Log, client, 1, "o/r", runner.RepoResult{}, nil, nil, false, true)
+			if err == nil || !strings.Contains(err.Error(), "state") {
+				t.Fatalf("unknown PR state returned %v", err)
+			}
+			open, err := s.Store.OpenPRs(ctx, "o/r")
+			if err != nil || !slices.Equal(open, []int{1}) {
+				t.Fatalf("unknown PR state changed tracked PRs: %v, %v", open, err)
+			}
+		})
 	}
 }
 

@@ -16,6 +16,10 @@ Incomplete installation or repository lists stop reconciliation, preserving
 stored data and access state until GitHub returns a complete list.
 Large Dependency health reports keep complete lines within a 60,000-byte
 budget and show a truncation notice, so they can still be published.
+Dependency health issue lookups reject missing lists, unidentified entries,
+unknown issue states and broken pagination before creating or editing an issue.
+Unknown PR states also fail tracking and preserve the previously open record
+instead of counting the PR as closed.
 The App shares GitHub's rate-limit cooldown across each installation's
 repositories, retries, review comments and health issues, including issue
 pinning. Other installations keep running with their own quotas.

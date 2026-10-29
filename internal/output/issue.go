@@ -130,25 +130,76 @@ func find(ctx context.Context, c *gh.Client, login, owner, name string, known in
 	if known > 0 {
 		issue, resp, err := c.Issues.Get(ctx, owner, name, known)
 		switch {
-		case err == nil && ours(issue, login):
-			return issue, nil
+		case err == nil:
+			if err := validateIssue(issue); err != nil {
+				return nil, fmt.Errorf("issue #%d: %w", known, err)
+			}
+			if issue.GetNumber() != known {
+				return nil, fmt.Errorf("issue #%d: response identifies issue #%d", known, issue.GetNumber())
+			}
+			if ours(issue, login) {
+				return issue, nil
+			}
 		case err != nil && (resp == nil || (resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusGone)):
 			return nil, fmt.Errorf("issue #%d: %w", known, err)
 		}
 	}
-	opts := &gh.IssueListByRepoOptions{Creator: login, State: "all", Sort: "created", Direction: "desc", ListOptions: gh.ListOptions{PerPage: 100}}
-	for issue, err := range c.Issues.ListByRepoIter(ctx, owner, name, opts) {
+	opts := &gh.IssueListByRepoOptions{Creator: login, State: "all", Sort: "created", Direction: "desc", ListOptions: gh.ListOptions{PerPage: 100, Page: 1}}
+	seenCursors := map[string]bool{}
+	for {
+		page, resp, err := c.Issues.ListByRepo(ctx, owner, name, opts)
 		if er, ok := errors.AsType[*gh.ErrorResponse](err); ok && er.Response.StatusCode == http.StatusGone {
 			return nil, ErrIssuesDisabled
 		}
 		if err != nil {
 			return nil, fmt.Errorf("list issues: %w", err)
 		}
-		if ours(issue, login) {
-			return issue, nil
+		// The iterator discards null pages, which cannot establish that
+		// the health issue is absent. Validate entries before looking for
+		// ours so a missing list or unidentified issue cannot cause a
+		// duplicate or edit.
+		if page == nil {
+			return nil, errors.New("list issues: missing issue list")
 		}
+		for _, issue := range page {
+			if err := validateIssue(issue); err != nil {
+				return nil, fmt.Errorf("list issues: %w", err)
+			}
+		}
+		for _, issue := range page {
+			if ours(issue, login) {
+				return issue, nil
+			}
+		}
+		if resp.After == "" && resp.NextPage == 0 {
+			return nil, nil
+		}
+		if len(page) == 0 {
+			return nil, errors.New("list issues: invalid pagination")
+		}
+		if resp.After != "" {
+			if seenCursors[resp.After] {
+				return nil, errors.New("list issues: repeated pagination cursor")
+			}
+			seenCursors[resp.After] = true
+		} else if resp.NextPage != opts.ListOptions.Page+1 {
+			return nil, errors.New("list issues: invalid pagination")
+		}
+		opts.ListCursorOptions.After = resp.After
+		opts.ListOptions.Page = resp.NextPage
 	}
-	return nil, nil
+}
+
+func validateIssue(issue *gh.Issue) error {
+	if issue == nil || issue.GetNumber() <= 0 || strings.TrimSpace(issue.GetUser().GetLogin()) == "" {
+		return errors.New("incomplete issue identity")
+	}
+	switch issue.GetState() {
+	case "open", "closed":
+		return nil
+	default:
+		return fmt.Errorf("issue #%d: unrecognized state %q", issue.GetNumber(), issue.GetState())
+	}
 }
 
 func ours(issue *gh.Issue, login string) bool {

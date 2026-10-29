@@ -97,6 +97,11 @@ Missing lists, invalid entries, inconsistent repository counts, and broken
 pagination fail the read and are retried; they cannot establish an uninstall
 or loss of repository access. An incomplete later page discards the entire
 listing, preserving the previously recorded state and review files.
+Health issue lookups also reject missing lists, unidentified entries, unknown
+states, mismatched issue numbers and broken pagination, including repeated
+cursors. These failures stop issue writes and return an error for retry.
+An unknown PR state during tracking preserves its open record and fails the
+run, so it cannot be counted as closed without confirmation.
 Installation tokens refresh for API requests and checkout fetches during
 long review runs, including when the token used to start the run expires.
 Review setup runs only after resolving the owner and repository policies,

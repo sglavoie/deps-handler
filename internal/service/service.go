@@ -748,6 +748,7 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 		case github.PROpen:
 			// No longer a Dependabot PR the search finds, yet open.
 			continue
+		case github.PRClosed:
 		case github.PRMerged:
 			outcome = store.PRMerged
 			// Merged by a run that could not record it.
@@ -757,6 +758,9 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 			} else if ok {
 				outcome, at = store.PRMergedByApp, t
 			}
+		default:
+			add(fmt.Sprintf("check PR #%d state", n), fmt.Errorf("unrecognized pull request state %q", state))
+			continue
 		}
 		if err := s.Store.ClosePR(ctx, repo, n, outcome, at); err != nil {
 			add(fmt.Sprintf("track closed PR #%d", n), err)
