@@ -22,6 +22,47 @@ install: build
     rm -f {{ install_dir }}/{{ binary_name }}
     cp {{ binary_name }} {{ install_dir }}/{{ binary_name }}
 
+# Bump patch, minor, or major and trigger the GitHub release workflow
+release bump:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bump={{ quote(bump) }}
+    case "$bump" in
+        patch|minor|major) ;;
+        *) echo "Usage: just release patch|minor|major" >&2; exit 1 ;;
+    esac
+    if [[ "$(git branch --show-current)" != main ]]; then
+        echo "Release from the main branch." >&2
+        exit 1
+    fi
+    if [[ -n "$(git status --porcelain)" ]]; then
+        echo "Commit or stash changes before releasing." >&2
+        exit 1
+    fi
+    git fetch --tags origin main
+    if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+        echo "Update main from origin before releasing." >&2
+        exit 1
+    fi
+    latest=$(git tag --sort=-version:refname | sed -nE '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/p' | sed -n '1p')
+    latest=${latest:-v0.0.0}
+    IFS=. read -r major minor patch <<< "${latest#v}"
+    case "$bump" in
+        patch) patch=$((patch + 1)) ;;
+        minor) minor=$((minor + 1)); patch=0 ;;
+        major) major=$((major + 1)); minor=0; patch=0 ;;
+    esac
+    tag="v$major.$minor.$patch"
+    echo "Releasing $latest -> $tag"
+    git tag -a "$tag" -m "Release $tag"
+    if ! git push --atomic origin HEAD:refs/heads/main "refs/tags/$tag"; then
+        echo "Push failed; local tag $tag was kept. Retry with:" >&2
+        echo "  git push --atomic origin HEAD:refs/heads/main refs/tags/$tag" >&2
+        exit 1
+    fi
+    echo "Pushed $tag. GitHub Actions will run CI and publish the release:"
+    echo "https://github.com/sglavoie/deps-merger/actions/workflows/release.yml"
+
 # Run tests
 test:
     go test -race ./...

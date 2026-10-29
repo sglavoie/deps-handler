@@ -32,6 +32,28 @@ re-records [`docs/demo.gif`](docs/demo.gif) from [`demo/demo.tape`](demo/demo.ta
 with [VHS](https://github.com/charmbracelet/vhs); re-record it when the
 report output changes.
 
+## Releasing
+
+From a clean `main` branch, run one of:
+
+```bash
+just release patch   # v0.3.0 -> v0.3.1
+just release minor   # v0.3.0 -> v0.4.0
+just release major   # v0.3.0 -> v1.0.0
+```
+
+The recipe fetches tags from `origin`, bumps the highest stable `vX.Y.Z`
+tag (starting from `v0.0.0` if none exists), and creates an annotated tag.
+It pushes `main` and that tag atomically, including any local commits;
+if `main` is behind or has diverged from `origin`, update it first.
+Prerelease tags are ignored when choosing the version.
+
+The tag triggers the [release workflow](.github/workflows/release.yml),
+which runs CI before GoReleaser publishes the GitHub release and updates
+the Homebrew cask. The command returns after the push; follow the printed
+Actions link to check publication. If the push fails, the local tag is
+kept and the command prints the exact push to retry.
+
 ## Guidelines
 
 - deps-merger errs on the side of not merging. A change that lets more

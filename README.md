@@ -395,6 +395,9 @@ absolute or relative checkout paths, including `.` for the current directory.
 See [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) to
 report a vulnerability.
 
+Maintainers can tag and publish a version with `just release patch`
+(or `minor` / `major`); see [Releasing](CONTRIBUTING.md#releasing).
+
 ## License
 
 [MIT](LICENSE)
