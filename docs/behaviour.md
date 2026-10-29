@@ -88,8 +88,10 @@ the repository is read again, GitHub is asked whether it merged, and it is
 reported merged, with the error GitHub gave, or failed if it was closed
 without being merged. A successful HTTP response must explicitly report
 `merged: true`; `merged: false` is a failed merge. A missing or malformed
-confirmation is reconciled like a timeout, and an unknown or inconsistent
-PR state fails the state lookup rather than counting as a closed PR.
+confirmation is reconciled like a timeout. A PR state lookup must include
+both its state and its merged flag, and they must agree: only `MERGED` with
+`merged: true`, or `OPEN` or `CLOSED` with `merged: false`, counts. Missing,
+null, unknown or inconsistent values fail the lookup.
 GitHub can show such a PR open a
 moment longer, so when its retry fails too, the repository is read once
 more before the merge is reported failed. A PR that is still open but not

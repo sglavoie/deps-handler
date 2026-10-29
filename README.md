@@ -14,6 +14,8 @@ The App also reruns when a Dependabot PR leaves draft state, is edited,
 or receives an approval or review dismissal.
 Incomplete installation or repository lists stop reconciliation, preserving
 stored data and access state until GitHub returns a complete list.
+Large Dependency health reports keep complete lines within a 60,000-byte
+budget and show a truncation notice, so they can still be published.
 
 It is deliberately conservative. A PR merges only when Dependabot alone
 wrote it, its checks are green and its update is within your policy. With

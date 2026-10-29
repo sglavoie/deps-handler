@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/sglavoie/deps-merger/internal/ghfake"
 	"github.com/sglavoie/deps-merger/pkg/config"
@@ -90,6 +91,35 @@ func TestBodyEscapesAndIsStable(t *testing.T) {
 	}
 	if strings.Contains(a, "@octocat") || !strings.Contains(a, `\|`) {
 		t.Fatalf("body not escaped:\n%s", a)
+	}
+}
+
+func TestBodyBoundsLargeReports(t *testing.T) {
+	for name, text := range map[string]string{
+		"ASCII":   strings.Repeat("long reason ", 30_000),
+		"Unicode": strings.Repeat("更新が必要です。", 30_000),
+	} {
+		t.Run(name, func(t *testing.T) {
+			res := result(2)
+			res.Decisions[0].URL = "https://github.com/o/r/pull/1"
+			res.Decisions[1].Reason = text
+			body := Body(res, false)
+			if len(body) > 60_000 || !utf8.ValidString(body) {
+				t.Fatalf("issue body must remain publishable: %d bytes, valid UTF-8: %v", len(body), utf8.ValidString(body))
+			}
+			if !strings.HasPrefix(body, Marker+"\n") || !strings.Contains(body, "#1 bump lib") {
+				t.Fatal("truncation discarded the issue marker or the preceding PR")
+			}
+			if !strings.Contains(body, "Report truncated") {
+				t.Fatal("large report was cut off without telling the reader")
+			}
+			if body != Body(res, false) {
+				t.Fatal("truncated body differs between renders of the same result")
+			}
+		})
+	}
+	if body := Body(result(2), false); strings.Contains(body, "Report truncated") {
+		t.Fatal("ordinary report was marked as truncated")
 	}
 }
 

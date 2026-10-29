@@ -816,7 +816,7 @@ func (c *client) PullRequestState(ctx context.Context, owner, name string, numbe
 		Repository *struct {
 			PullRequest *struct {
 				State  string
-				Merged bool
+				Merged *bool
 			}
 		}
 	}
@@ -827,12 +827,16 @@ func (c *client) PullRequestState(ctx context.Context, owner, name string, numbe
 	if resp.Repository == nil || resp.Repository.PullRequest == nil {
 		return "", fmt.Errorf("%s/%s#%d: pull request not found", owner, name, number)
 	}
-	switch pr := resp.Repository.PullRequest; {
-	case pr.Merged:
+	pr := resp.Repository.PullRequest
+	if pr.Merged == nil {
+		return "", fmt.Errorf("%s/%s#%d: incomplete pull request state: missing merged", owner, name, number)
+	}
+	switch {
+	case pr.State == "MERGED" && *pr.Merged:
 		return PRMerged, nil
-	case pr.State == "OPEN":
+	case pr.State == "OPEN" && !*pr.Merged:
 		return PROpen, nil
-	case pr.State == "CLOSED":
+	case pr.State == "CLOSED" && !*pr.Merged:
 		return PRClosed, nil
 	}
 	return "", fmt.Errorf("%s/%s#%d: unrecognized or inconsistent pull request state %q", owner, name, number, resp.Repository.PullRequest.State)

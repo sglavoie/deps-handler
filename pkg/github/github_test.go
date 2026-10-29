@@ -570,6 +570,32 @@ func TestPullRequestStateRejectsUnknownState(t *testing.T) {
 	}
 }
 
+func TestPullRequestStateRejectsIncompleteOrInconsistentResponse(t *testing.T) {
+	for name, pr := range map[string]string{
+		"open without merged":       `{"state":"OPEN"}`,
+		"closed without merged":     `{"state":"CLOSED"}`,
+		"null merged":               `{"state":"CLOSED","merged":null}`,
+		"merged without state":      `{"merged":true}`,
+		"merged with null state":    `{"state":null,"merged":true}`,
+		"open but merged":           `{"state":"OPEN","merged":true}`,
+		"closed but merged":         `{"state":"CLOSED","merged":true}`,
+		"unknown state but merged":  `{"state":"FUTURE_STATE","merged":true}`,
+		"merged state but unmerged": `{"state":"MERGED","merged":false}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			body := `{"data":{"repository":{"pullRequest":` + pr + `}}}`
+			gql, err := api.NewGraphQLClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: canned(body)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := (&client{gql: gql}).PullRequestState(context.Background(), "o", "r", 5)
+			if err == nil || got != "" || !strings.HasPrefix(err.Error(), "o/r#5: ") {
+				t.Fatalf("invalid response became %q, %v; want no state and an error", got, err)
+			}
+		})
+	}
+}
+
 func TestPullRequestDetails(t *testing.T) {
 	diff := strings.Repeat("a", MaxDiffBytes-1) + "é"
 	rt := &routes{answers: map[string]*http.Response{

@@ -23,6 +23,12 @@ const (
 	Marker = "<!-- deps-merger:dependency-health -->"
 )
 
+// Keep reports comfortably within GitHub's issue body limit, including
+// escaped text and the notice. A byte cap also bounds Unicode characters.
+const maxBodyBytes = 60_000
+
+const truncatedNotice = "\n\n**Report truncated.** More results did not fit in this issue; check the repository's Dependabot pull requests for the remaining details.\n"
+
 // Body renders res as the issue's body. merging says whether the run was
 // allowed to merge: merging is enabled on the deployment and not paused
 // for the installation. It holds nothing that changes from run to run
@@ -42,7 +48,15 @@ func Body(res runner.RepoResult, merging bool) string {
 	}
 	b.WriteString("\n\n")
 	report.Markdown(&b, merging, res)
-	return strings.TrimRight(b.String(), "\n") + "\n"
+	body := strings.TrimRight(b.String(), "\n") + "\n"
+	if len(body) > maxBodyBytes {
+		prefix := body[:maxBodyBytes-len(truncatedNotice)]
+		// Retain complete Markdown lines rather than a partial table row,
+		// escape sequence or UTF-8 character. The marker stays at the top.
+		prefix = prefix[:strings.LastIndexByte(prefix, '\n')]
+		body = prefix + truncatedNotice
+	}
+	return body
 }
 
 // Wanted reports whether res is worth an open issue: open PRs, findings
