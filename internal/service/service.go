@@ -133,6 +133,20 @@ func (s *Service) installationAddedAt(ctx context.Context, id int64, account str
 	return s.Store.InstallationAdded(ctx, id, account, observedAt)
 }
 
+func (s *Service) installationSuspendedAt(ctx context.Context, id int64, account string, observedAt time.Time) error {
+	g := s.gate(id)
+	g.write.Lock()
+	defer g.write.Unlock()
+	if g.lastEvent.After(observedAt) {
+		return nil
+	}
+	if err := s.Store.InstallationSuspended(ctx, id, account, observedAt); err != nil {
+		return err
+	}
+	g.stop()
+	return nil
+}
+
 // InstallationRemoved stops future writes and, for an uninstall, waits for
 // the current run before deleting its records and review files.
 func (s *Service) InstallationRemoved(ctx context.Context, id int64, deleted bool) error {
@@ -236,6 +250,9 @@ func (s *Service) SyncInstallations(ctx context.Context) ([]int64, error) {
 	var active []int64
 	for _, in := range ins {
 		if in.Suspended {
+			if err := s.installationSuspendedAt(ctx, in.ID, in.Account, observedAt); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		if err := s.installationAddedAt(ctx, in.ID, in.Account, observedAt); err != nil {
@@ -258,7 +275,7 @@ func (s *Service) SyncInstallations(ctx context.Context) ([]int64, error) {
 		g := s.gate(k.ID)
 		g.write.Lock()
 		stale := g.lastEvent.After(observedAt)
-		remove := !stale && k.RemovedAt == nil && !slices.Contains(active, k.ID)
+		remove := !stale && k.RemovedAt == nil && !listed
 		if remove {
 			err = s.Store.InstallationRemoved(ctx, k.ID, time.Now())
 			if err == nil {

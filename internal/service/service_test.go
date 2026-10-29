@@ -588,6 +588,37 @@ func TestSweepForgetsUninstalledButNotSuspended(t *testing.T) {
 	}
 }
 
+func TestSweepRecordsFirstSeenSuspendedInstallation(t *testing.T) {
+	s, p := setup(t, true, "mode: merge\n", pr(1))
+	ctx := context.Background()
+	p.installations = []app.Installation{{ID: 1, Account: "o", Suspended: true}}
+	active, err := s.SyncInstallations(ctx)
+	if err != nil || len(active) != 0 {
+		t.Fatalf("active = %v, %v", active, err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || !inactive {
+		t.Fatalf("first-seen suspended installation inactive = %t, %v", inactive, err)
+	}
+	ins, err := s.Store.Installations(ctx)
+	if err != nil || len(ins) != 1 || ins[0].Account != "o" || ins[0].RemovedAt == nil {
+		t.Fatalf("recorded installations = %+v, %v", ins, err)
+	}
+	if err := s.Run(ctx, jobs.Job{Installation: 1, Repo: "o/r", Trigger: "stale webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.engine.merged) != 0 || len(writes(t, s)) != 0 {
+		t.Fatalf("suspended installation merged %v, wrote %v", p.engine.merged, writes(t, s))
+	}
+	p.installations[0].Suspended = false
+	active, err = s.SyncInstallations(ctx)
+	if err != nil || !slices.Equal(active, []int64{1}) {
+		t.Fatalf("active after unsuspend = %v, %v", active, err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || inactive {
+		t.Fatalf("unsuspended installation inactive = %t, %v", inactive, err)
+	}
+}
+
 func TestQueuedJobSkipsSuspendedInstallation(t *testing.T) {
 	s, p := setup(t, true, "mode: merge\n", pr(1))
 	ctx := context.Background()

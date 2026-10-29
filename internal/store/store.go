@@ -156,6 +156,17 @@ ON CONFLICT (id) DO UPDATE SET removed_at = COALESCE(installations.removed_at, e
 	return err
 }
 
+// InstallationSuspended records a suspended installation seen by a sweep,
+// including one whose installation webhook was missed. Keep its first
+// added_at and, when already inactive, the time it first became inactive.
+func (s *Store) InstallationSuspended(ctx context.Context, id int64, account string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO installations (id, account, added_at, removed_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET account = excluded.account,
+	removed_at = COALESCE(installations.removed_at, excluded.removed_at)`, id, account, at.UTC(), at.UTC())
+	return err
+}
+
 // InstallationInactive reports whether a known installation was suspended
 // or removed. An installation not yet seen by the sweep is allowed: GitHub
 // can deliver a repository event before its installation event arrives.

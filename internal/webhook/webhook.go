@@ -51,10 +51,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := gh.WebHookType(r)
+	switch kind {
+	case "installation", "installation_repositories", "pull_request", "check_suite", "status", "push":
+		// These events affect installation state or repository runs. A
+		// signed payload we cannot parse must be visible as a failed delivery.
+	case "":
+		http.Error(w, "missing webhook event type", http.StatusBadRequest)
+		return
+	default:
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	event, err := gh.ParseWebHook(kind, payload)
 	if err != nil {
-		// An event the App does not subscribe to, or cannot read.
-		w.WriteHeader(http.StatusNoContent)
+		h.Log.Error("webhook payload could not be parsed", "kind", kind, "err", err, "delivery", r.Header.Get("X-GitHub-Delivery"))
+		http.Error(w, "webhook payload could not be parsed", http.StatusInternalServerError)
 		return
 	}
 	if err := h.handle(r.Context(), kind, event); err != nil {

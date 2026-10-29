@@ -60,6 +60,20 @@ func TestStaleSweepCannotReactivateRemovedInstallation(t *testing.T) {
 	}
 }
 
+func TestSuspendedInstallationKeepsAccountAndFirstObservation(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	if err := s.InstallationSuspended(ctx, 7, "acme", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InstallationSuspended(ctx, 7, "acme-renamed", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Installations(ctx)
+	if err != nil || len(got) != 1 || got[0].Account != "acme-renamed" || !got[0].AddedAt.Equal(t0) || got[0].RemovedAt == nil || !got[0].RemovedAt.Equal(t0) {
+		t.Fatalf("suspended installation = %+v, %v", got, err)
+	}
+}
+
 func TestRunsIssuesAndWrites(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	id, err := s.StartRun(ctx, 1, "acme/app", "schedule", t0)

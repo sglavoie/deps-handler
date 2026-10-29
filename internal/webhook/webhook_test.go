@@ -89,6 +89,23 @@ func TestSignatures(t *testing.T) {
 	}
 }
 
+func TestMalformedSubscribedWebhookIsNotAcknowledged(t *testing.T) {
+	rec := &recorded{}
+	h := handler(rec, secret)
+	if code := deliver(h, "installation", "{", secret); code != http.StatusInternalServerError {
+		t.Fatalf("malformed installation delivery status = %d", code)
+	}
+	if code := deliver(h, "star", "{", secret); code != http.StatusNoContent {
+		t.Fatalf("unsupported event status = %d", code)
+	}
+	if code := deliver(h, "", `{}`, secret); code != http.StatusBadRequest {
+		t.Fatalf("missing event type status = %d", code)
+	}
+	if len(rec.jobs) != 0 || len(rec.installed) != 0 {
+		t.Fatalf("malformed or unsupported deliveries changed state: %+v", rec)
+	}
+}
+
 func TestRouting(t *testing.T) {
 	for _, c := range []struct {
 		name, kind, body string
