@@ -16,6 +16,11 @@ Incomplete installation or repository lists stop reconciliation, preserving
 stored data and access state until GitHub returns a complete list.
 Large Dependency health reports keep complete lines within a 60,000-byte
 budget and show a truncation notice, so they can still be published.
+The App shares GitHub's rate-limit cooldown across each installation's
+repositories, retries, review comments and health issues, including issue
+pinning. Other installations keep running with their own quotas.
+Repositories with reviews disabled skip review setup, so a broken review
+cache or unavailable checkout credentials cannot fail their reports.
 
 It is deliberately conservative. A PR merges only when Dependabot alone
 wrote it, its checks are green and its update is within your policy. With
@@ -199,6 +204,8 @@ user among the PR's latest 50 comments is reused. Review failures get an
 explanation as well. If posting fails, processing that repository stops
 without merging the PR and the run exits `1`; a later run can retry using
 the cached verdict. Dry runs and repositories in report mode post no comments.
+Reviewer text is escaped so Markdown images, links and bare URLs cannot
+publish external resources; mentions and bot commands are neutralized too.
 
 The agent never merges anything: an approved PR goes through every check
 again before it merges. Reviews run after their repository's other

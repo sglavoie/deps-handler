@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"html"
+	"regexp"
 	"strings"
 
 	"github.com/sglavoie/deps-merger/pkg/config"
@@ -61,10 +62,23 @@ func (r *Runner) reviewComment(rc config.Repo, d policy.Decision) string {
 	return body
 }
 
-// Quote untrusted agent text, redact tokens even in older cached verdicts,
-// and prevent quoted mentions from notifying users or commanding bots.
+var reviewMarkup = strings.NewReplacer(
+	`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`,
+	"!", `\!`, "~", `\~`, "$", `\$`, "|", `\|`, "#", `\#`,
+)
+
+var reviewAutolink = regexp.MustCompile(`(?i)://|www\.|#[0-9]|GH-[0-9]`)
+
+// Quote untrusted agent text and redact tokens, including older cached
+// verdicts. Escape Markdown links and images and break bare autolinks;
+// blockquotes alone would still publish external resources. Mentions must
+// neither notify users nor command bots.
 func quoteReview(s string) string {
 	s = html.EscapeString(review.Clean(s))
+	s = reviewMarkup.Replace(s)
+	s = reviewAutolink.ReplaceAllStringFunc(s, func(m string) string {
+		return m[:len(m)-1] + "\u200b" + m[len(m)-1:]
+	})
 	s = strings.ReplaceAll(s, "@", "&#64;")
 	return "> " + strings.ReplaceAll(s, "\n", "\n> ")
 }

@@ -288,7 +288,9 @@ with an error before merging, even when the response timed out and the
 comment may have been posted. The next run checks the PR comments before
 retrying and can reuse the cached verdict. Reviewer text has tokens and
 control characters removed, mentions neutralized, and unusually long
-explanations truncated to fit a GitHub comment.
+explanations truncated to fit a GitHub comment. Markdown links and images
+are escaped and bare autolinks are broken, so untrusted reviewer text
+cannot publish external resources. This also applies to cached verdicts.
 
 Reviews run after their repository's other merges, four at a time
 (`--review-parallel`), at most `--max-reviews` (default 10) per run. A

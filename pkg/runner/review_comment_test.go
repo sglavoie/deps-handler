@@ -148,7 +148,40 @@ func TestReviewCommentSanitizesAndBoundsAgentText(t *testing.T) {
 			t.Fatalf("comment contains %q", forbidden)
 		}
 	}
-	if !utf8.ValidString(body) || len(body) > 61_000 || !strings.Contains(body, "[Review text truncated.]") || !strings.Contains(body, "[redacted token]") {
+	if !utf8.ValidString(body) || len(body) > 61_000 || !strings.Contains(body, "[Review text truncated.]") || !strings.Contains(body, "redacted token") {
 		t.Fatalf("invalid or unbounded comment: %d bytes", len(body))
+	}
+}
+
+func TestReviewCommentNeutralizesLinksAndImages(t *testing.T) {
+	pr := testutil.PR(1, "lib:major")
+	r := reviewRunner(nil, nil, true)
+	for _, text := range []string{
+		"![status](https://example.invalid/tracker?data=private-code)",
+		"[release notes](https://example.invalid/)",
+		"![status][ref]\n\n[ref]: https://example.invalid/tracker",
+		`\![status](https://example.invalid/tracker)`,
+		"https://example.invalid/tracker www.example.invalid user@example.invalid",
+		"<https://example.invalid/tracker> <img src=\"https://example.invalid/tracker\">",
+		"# Heading\n```\n![status](https://example.invalid/tracker)\n```",
+	} {
+		t.Run(text, func(t *testing.T) {
+			d := policy.Decision{Number: 1, PR: &pr, Verdict: &policy.Verdict{
+				Agent: text, Summary: text, Concerns: []string{text}, Error: text,
+			}}
+			// Exercise the failure explanation and the successful verdict's
+			// summary/concerns, including text restored from an older cache.
+			for _, failed := range []bool{true, false} {
+				if !failed {
+					d.Verdict.Error = ""
+				}
+				body := r.reviewComment(repoCfg, d)
+				for _, forbidden := range []string{"https://example.invalid", "www.example.invalid", "user@example.invalid", "![status]", "[release notes]", "[ref]:", "<img", "```"} {
+					if strings.Contains(body, forbidden) {
+						t.Fatalf("comment retains active markup %q:\n%s", forbidden, body)
+					}
+				}
+			}
+		})
 	}
 }

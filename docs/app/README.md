@@ -87,6 +87,11 @@ they are queued. Pending jobs, including a run interrupted by a restart,
 resume when the server starts again. Failed runs retry after 30 seconds,
 two minutes, and ten minutes; after those attempts, the next sweep is the
 fallback.
+Rate-limit cooldowns apply to the whole installation, across repositories
+and queued retries. Merge requests, review comments, health issue requests
+and best-effort issue pinning share the cooldown until GitHub's requested
+pause expires; other installations continue independently. The server keeps
+this cooldown in memory.
 Installation and repository listings are validated before reconciliation.
 Missing lists, invalid entries, inconsistent repository counts, and broken
 pagination fail the read and are retried; they cannot establish an uninstall
@@ -94,6 +99,11 @@ or loss of repository access. An incomplete later page discards the entire
 listing, preserving the previously recorded state and review files.
 Installation tokens refresh for API requests and checkout fetches during
 long review runs, including when the token used to start the run expires.
+Review setup runs only after resolving the owner and repository policies,
+and only when the effective policy enables reviews. An opted-out repository
+does not open the review cache, request checkout credentials or probe the
+model. Review setup failures in opted-in repositories still allow updates
+that pass the ordinary merge policy to proceed, while failing the run.
 The recipe clears inherited server settings before loading `DMC_ENV`, so
 an allowlist or merge setting exported for another App cannot carry over.
 

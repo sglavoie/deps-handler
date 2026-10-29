@@ -305,6 +305,15 @@ func (r *Runner) sleep(ctx context.Context, d time.Duration) error {
 }
 
 func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
+	return r.RunRepoWithSetup(ctx, rc, nil)
+}
+
+// RunRepoWithSetup is RunRepo with setup called after policy files have
+// been resolved, before any PR is evaluated. It lets a caller configure
+// this runner's optional reviews using the effective repository policy.
+// A setup error fails the result but still permits ordinary policy-only
+// actions. Calls must not overlap other calls on this runner.
+func (r *Runner) RunRepoWithSetup(ctx context.Context, rc config.Repo, setup func(config.Repo) error) RepoResult {
 	rc, files, err := r.withFiles(ctx, rc)
 	res := RepoResult{
 		Repo:        rc.FullName(),
@@ -318,6 +327,10 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 		// Without the policy the repository asks for, nothing is judged.
 		res.Error = errText(ctx, err)
 		return res
+	}
+	var setupErr error
+	if setup != nil {
+		setupErr = setup(rc)
 	}
 	// A repository in report mode is only reported on, as in a dry run.
 	apply := r.Apply && rc.Policy.Mode != config.ModeReport
@@ -369,6 +382,12 @@ func (r *Runner) RunRepo(ctx context.Context, rc config.Repo) RepoResult {
 	// unreported, and returns the result. Each is reported as GitHub says
 	// it turned out, and failed when it cannot say.
 	finish := func() RepoResult {
+		if setupErr != nil {
+			if res.Error != "" {
+				res.Error += "; "
+			}
+			res.Error += setupErr.Error()
+		}
 		for _, n := range slices.Sorted(maps.Keys(unsure)) {
 			p := unsure[n]
 			if ctx.Err() != nil {

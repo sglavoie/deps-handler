@@ -64,6 +64,10 @@ type Service struct {
 type installationGate struct {
 	run   sync.Mutex
 	write sync.Mutex
+	// The cooldown survives individual repository runs and covers both
+	// engine writes and the issue client's requests.
+	rateMu  sync.Mutex
+	retryAt time.Time
 	// lastEvent is the latest installation-state observation applied by
 	// this server. A slower API read must not undo it.
 	lastEvent    time.Time // guarded by write
@@ -511,6 +515,9 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 		}
 	}()
 
+	if err := g.checkRateLimit(); err != nil {
+		return err
+	}
 	paused, err := s.Store.Paused(ctx, installation)
 	if err != nil {
 		outcome.Error = err.Error()
@@ -520,6 +527,7 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	merging := s.AllowMerge && !paused
 	engine, err := s.Platform.Engine(ctx, installation)
 	if err != nil {
+		g.observeRateLimit(err)
 		outcome.Error = err.Error()
 		log.Error("run", "err", err)
 		return err
@@ -530,17 +538,14 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	if s.Sleep != nil {
 		r.Sleep = s.Sleep
 	}
-	var reviewSetupErr error
-	if s.Review != nil {
-		reviewSetupErr = s.setupReview(ctx, log, r, client, installation, repo)
-	}
-	res := r.RunRepo(ctx, config.NewRepo(owner, name, Base()))
-	if reviewSetupErr != nil {
-		if res.Error != "" {
-			res.Error += "; "
+	res := r.RunRepoWithSetup(ctx, config.NewRepo(owner, name, Base()), func(rc config.Repo) error {
+		if s.Review != nil && rc.Policy.AgentReview {
+			if err := s.setupReview(ctx, log, r, client, installation, repo); err != nil {
+				return fmt.Errorf("agent review setup: %w", err)
+			}
 		}
-		res.Error += "agent review setup: " + reviewSetupErr.Error()
-	}
+		return nil
+	})
 
 	outcome.Error = res.Error
 	if res.Failed() {
@@ -583,7 +588,7 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	// What a failed or interrupted run read and merged happened all the
 	// same: it is recorded, past the run's end if need be.
 	complete := res.Error == "" && ctx.Err() == nil
-	if err := s.track(context.WithoutCancel(ctx), log, engine, installation, repo, res, client.seen, client.merged, repoMerges, complete); err != nil {
+	if err := s.track(context.WithoutCancel(ctx), log, client, installation, repo, res, client.seen, client.merged, repoMerges, complete); err != nil {
 		runErr = errors.Join(runErr, err)
 	}
 	if runErr != nil {
@@ -591,6 +596,9 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	}
 	if ctx.Err() != nil {
 		return
+	}
+	if err := g.checkRateLimit(); err != nil {
+		return errors.Join(runErr, err)
 	}
 
 	rest, err := s.Platform.REST(installation)
@@ -600,6 +608,10 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 			outcome.Error = "issue: " + err.Error()
 		}
 		return errors.Join(runErr, fmt.Errorf("issue: %w", err))
+	}
+	rest, err = withRateLimit(rest, g)
+	if err != nil {
+		return errors.Join(runErr, fmt.Errorf("issue client: %w", err))
 	}
 	known, err := s.Store.IssueNumber(ctx, repo)
 	if err != nil {
@@ -807,7 +819,11 @@ func (g *guarded) recordError() error {
 }
 
 func (g *guarded) FetchRepo(ctx context.Context, owner, name string) (*github.Repo, error) {
+	if err := g.gate.checkRateLimit(); err != nil {
+		return nil, err
+	}
 	r, err := g.Client.FetchRepo(ctx, owner, name)
+	g.gate.observeRateLimit(err)
 	if r != nil {
 		g.mu.Lock()
 		if g.seen == nil {
@@ -821,9 +837,39 @@ func (g *guarded) FetchRepo(ctx context.Context, owner, name string) (*github.Re
 	return r, err
 }
 
+func (g *guarded) FileText(ctx context.Context, owner, name, path string) ([]byte, error) {
+	if err := g.gate.checkRateLimit(); err != nil {
+		return nil, err
+	}
+	b, err := g.Client.FileText(ctx, owner, name, path)
+	g.gate.observeRateLimit(err)
+	return b, err
+}
+
+func (g *guarded) PullRequestDetails(ctx context.Context, owner, name string, number int) (*github.PullRequestDetails, error) {
+	if err := g.gate.checkRateLimit(); err != nil {
+		return nil, err
+	}
+	d, err := g.Client.PullRequestDetails(ctx, owner, name, number)
+	g.gate.observeRateLimit(err)
+	return d, err
+}
+
+func (g *guarded) PullRequestState(ctx context.Context, owner, name string, number int) (github.PRState, error) {
+	if err := g.gate.checkRateLimit(); err != nil {
+		return "", err
+	}
+	state, err := g.Client.PullRequestState(ctx, owner, name, number)
+	g.gate.observeRateLimit(err)
+	return state, err
+}
+
 func (g *guarded) Merge(ctx context.Context, owner, name string, number int, method, headOID string) error {
 	g.gate.write.Lock()
 	defer g.gate.write.Unlock()
+	if err := g.gate.checkRateLimit(); err != nil {
+		return err
+	}
 	inactive, err := g.s.Store.InstallationInactive(ctx, g.installation)
 	if err != nil {
 		return fmt.Errorf("checking the installation: %w", err)
@@ -847,6 +893,7 @@ func (g *guarded) Merge(ctx context.Context, owner, name string, number int, met
 		return ErrPaused
 	}
 	err = g.Client.Merge(ctx, owner, name, number, method, headOID)
+	g.gate.observeRateLimit(err)
 	w := store.Write{RunID: g.runID, Repo: g.repo, Kind: "merge", Number: number, Detail: fmt.Sprintf("%s at %.7s", method, headOID)}
 	if err != nil {
 		// It may have gone through all the same: the engine finds out,
@@ -870,6 +917,9 @@ func (g *guarded) Comment(ctx context.Context, owner, name string, number int, b
 	}
 	g.gate.write.Lock()
 	defer g.gate.write.Unlock()
+	if err := g.gate.checkRateLimit(); err != nil {
+		return err
+	}
 	inactive, err := g.s.Store.InstallationInactive(ctx, g.installation)
 	if err != nil {
 		return fmt.Errorf("checking the installation: %w", err)
@@ -893,6 +943,7 @@ func (g *guarded) Comment(ctx context.Context, owner, name string, number int, b
 		return ErrPaused
 	}
 	err = g.Client.Comment(ctx, owner, name, number, body)
+	g.gate.observeRateLimit(err)
 	w := store.Write{RunID: g.runID, Repo: g.repo, Kind: "review-comment", Number: number}
 	if err != nil {
 		w.Kind, w.Detail = "review-comment-attempted", err.Error()

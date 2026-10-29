@@ -418,6 +418,74 @@ func TestNoReviewUnlessTheRepositoryAsks(t *testing.T) {
 	}
 }
 
+func TestDisabledReviewSkipsSetupAndPublishesHealthIssue(t *testing.T) {
+	for _, tc := range []struct {
+		name, owner, repo string
+	}{
+		{"implicit default", "", "mode: merge\n"},
+		{"explicit opt out", "", "mode: merge\nagent_review: false\n"},
+		{"owner opt out", "agent_review: false\n", "mode: merge\n"},
+		{"override owner opt in", "agent_review: true\n", "mode: merge\nagent_review: false\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, failure := range []string{"cache", "token", "availability"} {
+				t.Run(failure, func(t *testing.T) {
+					s, p := setup(t, true, tc.repo, pr(1), major(2, "sha2"))
+					p.engine.files["o/.github:deps-merger.yml"] = tc.owner
+					s.Review = &Review{Dir: t.TempDir(), PerDay: 10, Model: "unused"}
+					s.Review.Available = func(context.Context) error {
+						t.Error("review-disabled repository contacted the model")
+						return errors.New("model unavailable")
+					}
+					switch failure {
+					case "cache":
+						path := filepath.Join(t.TempDir(), "file")
+						if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+							t.Fatal(err)
+						}
+						s.Review.Dir = path
+					case "token":
+						p.tokenErr = errors.New("checkout token unavailable")
+					}
+					if err := s.RunRepo(context.Background(), 1, "o/r", "test"); err != nil {
+						t.Fatalf("disabled review failed the run: %v", err)
+					}
+					if !slices.Equal(p.engine.merged, []int{1}) || p.issues.Len() != 1 {
+						t.Fatalf("merged %v; issues %d", p.engine.merged, p.issues.Len())
+					}
+					if body := p.issues.Get(1).Body; strings.Contains(body, "**Error:**") || !strings.Contains(body, "#2") {
+						t.Fatalf("health issue lost the held major update:\n%s", body)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestReviewCanOptInThroughOwnerPolicy(t *testing.T) {
+	repo, heads := remote(t, 1)
+	s, p := setup(t, true, "mode: merge\n", major(1, heads[0]))
+	p.engine.files["o/.github:deps-merger.yml"] = "agent_review: true\n"
+	a := &agent{decision: "approve"}
+	withReview(t, s, a, repo, 10)
+	if err := s.RunRepo(context.Background(), 1, "o/r", "test"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.prompts) != 1 || !slices.Equal(p.engine.merged, []int{1}) {
+		t.Fatalf("owner policy did not enable reviews: prompts %d, merges %v", len(a.prompts), p.engine.merged)
+	}
+}
+
+func TestReviewSetupFailureStillAllowsPolicyOnlyMerges(t *testing.T) {
+	s, p := setup(t, true, "mode: merge\nagent_review: true\n", pr(1), major(2, "sha2"))
+	s.Review = &Review{Dir: t.TempDir(), PerDay: 10, Model: "unused"}
+	p.tokenErr = errors.New("checkout token unavailable")
+	err := s.RunRepo(context.Background(), 1, "o/r", "test")
+	if err == nil || !strings.Contains(err.Error(), "agent review setup") || !slices.Equal(p.engine.merged, []int{1}) {
+		t.Fatalf("setup failure changed policy-only actions: %v; merged %v", err, p.engine.merged)
+	}
+}
+
 func TestForgetRemovesCheckoutsAndVerdicts(t *testing.T) {
 	repo, heads := remote(t, 1)
 	s, _ := setup(t, false, "agent_review: true\n", major(1, heads[0]))
