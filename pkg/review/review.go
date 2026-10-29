@@ -196,7 +196,9 @@ func Verdict(a Answer) (policy.Verdict, error) {
 // personal, OAuth, app user, app installation and refresh tokens. A
 // token is matched wherever it starts, even glued to a word, as an agent
 // could quote it ("xghp_…") to slip past a match at a word boundary.
-var githubToken = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}`)
+// Installation tokens may contain an App ID and a JWT, including dots,
+// underscores and hyphens. A final sentence period is not part of a JWT.
+var githubToken = regexp.MustCompile(`ghs_[A-Za-z0-9_.-]{29,}[A-Za-z0-9_-]|gh[pour]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}`)
 
 // redact hides GitHub tokens in an agent's reasons, which are cached,
 // printed and sent to CI logs: an agent can read files holding one, such

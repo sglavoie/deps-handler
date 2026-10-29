@@ -206,7 +206,9 @@ you set one, and that of a git fetching another PR's checkout meanwhile
 with. Something that looks like a GitHub token (`ghp_`, `gho_`,
 `ghu_`, `ghs_`, `ghr_`, `github_pat_`) in the agent's summary or
 concerns is replaced by `[redacted token]` before it is cached or
-reported, and so is one in an agent's error output. Control characters
+reported, and so is one in an agent's error output. This includes stateless
+installation tokens whose `ghs_` value contains an App ID and a JWT with
+dots, underscores and hyphens. Control characters
 other than newlines and tabs are dropped from both, and the text report
 drops them from everything it prints, along with invisible format
 characters such as bidirectional overrides and zero-width spaces, so an

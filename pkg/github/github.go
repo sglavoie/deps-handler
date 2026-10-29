@@ -275,6 +275,48 @@ func NewWithToken(token string) (Client, error) {
 	return newClient(api.ClientOptions{Host: "github.com", APIHost: "api.github.com", AuthToken: token, Transport: http.DefaultTransport, Timeout: RequestTimeout, LogIgnoreEnv: true})
 }
 
+// NewWithTokenSource is NewWithToken with credentials obtained before each
+// request, so an installation token can refresh during a long review run.
+// source must be safe for concurrent use.
+func NewWithTokenSource(source func(context.Context) (string, error)) (Client, error) {
+	if source == nil {
+		return nil, errors.New("github auth: missing token source")
+	}
+	// A nonempty placeholder prevents go-gh from resolving credentials or
+	// configuration. The transport replaces it with the current token.
+	return newClient(api.ClientOptions{Host: "github.com", APIHost: "api.github.com", AuthToken: "provided-by-transport",
+		Transport: tokenTransport{source: source, base: http.DefaultTransport}, Timeout: RequestTimeout, LogIgnoreEnv: true})
+}
+
+type tokenTransport struct {
+	source func(context.Context) (string, error)
+	base   http.RoundTripper
+}
+
+func (t tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	sent := false
+	defer func() {
+		if !sent && req.Body != nil {
+			req.Body.Close()
+		}
+	}()
+	// A redirect outside the API must never receive an installation token.
+	if req.URL.Scheme != "https" || req.URL.Host != "api.github.com" {
+		return nil, fmt.Errorf("unsupported GitHub API destination %q", req.URL.Host)
+	}
+	token, err := t.source(req.Context())
+	if err != nil {
+		return nil, fmt.Errorf("github auth: %w", err)
+	}
+	if token == "" {
+		return nil, errors.New("github auth: empty token")
+	}
+	cloned := req.Clone(req.Context())
+	cloned.Header.Set("Authorization", "token "+token)
+	sent = true // the underlying transport now owns the request body
+	return t.base.RoundTrip(cloned)
+}
+
 func newClient(opts api.ClientOptions) (*client, error) {
 	gql, err := api.NewGraphQLClient(opts)
 	if err != nil {

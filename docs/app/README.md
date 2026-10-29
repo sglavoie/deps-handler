@@ -58,6 +58,14 @@ The remaining review settings are documented at the top of
 webhook at `https://<host>/webhook`, and set its webhook secret. The
 `cmd/hook` utility can update the URL and list recent deliveries.
 
+The App subscribes to `check_suite`, `pull_request`, `pull_request_review`,
+`push`, and `status`. For an existing App, enable any missing events in
+its GitHub settings and accept the subscription change on installations
+when GitHub requests it. Approvals and review dismissals, draft-state
+changes, and PR edits queue a fresh run, so a PR becoming ready does not
+have to wait for the next sweep. Every run still fetches the current PR
+state and applies the full merge policy.
+
 ## Run and operate
 
 For the local tunnel setup, run `just app-local`. To use an installed,
@@ -79,6 +87,8 @@ they are queued. Pending jobs, including a run interrupted by a restart,
 resume when the server starts again. Failed runs retry after 30 seconds,
 two minutes, and ten minutes; after those attempts, the next sweep is the
 fallback.
+Installation tokens refresh for API requests and checkout fetches during
+long review runs, including when the token used to start the run expires.
 The recipe clears inherited server settings before loading `DMC_ENV`, so
 an allowlist or merge setting exported for another App cannot carry over.
 

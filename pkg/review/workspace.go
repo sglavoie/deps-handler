@@ -25,6 +25,9 @@ type Workspace struct {
 	// process of the user's, such as Codex reading what its sandbox
 	// allows, can read it there while git runs.
 	Token string
+	// TokenSource, when set, supplies a current token for each network
+	// command instead of Token, so later checkouts can refresh credentials.
+	TokenSource func(context.Context) (string, error)
 	// URL returns the remote of a repository; github.com over HTTPS when
 	// nil.
 	URL func(owner, name string) string
@@ -231,8 +234,19 @@ func (w *Workspace) output(ctx context.Context, dir string, args ...string) (str
 		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
 	}
 	noTerminal(cmd)
-	if w.Token != "" {
-		auth := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + w.Token))
+	token := w.Token
+	if w.TokenSource != nil && (args[0] == "fetch" || args[0] == "ls-remote") {
+		var err error
+		token, err = w.TokenSource(ctx)
+		if err != nil {
+			return "", fmt.Errorf("git %s authentication: %w", args[0], err)
+		}
+		if token == "" {
+			return "", fmt.Errorf("git %s authentication: empty token", args[0])
+		}
+	}
+	if token != "" {
+		auth := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
 		cmd.Env = append(cmd.Env,
 			"GIT_CONFIG_COUNT=1",
 			"GIT_CONFIG_KEY_0=http.https://github.com/.extraheader",

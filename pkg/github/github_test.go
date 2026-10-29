@@ -1002,6 +1002,71 @@ func TestNewWithToken(t *testing.T) {
 	}
 }
 
+func TestTokenSourceRefreshesGraphQLRESTAndDiffRequests(t *testing.T) {
+	t.Setenv("GH_HOST", "github.example.com")
+	t.Setenv("GH_TOKEN", "unrelated-user-token")
+	rec := &authRecorder{canned: canned(`{"merged":true,"body":"notes","data":{"viewer":{"login":"bot"}}}`)}
+	original := http.DefaultTransport
+	http.DefaultTransport = rec
+	t.Cleanup(func() { http.DefaultTransport = original })
+	calls := 0
+	c, err := NewWithTokenSource(func(context.Context) (string, error) {
+		calls++
+		return fmt.Sprintf("fresh-%d", calls), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := c.Viewer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Merge(ctx, "o", "r", 1, "squash", "head"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PullRequestDetails(ctx, "o", "r", 1); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 4 || rec.host != "api.github.com" || rec.header.Get("Authorization") != "token fresh-4" {
+		t.Fatalf("token calls = %d, host = %q, authorization = %q", calls, rec.host, rec.header.Get("Authorization"))
+	}
+}
+
+func TestTokenSourceFailuresDoNotSendRequests(t *testing.T) {
+	if _, err := NewWithTokenSource(nil); err == nil {
+		t.Fatal("nil token source accepted")
+	}
+	for _, sourceErr := range []error{nil, errors.New("token refresh failed")} {
+		rec := &authRecorder{}
+		original := http.DefaultTransport
+		http.DefaultTransport = rec
+		c, err := NewWithTokenSource(func(context.Context) (string, error) { return "", sourceErr })
+		http.DefaultTransport = original
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Viewer(context.Background()); err == nil || rec.host != "" {
+			t.Fatalf("refresh error %v: Viewer error = %v, request host = %q", sourceErr, err, rec.host)
+		}
+	}
+}
+
+func TestTokenSourceRefusesOtherDestinations(t *testing.T) {
+	transport := tokenTransport{source: func(context.Context) (string, error) {
+		t.Fatal("requested a token for another destination")
+		return "", nil
+	}}
+	for _, destination := range []string{"https://example.com/graphql", "http://api.github.com/graphql"} {
+		req, err := http.NewRequest(http.MethodGet, destination, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := transport.RoundTrip(req); err == nil {
+			t.Fatalf("accepted destination %s", destination)
+		}
+	}
+}
+
 func TestRejectUnsupportedHosts(t *testing.T) {
 	for _, source := range []string{"GH_HOST", "gh config"} {
 		t.Run(source, func(t *testing.T) {

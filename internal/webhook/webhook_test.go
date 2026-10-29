@@ -162,6 +162,36 @@ func TestInstallationLifecycle(t *testing.T) {
 	}
 }
 
+func TestPullRequestStateChangesQueueRuns(t *testing.T) {
+	for _, event := range []struct {
+		kind, action string
+	}{
+		{"pull_request", "ready_for_review"},
+		{"pull_request", "converted_to_draft"},
+		{"pull_request", "edited"},
+		{"pull_request_review", "submitted"},
+		{"pull_request_review", "dismissed"},
+	} {
+		t.Run(event.kind+"/"+event.action, func(t *testing.T) {
+			for _, author := range []string{"dependabot[bot]", "sam"} {
+				rec := &recorded{}
+				body := `{"action":"` + event.action + `","pull_request":{"user":{"login":"` + author + `"}},` + repo + `,` + inst + `}`
+				code := deliver(handler(rec, secret), event.kind, body, secret)
+				want := 0
+				if author == "dependabot[bot]" {
+					want = 1
+				}
+				if code != http.StatusAccepted || len(rec.jobs) != want {
+					t.Fatalf("author %s: status %d, jobs %+v; want %d", author, code, rec.jobs, want)
+				}
+				if want == 1 && rec.jobs[0] != (jobs.Job{Installation: 7, Repo: "acme/app", Trigger: event.kind}) {
+					t.Fatalf("queued job = %+v", rec.jobs[0])
+				}
+			}
+		})
+	}
+}
+
 func TestInstallationPersistenceFailureRejectsDelivery(t *testing.T) {
 	for _, action := range []string{"created", "deleted", "suspend"} {
 		t.Run(action, func(t *testing.T) {

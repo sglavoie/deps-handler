@@ -10,6 +10,8 @@ reports what needs fixing in each one. It uses your `gh` login.
 The same repository also contains a free GitHub App server. It
 reports into a Dependency health issue and merges only in repositories
 that opt in. See [GitHub App setup and operation](docs/app/README.md).
+The App also reruns when a Dependabot PR leaves draft state, is edited,
+or receives an approval or review dismissal.
 
 It is deliberately conservative. A PR merges only when Dependabot alone
 wrote it, its checks are green and its update is within your policy. With

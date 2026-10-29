@@ -129,6 +129,18 @@ func TestVerdictRedactsTokens(t *testing.T) {
 	}
 }
 
+func TestCleanRedactsStatelessInstallationTokens(t *testing.T) {
+	// The App ID, JWT segments and base64url separators are all part of
+	// the credential. Redacting only an alphanumeric prefix leaks it.
+	token := "ghs_123456_" + strings.Repeat("eyJhbGciOiJIUzI1NiJ9", 3) + "." +
+		strings.Repeat("cGF5bG9hZA_-", 20) + "." + strings.Repeat("c2lnbmF0dXJl_-", 8)
+	for _, input := range []string{token, token[:40] + "\u200b" + token[40:]} {
+		if got := Clean("credential (" + input + ")"); got != "credential ([redacted token])" {
+			t.Fatalf("stateless token was not fully redacted: %q", got)
+		}
+	}
+}
+
 func TestVerdictDropsControlCharacters(t *testing.T) {
 	v, err := Verdict(Answer{Decision: "approve", Summary: "fine\x1b]52;c;ZWNobyBoaQ==\x07 here\u009b",
 		Concerns: []string{"line one\nline two\t\x1b[2Jcleared"}})

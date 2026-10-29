@@ -4,6 +4,8 @@ package review
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +13,33 @@ import (
 	"testing"
 	"time"
 )
+
+func TestWorkspaceUsesCurrentTokenForNetworkCommands(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\nprintf '%s' \"$GIT_CONFIG_VALUE_0\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	token := "first"
+	var sourceErr error
+	w := &Workspace{Token: "stale", TokenSource: func(context.Context) (string, error) { return token, sourceErr }}
+	for _, command := range []string{"fetch", "ls-remote"} {
+		out, err := w.output(context.Background(), bin, command)
+		want := "AUTHORIZATION: basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+token))
+		if err != nil || out != want {
+			t.Fatalf("%s authentication = %q, %v; want %q", command, out, err, want)
+		}
+		token = "refreshed"
+	}
+	sourceErr = errors.New("cannot refresh installation token")
+	if _, err := w.output(context.Background(), bin, "fetch"); !errors.Is(err, sourceErr) {
+		t.Fatalf("token refresh error = %v", err)
+	}
+	token, sourceErr = "", nil
+	if _, err := w.output(context.Background(), bin, "fetch"); err == nil {
+		t.Fatal("empty refreshed token accepted")
+	}
+}
 
 func TestWorkspaceCheckoutIsPrivate(t *testing.T) {
 	origin, head := gitOrigin(t)

@@ -75,10 +75,11 @@ func (s *Service) setupReview(ctx context.Context, log *slog.Logger, r *runner.R
 		return fmt.Errorf("installation checkout token: %w", err)
 	}
 	r.Reviewer = &review.AgentReviewer{
-		Agent:     &metered{s: s, log: log, installation: installation, repo: repo},
-		Details:   engine,
-		Workspace: &review.Workspace{Root: rv.checkouts(installation), Token: token, URL: rv.CheckoutURL},
-		Timeout:   rv.Timeout,
+		Agent:   &metered{s: s, log: log, installation: installation, repo: repo},
+		Details: engine,
+		Workspace: &review.Workspace{Root: rv.checkouts(installation), Token: token, URL: rv.CheckoutURL,
+			TokenSource: func(ctx context.Context) (string, error) { return s.Platform.Token(ctx, installation) }},
+		Timeout: rv.Timeout,
 	}
 	if rv.Available != nil {
 		if err := rv.Available(ctx); err != nil {

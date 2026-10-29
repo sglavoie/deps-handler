@@ -120,11 +120,11 @@ func (a *App) Token(ctx context.Context, id int64) (string, error) {
 // stands in: write when it may write contents and pull requests.
 func (a *App) Engine(ctx context.Context, id int64) (github.Client, error) {
 	t := a.transport(id)
-	token, err := t.Token(ctx)
+	_, err := t.Token(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("installation %d token: %w", id, err)
 	}
-	c, err := github.NewWithToken(token)
+	c, err := github.NewWithTokenSource(t.Token)
 	if err != nil {
 		return nil, err
 	}

@@ -99,6 +99,9 @@ func run(ctx context.Context, log *slog.Logger, once bool, only []string) error 
 	if !slices.Contains(a.Events, "status") {
 		log.Warn("GitHub App is not subscribed to commit status events; enable the status event in its settings so status-only CI can trigger runs", "app", a.Slug)
 	}
+	if !slices.Contains(a.Events, "pull_request_review") {
+		log.Warn("GitHub App is not subscribed to pull request review events; enable pull_request_review in its settings so approvals and dismissals can trigger runs", "app", a.Slug)
+	}
 	log.Info("started", "app", a.Slug, "db", cfg.db, "allow_merge", cfg.allowMerge, "repos", cfg.repos)
 	s := &service.Service{Platform: a, Store: st, Log: log, Allowed: cfg.repos, AllowMerge: cfg.allowMerge, Review: cfg.review}
 	if cfg.review != nil {

@@ -52,7 +52,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	kind := gh.WebHookType(r)
 	switch kind {
-	case "installation", "installation_repositories", "pull_request", "check_suite", "status", "push":
+	case "installation", "installation_repositories", "pull_request", "pull_request_review", "check_suite", "status", "push":
 		// These events affect installation state or repository runs. A
 		// signed payload we cannot parse must be visible as a failed delivery.
 	case "":
@@ -118,10 +118,16 @@ func (h *Handler) handle(ctx context.Context, kind string, event any) error {
 		}
 	case *gh.PullRequestEvent:
 		switch e.GetAction() {
-		case "opened", "reopened", "synchronize", "closed":
+		case "opened", "reopened", "synchronize", "closed", "ready_for_review", "converted_to_draft", "edited":
 			if e.GetPullRequest().GetUser().GetLogin() == dependabot {
 				return enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 			}
+		}
+	case *gh.PullRequestReviewEvent:
+		// An approval can unblock a green PR without another push or CI
+		// run. A dismissal can restore branch protection's review block.
+		if (e.GetAction() == "submitted" || e.GetAction() == "dismissed") && e.GetPullRequest().GetUser().GetLogin() == dependabot {
+			return enqueue(e.GetInstallation().GetID(), e.GetRepo().GetFullName())
 		}
 	case *gh.CheckSuiteEvent:
 		// A suite on a pull request's head: one of its checks may decide
