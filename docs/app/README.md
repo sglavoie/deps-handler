@@ -72,6 +72,8 @@ still needs `agent_review: true` to request reviews. The recipe calls
 `DMC_TUNNEL_CONFIG` to use other files. Press Ctrl-C to stop both
 processes. The server sweeps installed
 repositories at startup and every four hours by default.
+If a sweep fails, it retries after one, two, five, then fifteen minutes
+(capped by `DMC_SWEEP`); a successful sweep restores the usual schedule.
 Failed queued runs retry after 30 seconds, two minutes, and ten minutes;
 the next sweep remains the fallback after those attempts or a restart.
 The recipe clears inherited server settings before loading `DMC_ENV`, so

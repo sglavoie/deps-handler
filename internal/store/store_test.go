@@ -94,6 +94,95 @@ func TestRunsIssuesAndWrites(t *testing.T) {
 	}
 }
 
+func TestRepositoryKeysIgnoreCase(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	if err := s.InstallationAdded(ctx, 1, "Acme", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenRepo(ctx, 1, "Acme/App", "merge", true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenRepo(ctx, 1, "acme/app", "merge", true, t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenPR(ctx, 1, "Acme/App", 7, "update", t0, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenPR(ctx, 1, "acme/app", 7, "update", t0, t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetIssueNumber(ctx, "Acme/App", 12); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.IssueNumber(ctx, "ACME/APP"); err != nil || n != 12 {
+		t.Fatalf("issue = %d, %v", n, err)
+	}
+	run, err := s.StartRun(ctx, 1, "Acme/App", "test", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordWrite(ctx, Write{RunID: run, Repo: "ACME/APP", Kind: "merge", Number: 7, At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := s.AppMerge(ctx, "acme/app", 7); err != nil || !ok {
+		t.Fatalf("app merge = %t, %v", ok, err)
+	}
+	ms, err := s.Metrics(ctx, t0.Add(time.Hour))
+	if err != nil || len(ms) != 1 || ms[0].Repos != 1 || ms[0].PRs != 1 || ms[0].Writes != 1 {
+		t.Fatalf("metrics = %+v, %v", ms, err)
+	}
+}
+
+func TestOpenMergesHistoricalCaseVariants(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "dmc.db")
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InstallationAdded(ctx, 1, "Acme", t0); err != nil {
+		t.Fatal(err)
+	}
+	rows := []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO repos VALUES (?, 1, 'merge', 1, ?, ?, ?)`, []any{"Acme/App", t0, t0, t0}},
+		{`INSERT INTO repos VALUES (?, 1, 'report', 0, ?, NULL, ?)`, []any{"acme/app", t0.Add(time.Minute), t0.Add(time.Hour)}},
+		{`INSERT INTO prs VALUES (1, ?, 7, 'update', ?, ?, ?, NULL, 'open')`, []any{"Acme/App", t0, t0, t0}},
+		{`INSERT INTO prs VALUES (1, ?, 7, 'update', ?, ?, ?, ?, 'merged-by-app')`, []any{"acme/app", t0, t0.Add(time.Minute), t0.Add(time.Hour), t0.Add(time.Hour)}},
+		{`INSERT INTO issues VALUES (?, ?)`, []any{"Acme/App", 4}},
+		{`INSERT INTO issues VALUES (?, ?)`, []any{"acme/app", 5}},
+	}
+	for _, row := range rows {
+		if _, err := s.db.ExecContext(ctx, row.query, row.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `PRAGMA user_version = 0`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if n, err := s.IssueNumber(ctx, "ACME/APP"); err != nil || n != 5 {
+		t.Fatalf("migrated issue = %d, %v", n, err)
+	}
+	ms, err := s.Metrics(ctx, t0.Add(2*time.Hour))
+	if err != nil || len(ms) != 1 || ms[0].Repos != 1 || ms[0].PRs != 1 || ms[0].MergedByApp != 1 {
+		t.Fatalf("migrated metrics = %+v, %v", ms, err)
+	}
+	if ms[0].ReposMerging != 0 || ms[0].OpenAgeAtStart != 0 {
+		// The latest repo mode wins; the historical PR is counted once.
+		t.Fatalf("migrated state = %+v", ms[0])
+	}
+}
+
 func TestPauseAndResume(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	if p, err := s.Paused(ctx, 1); err != nil || p {

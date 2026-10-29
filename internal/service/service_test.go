@@ -638,6 +638,59 @@ func TestSweepSnapshotCannotUndoUninstallWebhook(t *testing.T) {
 	}
 }
 
+func TestSweepSnapshotCannotRemoveNewInstallationWebhook(t *testing.T) {
+	s, p := setup(t, false, "")
+	ctx := context.Background()
+	// The list was fetched before this webhook arrived.
+	p.installations = []app.Installation{}
+	p.onList = func() {
+		if err := s.InstallationAdded(ctx, 2, "new-owner"); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := s.SyncInstallations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 2); err != nil || inactive {
+		t.Fatalf("new installation was removed by stale sweep: inactive = %t, %v", inactive, err)
+	}
+}
+
+func TestSweepSnapshotCannotResuspendInstallationAfterUnsuspendWebhook(t *testing.T) {
+	s, p := setup(t, false, "")
+	ctx := context.Background()
+	if err := s.InstallationAdded(ctx, 1, "o"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InstallationRemoved(ctx, 1, false); err != nil {
+		t.Fatal(err)
+	}
+	p.installations = []app.Installation{{ID: 1, Account: "o", Suspended: true}}
+	p.onList = func() {
+		if err := s.InstallationAdded(ctx, 1, "o"); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := s.SyncInstallations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if inactive, err := s.Store.InstallationInactive(ctx, 1); err != nil || inactive {
+		t.Fatalf("unsuspended installation was removed by stale sweep: inactive = %t, %v", inactive, err)
+	}
+}
+
+func TestFailedSweepRetriesSoonerThanItsPeriod(t *testing.T) {
+	period := 4 * time.Hour
+	for _, c := range []struct {
+		failures int
+		want     time.Duration
+	}{{0, period}, {1, time.Minute}, {2, 2 * time.Minute}, {3, 5 * time.Minute}, {4, 15 * time.Minute}, {9, 15 * time.Minute}} {
+		if got := sweepDelay(period, c.failures); got != c.want {
+			t.Errorf("after %d failures, delay = %s, want %s", c.failures, got, c.want)
+		}
+	}
+}
+
 func TestQueuedJobReturnsRepositoryFailureForRetry(t *testing.T) {
 	s, p := setup(t, false, "", pr(1))
 	p.restErr = errors.New("issues temporarily unavailable")

@@ -62,8 +62,11 @@ type Service struct {
 // mark it inactive during a run; write serializes that change with GitHub
 // writes so no new write starts after removal has been recorded.
 type installationGate struct {
-	run          sync.Mutex
-	write        sync.Mutex
+	run   sync.Mutex
+	write sync.Mutex
+	// lastEvent is the latest installation webhook applied by this server.
+	// A sweep fetched before it must not remove or forget the installation.
+	lastEvent    time.Time // guarded by write
 	activeMu     sync.Mutex
 	activeRepo   string
 	activeCancel context.CancelFunc
@@ -112,7 +115,15 @@ func (s *Service) gate(id int64) *installationGate {
 }
 
 func (s *Service) InstallationAdded(ctx context.Context, id int64, account string) error {
-	return s.installationAddedAt(ctx, id, account, time.Now())
+	g := s.gate(id)
+	g.write.Lock()
+	defer g.write.Unlock()
+	at := time.Now()
+	if err := s.Store.InstallationAdded(ctx, id, account, at); err != nil {
+		return err
+	}
+	g.lastEvent = at
+	return nil
 }
 
 func (s *Service) installationAddedAt(ctx context.Context, id int64, account string, observedAt time.Time) error {
@@ -127,15 +138,17 @@ func (s *Service) installationAddedAt(ctx context.Context, id int64, account str
 func (s *Service) InstallationRemoved(ctx context.Context, id int64, deleted bool) error {
 	g := s.gate(id)
 	g.write.Lock()
-	err := s.Store.InstallationRemoved(ctx, id, time.Now())
-	g.write.Unlock()
+	at := time.Now()
+	err := s.Store.InstallationRemoved(ctx, id, at)
 	if err == nil {
+		g.lastEvent = at
 		g.stop()
 	}
+	g.write.Unlock()
 	if err != nil || !deleted {
 		return err
 	}
-	return s.Forget(context.WithoutCancel(ctx), id)
+	return s.forgetIfInactiveBefore(context.WithoutCancel(ctx), id, at)
 }
 
 // RepositoryAdded and RepositoryRemoved update access before the queued
@@ -152,10 +165,10 @@ func (s *Service) RepositoryRemoved(ctx context.Context, installation int64, rep
 	g := s.gate(installation)
 	g.write.Lock()
 	err := s.Store.RepoAccess(ctx, installation, repo, false, time.Now())
-	g.write.Unlock()
 	if err == nil {
 		g.stopRepo(repo)
 	}
+	g.write.Unlock()
 	return err
 }
 
@@ -180,10 +193,13 @@ func (s *Service) runs(repo string) bool {
 // SweepEvery queues every installation now and then every period, keeping
 // the record of installations in step with GitHub's.
 func (s *Service) SweepEvery(ctx context.Context, period time.Duration, enqueue func(jobs.Job)) {
+	failures := 0
 	for {
 		if ids, err := s.SyncInstallations(ctx); err != nil {
 			s.Log.Error("sweep", "err", err)
+			failures++
 		} else {
+			failures = 0
 			for _, id := range ids {
 				enqueue(jobs.Job{Installation: id, Trigger: "schedule"})
 			}
@@ -191,9 +207,19 @@ func (s *Service) SweepEvery(ctx context.Context, period time.Duration, enqueue 
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(period):
+		case <-time.After(sweepDelay(period, failures)):
 		}
 	}
+}
+
+// A failed sweep should retry soon, while repeated failures back off so
+// an unavailable GitHub API is not polled continuously.
+func sweepDelay(period time.Duration, failures int) time.Duration {
+	if failures == 0 {
+		return period
+	}
+	delays := [...]time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute}
+	return min(period, delays[min(failures-1, len(delays)-1)])
 }
 
 // SyncInstallations records the installations GitHub lists as active,
@@ -228,13 +254,23 @@ func (s *Service) SyncInstallations(ctx context.Context) ([]int64, error) {
 		return nil, err
 	}
 	for _, k := range known {
-		if k.RemovedAt == nil && !slices.Contains(active, k.ID) {
-			if err := s.InstallationRemoved(ctx, k.ID, false); err != nil {
-				return nil, err
+		listed := slices.ContainsFunc(ins, func(in app.Installation) bool { return in.ID == k.ID })
+		g := s.gate(k.ID)
+		g.write.Lock()
+		stale := g.lastEvent.After(observedAt)
+		remove := !stale && k.RemovedAt == nil && !slices.Contains(active, k.ID)
+		if remove {
+			err = s.Store.InstallationRemoved(ctx, k.ID, time.Now())
+			if err == nil {
+				g.stop()
 			}
 		}
-		if !slices.ContainsFunc(ins, func(in app.Installation) bool { return in.ID == k.ID }) {
-			if err := s.Forget(ctx, k.ID); err != nil {
+		g.write.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		if !listed && !stale {
+			if err := s.forgetIfInactiveBefore(ctx, k.ID, observedAt); err != nil {
 				return nil, err
 			}
 		}

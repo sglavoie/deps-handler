@@ -142,9 +142,38 @@ func (s *Service) Forget(ctx context.Context, installation int64) error {
 	g := s.gate(installation)
 	g.run.Lock()
 	defer g.run.Unlock()
-	if err := s.Store.ForgetInstallation(ctx, installation); err != nil {
+	g.write.Lock()
+	err := s.Store.ForgetInstallation(ctx, installation)
+	g.write.Unlock()
+	if err != nil {
 		return err
 	}
+	return s.forgetReviewFiles(installation)
+}
+
+// forgetIfInactiveBefore is used after a removal. An installation webhook
+// that reactivated it after the removal or sweep snapshot keeps its records.
+func (s *Service) forgetIfInactiveBefore(ctx context.Context, installation int64, observedAt time.Time) error {
+	g := s.gate(installation)
+	g.run.Lock()
+	defer g.run.Unlock()
+	g.write.Lock()
+	if g.lastEvent.After(observedAt) {
+		g.write.Unlock()
+		return nil
+	}
+	inactive, err := s.Store.InstallationInactive(ctx, installation)
+	if err == nil && inactive {
+		err = s.Store.ForgetInstallation(ctx, installation)
+	}
+	g.write.Unlock()
+	if err != nil || !inactive {
+		return err
+	}
+	return s.forgetReviewFiles(installation)
+}
+
+func (s *Service) forgetReviewFiles(installation int64) error {
 	if s.Review == nil {
 		return nil
 	}

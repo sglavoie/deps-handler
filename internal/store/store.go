@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -128,6 +127,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("store %s: %w", path, err)
 	}
+	if err := migrateRepoKeys(ctx, db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store %s: %w", path, err)
+	}
 	return &Store{db: db}, nil
 }
 
@@ -168,6 +171,7 @@ func (s *Store) InstallationInactive(ctx context.Context, id int64) (bool, error
 // RepoAccess records whether an installation can currently reach repo.
 // An older sweep result cannot undo a newer repository webhook.
 func (s *Store) RepoAccess(ctx context.Context, installation int64, repo string, active bool, observedAt time.Time) error {
+	repo = repoKey(repo)
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO repo_access (installation_id, repo, active, observed_at) VALUES (?, ?, ?, ?)
 ON CONFLICT (installation_id, repo) DO UPDATE SET active = excluded.active, observed_at = excluded.observed_at
@@ -178,6 +182,7 @@ WHERE repo_access.observed_at < excluded.observed_at`, installation, repo, activ
 // RepoInactive reports whether access to repo was removed. A repository
 // not yet observed is allowed, as its first webhook may precede a sweep.
 func (s *Store) RepoInactive(ctx context.Context, installation int64, repo string) (bool, error) {
+	repo = repoKey(repo)
 	var active bool
 	err := s.db.QueryRowContext(ctx, `SELECT active FROM repo_access WHERE installation_id = ? AND repo = ?`, installation, repo).Scan(&active)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -221,13 +226,13 @@ UNION SELECT repo FROM repo_access WHERE installation_id = ?1`, installation)
 	}
 	available := make(map[string]bool, len(accessible))
 	for _, repo := range accessible {
-		available[strings.ToLower(repo)] = true
+		available[repoKey(repo)] = true
 	}
 	for _, repo := range known {
 		_, err := tx.ExecContext(ctx, `
 INSERT INTO repo_access (installation_id, repo, active, observed_at) VALUES (?, ?, ?, ?)
 ON CONFLICT (installation_id, repo) DO UPDATE SET active = excluded.active, observed_at = excluded.observed_at
-WHERE repo_access.observed_at < excluded.observed_at`, installation, repo, available[strings.ToLower(repo)], observedAt.UTC())
+			WHERE repo_access.observed_at < excluded.observed_at`, installation, repoKey(repo), available[repoKey(repo)], observedAt.UTC())
 		if err != nil {
 			return err
 		}
@@ -267,7 +272,7 @@ func (s *Store) Installations(ctx context.Context) ([]Installation, error) {
 
 // StartRun records a run of repo starting, and returns its id.
 func (s *Store) StartRun(ctx context.Context, installation int64, repo, trigger string, at time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO runs (installation_id, repo, trigger, started_at) VALUES (?, ?, ?, ?)`, installation, repo, trigger, at.UTC())
+	res, err := s.db.ExecContext(ctx, `INSERT INTO runs (installation_id, repo, trigger, started_at) VALUES (?, ?, ?, ?)`, installation, repoKey(repo), trigger, at.UTC())
 	if err != nil {
 		return 0, err
 	}
@@ -291,6 +296,7 @@ func (s *Store) FinishRun(ctx context.Context, id int64, o RunOutcome, at time.T
 // IssueNumber is the number of repo's "Dependency health" issue, or 0
 // when none is known.
 func (s *Store) IssueNumber(ctx context.Context, repo string) (int, error) {
+	repo = repoKey(repo)
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT number FROM issues WHERE repo = ?`, repo).Scan(&n)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -300,7 +306,7 @@ func (s *Store) IssueNumber(ctx context.Context, repo string) (int, error) {
 }
 
 func (s *Store) SetIssueNumber(ctx context.Context, repo string, n int) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO issues (repo, number) VALUES (?, ?) ON CONFLICT (repo) DO UPDATE SET number = excluded.number`, repo, n)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO issues (repo, number) VALUES (?, ?) ON CONFLICT (repo) DO UPDATE SET number = excluded.number`, repoKey(repo), n)
 	return err
 }
 
@@ -315,6 +321,7 @@ type Write struct {
 }
 
 func (s *Store) RecordWrite(ctx context.Context, w Write) error {
+	w.Repo = repoKey(w.Repo)
 	_, err := s.db.ExecContext(ctx, `INSERT INTO writes (run_id, repo, kind, number, detail, at) VALUES (?, ?, ?, ?, ?, ?)`,
 		w.RunID, w.Repo, w.Kind, w.Number, w.Detail, w.At.UTC())
 	return err
@@ -371,6 +378,7 @@ const (
 // merged stays so: a merge is final, and the read that saw it open is
 // older than the one that saw it merged.
 func (s *Store) SeenPR(ctx context.Context, installation int64, repo string, number int, title string, opened, seen time.Time) error {
+	repo = repoKey(repo)
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO prs (installation_id, repo, number, title, opened_at, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo, number) DO UPDATE SET title = excluded.title, last_seen_at = excluded.last_seen_at,
@@ -381,13 +389,14 @@ WHERE prs.outcome NOT IN ('merged', 'merged-by-app')`, installation, repo, numbe
 
 // ClosePR records how a PR left: one of the PR outcomes other than open.
 func (s *Store) ClosePR(ctx context.Context, repo string, number int, outcome string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE prs SET outcome = ?, closed_at = ? WHERE repo = ? AND number = ?`, outcome, at.UTC(), repo, number)
+	_, err := s.db.ExecContext(ctx, `UPDATE prs SET outcome = ?, closed_at = ? WHERE repo = ? AND number = ?`, outcome, at.UTC(), repoKey(repo), number)
 	return err
 }
 
 // AppMerge reports when the App last confirmed merging repo's PR number.
 // An attempted merge alone cannot establish who merged it later.
 func (s *Store) AppMerge(ctx context.Context, repo string, number int) (time.Time, bool, error) {
+	repo = repoKey(repo)
 	var at time.Time
 	err := s.db.QueryRowContext(ctx, `
 SELECT at FROM writes WHERE repo = ? AND number = ? AND kind = 'merge' ORDER BY at DESC LIMIT 1`, repo, number).Scan(&at)
@@ -399,6 +408,7 @@ SELECT at FROM writes WHERE repo = ? AND number = ? AND kind = 'merge' ORDER BY 
 
 // OpenPRs lists the numbers of repo's PRs last recorded open.
 func (s *Store) OpenPRs(ctx context.Context, repo string) ([]int, error) {
+	repo = repoKey(repo)
 	rows, err := s.db.QueryContext(ctx, `SELECT number FROM prs WHERE repo = ? AND outcome = 'open' ORDER BY number`, repo)
 	if err != nil {
 		return nil, err
@@ -418,6 +428,7 @@ func (s *Store) OpenPRs(ctx context.Context, repo string) ([]int, error) {
 // SeenRepo records the mode repo ran in, and whether the App could merge
 // there. merge_since keeps when merging was first on.
 func (s *Store) SeenRepo(ctx context.Context, installation int64, repo, mode string, merging bool, at time.Time) error {
+	repo = repoKey(repo)
 	var since any
 	if merging {
 		since = at.UTC()
@@ -473,6 +484,7 @@ type Review struct {
 }
 
 func (s *Store) RecordReview(ctx context.Context, r Review) error {
+	r.Repo = repoKey(r.Repo)
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO reviews (installation_id, repo, number, model, verdict, requests, prompt_tokens, completion_tokens, seconds, at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.Installation, r.Repo, r.Number, r.Model, r.Verdict, r.Requests,
