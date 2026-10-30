@@ -186,7 +186,7 @@ func TestReviewCommentRateLimitBlocksMergesAndIssues(t *testing.T) {
 }
 
 func TestIssueRateLimitsCarryOverToEngine(t *testing.T) {
-	for _, stage := range []string{"list", "create", "edit", "pin"} {
+	for _, stage := range []string{"list", "create", "edit", "pin", "pin-graphql", "pin-graphql-secondary"} {
 		t.Run(stage, func(t *testing.T) {
 			s, p := setup(t, false, "", pr(1))
 			if stage == "edit" {
@@ -199,9 +199,19 @@ func TestIssueRateLimitsCarryOverToEngine(t *testing.T) {
 				limit := stage == "list" && r.Method == "GET" ||
 					stage == "create" && r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/issues") ||
 					stage == "edit" && r.Method == "PATCH" ||
-					stage == "pin" && r.URL.Path == "/graphql"
+					strings.HasPrefix(stage, "pin") && r.URL.Path == "/graphql"
 				if limit {
 					limited.Store(true)
+					if strings.HasPrefix(stage, "pin-graphql") {
+						if stage == "pin-graphql-secondary" {
+							w.Header().Set("Retry-After", "600")
+						} else {
+							w.Header().Set("X-Ratelimit-Remaining", "0")
+							w.Header().Set("X-Ratelimit-Reset", fmt.Sprint(time.Now().Add(10*time.Minute).Unix()))
+						}
+						fmt.Fprint(w, `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`)
+						return
+					}
 					w.Header().Set("Retry-After", "600")
 					w.WriteHeader(429)
 					fmt.Fprint(w, `{"message":"slow down: secondary rate limit"}`)
@@ -217,8 +227,14 @@ func TestIssueRateLimitsCarryOverToEngine(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = s.RunRepo(context.Background(), 1, "o/r", "test")
-			if !limited.Load() || (stage != "pin" && (err == nil || !strings.Contains(err.Error(), "slow down"))) {
+			if !limited.Load() || (!strings.HasPrefix(stage, "pin") && (err == nil || !strings.Contains(err.Error(), "slow down"))) {
 				t.Fatalf("rate limit or original error body was lost: limited %t; err %v", limited.Load(), err)
+			}
+			if strings.HasPrefix(stage, "pin") && err != nil {
+				t.Fatalf("best-effort pin failed the confirmed issue creation: %v", err)
+			}
+			if delay, limited := github.RateLimited(s.gate(1).checkRateLimit()); !limited || delay < 9*time.Minute {
+				t.Fatalf("issue rate limit did not preserve the requested cooldown: delay %v, limited %t", delay, limited)
 			}
 			before := requests.Load()
 			s.AllowMerge = true

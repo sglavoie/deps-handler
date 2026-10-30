@@ -31,7 +31,8 @@ Overlapping runs also preserve confirmed PR merges, their recorded times and
 the App's merge attribution when a delayed run saves an older outcome.
 The App shares GitHub's rate-limit cooldown across each installation's
 repositories, retries, repository listings, review comments and health issues,
-including issue pinning. Other installations keep running with their own quotas.
+including issue pinning when GraphQL returns a rate limit with HTTP 200.
+Other installations keep running with their own quotas.
 Repository reconciliation records access as soon as a repository is discovered,
 so older webhook responses cannot revoke that access before its first run.
 Later sweeps can also revoke access to discovered repositories that have not run yet.

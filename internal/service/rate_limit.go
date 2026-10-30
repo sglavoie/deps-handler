@@ -109,7 +109,17 @@ func (t rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		return nil, err
 	}
 	resp, err := t.base.RoundTrip(req)
-	if err == nil && resp != nil && (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) {
+	if err != nil || resp == nil {
+		return resp, err
+	}
+	if resp.StatusCode == http.StatusOK && req.URL.Path == "/graphql" &&
+		(resp.Header.Get("X-Ratelimit-Remaining") == "0" || resp.Header.Get("Retry-After") != "") {
+		// GraphQL can report a rate limit with HTTP 200, including on a
+		// best-effort pin whose error the caller ignores. An exhausted
+		// budget also pauses requests if this mutation itself succeeded.
+		// Use the headers without consuming or changing the response.
+		t.gate.observeRateLimit(&api.HTTPError{StatusCode: http.StatusTooManyRequests, Headers: resp.Header})
+	} else if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
 		body := resp.Body
 		// CheckResponse restores the error body for the issue client.
 		t.gate.observeRateLimit(gh.CheckResponse(resp))
