@@ -30,7 +30,8 @@ func newRoot() *cobra.Command {
 config, merges those that are green and within policy, and reports what
 needs fixing in each repository. PRs not opened by Dependabot, or touched
 by anyone else, are never changed by run. Use pr diagnose for a repair
-handoff or pr fix to explicitly edit and push fixes to a selected PR.`,
+handoff or pr fix to prepare local fixes to a selected PR; add --push to
+publish them and verify CI.`,
 		Version:       versionString(),
 		SilenceUsage:  true,
 		SilenceErrors: true,

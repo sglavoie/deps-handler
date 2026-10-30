@@ -298,3 +298,56 @@ func TestLocalCommittedRepairsStillHonorRemoteLeaseAndAgentHead(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalRepairCanBeReviewedThenPublishedWithLease(t *testing.T) {
+	for _, concurrent := range []bool{false, true} {
+		t.Run(map[bool]string{false: "publish prepared commit", true: "reject concurrent push"}[concurrent], func(t *testing.T) {
+			w, origin, remoteHead, _ := localRepairCheckout(t)
+			ctx := context.Background()
+			if _, err := w.Checkout(ctx, "o", "r", 7, remoteHead); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(w.Directory, "prepared.txt"), []byte("repair"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			oid, err := w.Commit(ctx, w.Directory, remoteHead)
+			if err != nil || oid == remoteHead {
+				t.Fatalf("oid=%s err=%v", oid, err)
+			}
+			if got := gitAt(t, origin, "rev-parse", "refs/heads/repair"); got != remoteHead {
+				t.Fatal("prepared commit was published", got)
+			}
+			// A later invocation reopens the retained checkout and preserves the commit.
+			w.Close()
+			resumed, err := NewLocalWorkspace(ctx, w.Directory, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resumed.Close()
+			resumed.git.URL = func(string, string) string { return origin }
+			if _, err := resumed.Checkout(ctx, "o", "r", 7, remoteHead); err != nil {
+				t.Fatal(err)
+			}
+			wantRemote := oid
+			if concurrent {
+				if err := os.WriteFile(filepath.Join(origin, "human.txt"), []byte("human"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				gitAt(t, origin, "add", "human.txt")
+				gitAt(t, origin, "commit", "-qm", "human repair")
+				wantRemote = gitAt(t, origin, "rev-parse", "HEAD")
+				gitAt(t, origin, "update-ref", "refs/heads/repair", wantRemote)
+			}
+			published, err := resumed.CommitAndPush(ctx, resumed.Directory, "o", "r", "repair", remoteHead)
+			if (err != nil) != concurrent || (!concurrent && published != oid) {
+				t.Fatalf("published=%s want=%s concurrent=%v err=%v", published, oid, concurrent, err)
+			}
+			if got := gitAt(t, origin, "rev-parse", "refs/heads/repair"); got != wantRemote {
+				t.Fatal("wrong remote commit", got, wantRemote)
+			}
+			if got := gitAt(t, resumed.Directory, "rev-parse", "HEAD"); got != oid {
+				t.Fatal("prepared commit was rewritten", got)
+			}
+		})
+	}
+}

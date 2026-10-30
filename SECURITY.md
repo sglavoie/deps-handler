@@ -13,8 +13,9 @@ worth reporting:
   the report.
 
 `pr diagnose` uses the same read-only agents as reviews. `pr fix` is an
-explicit writable operation: its agent edits a disposable checkout and can
-run repository commands. Codex uses its workspace-write sandbox; Claude
+explicit writable operation: its agent edits a checkout and can run repository
+commands. Repairs commit locally and retain the checkout by default; `--push`
+authorizes publication and GitHub CI verification. Codex uses its workspace-write sandbox; Claude
 permits Bash and editing. This is a broader execution boundary than review.
 The parent process supplies GitHub authentication only to Git network commands,
 checks the selected PR again before publishing, and uses a head-pinned lease.

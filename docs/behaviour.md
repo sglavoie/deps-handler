@@ -582,14 +582,29 @@ because the API backend cannot repair; users can choose Claude instead.
 Save the Markdown report and review its steps before running the command,
 replacing `repair.md` with the actual saved path. Suggestions alone never
 start a repair or authorize writes. A failed or stale diagnosis has no repair
-command, and `pr fix` output does not suggest another repair automatically.
+command. The suggested command prepares the repair locally unless `--push`
+is added. A prepared repair prints a separate publication continuation.
 
-`pr fix` explicitly authorizes changes to the selected PR, including non-bot
-PRs. It requires write permission, an open PR and an existing head branch,
-and refuses to push to the PR's base branch. It uses fresh checkouts separate
-from review caches. The agent may edit files and run commands; the parent
-process commits and pushes. The agent is instructed to leave HEAD unchanged,
-keep changes focused and preserve tests and checks. Codex uses its
+`pr fix` explicitly authorizes local repair work for the selected PR, including
+non-bot PRs. It requires write permission, an open PR and an existing head
+branch, and refuses a repair targeting the PR's base branch. It uses fresh
+checkouts separate from review caches. The agent may edit files and run
+commands; the parent process commits locally. Only `--push` authorizes the
+parent to publish commits to the PR branch and verify GitHub CI.
+
+Without `--push`, preparation stops after one repair task and local commit.
+It retains the checkout on success, reports local validation results and a
+Git diff summary, and prints a continuation with `--push --working-directory`.
+JSON sets `prepared: true`, records local commit heads in `local_commits`,
+and exposes `diff_stat` and `publish_command`. `commits` records only pushed
+commit heads. `checks_passing` is false for a prepared local repair: the checks
+in `snapshot` describe the older remote PR head, not the local commit. A local
+commit can be prepared even if the agent reports validation gaps; preparation
+success does not confirm passing tests or resolved merge conflicts. Review
+the validation results and remaining work before publication. The continuation
+runs the repair agent again, which validates and may edit the local code.
+
+The agent is instructed to leave HEAD unchanged, keep changes focused and preserve tests and checks. Codex uses its
 `workspace-write` sandbox; Claude enables file editing and Bash with its
 restricted customization settings. Repository tests run with the permissions
 of that agent. GitHub token environment variables are removed from the agent,
@@ -615,14 +630,15 @@ refresh that evidence while retaining the plan. No separate diagnosis task
 is run. The agent is asked to implement the plan and validate it, not regenerate
 it; saved text cannot authorize actions outside the existing repair scope.
 
-Before publishing, the command rechecks head, head repository, branch, base
-commit, base branch and permissions. It requires local HEAD to remain the
-original PR commit and makes a descendant commit, using a lease pinned to
-the original remote head. A fork repair pushes to the fork's head branch and
-also requires push access there; inability to push fails and retains edits.
+Before committing locally or publishing, the command rechecks head, head
+repository, branch, base commit, base branch and permissions. It requires local HEAD to remain the
+original PR commit (or the validated ahead local commit) and makes a descendant
+commit. With `--push`, publication uses a lease pinned to the original remote
+head. A fork repair pushes to the fork's head branch and also requires push
+access there; inability to push fails and retains edits.
 The base is fetched with history so the agent can resolve merge conflicts
-without committing. A pre-push mismatch reports exactly which head commit,
-head repository/branch, base commit/branch or PR state changed, with its old
+without committing. A mismatch reports exactly which head commit, head
+repository/branch, base commit/branch or PR state changed, with its old
 and new values. It does not approve or merge PRs or modify protection.
 
 With `--working-directory DIRECTORY`, the repair uses an existing repository
@@ -658,14 +674,13 @@ no empty commit is created. The new published head must descend from the
 original remote PR commit in both cases. Concurrent remote pushes, branch
 switches and agent changes to HEAD still stop publication. Older remote CI
 cannot establish that unpublished local commits passed: an ahead checkout
-runs the repair/validation task even when old CI passed or is pending, then
-waits for CI on the published local code. A base-branch checkout is rejected
-before waiting or editing; changes committed on main must be brought onto
-the PR branch explicitly.
+runs the repair/validation task even when old CI passed or is pending.
+With `--push`, it then waits for CI on the published local code. A base-branch
+checkout is rejected before waiting or editing; changes committed on main must
+be brought onto the PR branch explicitly.
 
-
-CI is polled for the exact pushed head, allowing brief API propagation of the
-old head after a push. Passing checks are observed twice to allow newly queued
+With `--push`, CI is polled for the exact pushed head, allowing brief API
+propagation of the old head after a push. Passing checks are observed twice to allow newly queued
 jobs to appear. Missing, pending or all-skipped checks
 wait until `--wait-timeout` (15 minutes by default). Failed checks trigger a
 new repair, up to `--max-attempts` (3 by default). A changed PR stops the loop.
@@ -673,15 +688,17 @@ No agent approval is treated as proof of passing tests: GitHub observations
 set `checks_passing`. This describes the observed checks, not a promise that
 no more jobs will be scheduled. Remaining manual merge gates are reported
 separately. Every agent invocation is bounded by `agent.timeout`, defaulting
-to 15 minutes. A failure retains the checkout and reports its path; successful
-operations remove their temporary checkouts. There is no automatic rollback
+to 15 minutes. A failure retains the checkout and reports its path. Successful
+diagnoses and `--push` operations remove their temporary checkouts.
+Local preparations retain theirs for inspection. There is no automatic rollback
 of commits already pushed by earlier attempts.
 
-A successful diagnosis exits 0 even with blockers. A repair exits 0 for
-confirmed passing CI with code merge conflicts resolved, including an already
-passing PR; it exits 1 if repair
-or CI confirmation fails. Both commands support `--json`, report operational
-errors there, use 2 for invalid arguments and 130 for interruption. Existing
-`run` behavior is unchanged: a PR with repair commits fails its Dependabot-only
-authorship gate and must be merged manually. Neither the GitHub App nor the
+A successful diagnosis exits 0 even with blockers. Without `--push`, a repair
+exits 0 when prepared locally or no code repair is needed. With `--push`, exit 0
+confirms passing CI with code merge conflicts resolved, including an already
+passing PR. Preparation, repair or CI confirmation failures exit 1. Both
+commands support `--json`, report operational errors there, use 2 for invalid
+arguments and 130 for interruption. Existing `run` behavior is unchanged:
+a PR with published repair commits fails its Dependabot-only authorship gate
+and must be merged manually. Neither the GitHub App nor the
 demo build runs repairs.

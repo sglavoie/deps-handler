@@ -52,8 +52,8 @@ func (a *testAgent) Task(_ context.Context, _, prompt, _ string, writable bool) 
 }
 
 type testWorkspace struct {
-	checkouts, pushes int
-	pushErr           error
+	checkouts, pushes, commits int
+	pushErr                    error
 }
 
 func (w *testWorkspace) Checkout(context.Context, string, string, int, string) (string, error) {
@@ -61,6 +61,13 @@ func (w *testWorkspace) Checkout(context.Context, string, string, int, string) (
 	return "/private/checkout", nil
 }
 func (*testWorkspace) FetchBase(context.Context, string, string) error { return nil }
+func (w *testWorkspace) Commit(context.Context, string, string) (string, error) {
+	w.commits++
+	return "local-head", nil
+}
+func (*testWorkspace) DiffSummary(context.Context, string, string) (string, error) {
+	return " src/app.go | 2 +-", nil
+}
 func (w *testWorkspace) CommitAndPush(context.Context, string, string, string, string, string) (string, error) {
 	w.pushes++
 	return "new-head", w.pushErr
@@ -71,7 +78,7 @@ func snapshot(state github.CheckState) github.PRSnapshot {
 }
 func service(states ...github.PRSnapshot) (*Service, *testClient, *testAgent, *testWorkspace) {
 	c, a, w := &testClient{snapshots: states}, &testAgent{}, &testWorkspace{}
-	return &Service{Client: c, Agent: a, Workspace: w, AgentTimeout: time.Second, WaitTimeout: time.Second, PollInterval: time.Millisecond, MaxAttempts: 2}, c, a, w
+	return &Service{Client: c, Agent: a, Workspace: w, AgentTimeout: time.Second, WaitTimeout: time.Second, PollInterval: time.Millisecond, MaxAttempts: 2, Push: true}, c, a, w
 }
 
 type namedTaskAgent struct {
@@ -100,7 +107,7 @@ func TestDiagnosisRepairGuidance(t *testing.T) {
 			if err := Markdown(&out, got); err != nil {
 				t.Fatal(err)
 			}
-			for _, text := range []string{"## Next step", "Save this Markdown report as `repair.md`", "```sh\n" + want + "\n```", "edits, commits and pushes", "Review and merge the repaired PR yourself"} {
+			for _, text := range []string{"## Next step", "Save this Markdown report as `repair.md`", "```sh\n" + want + "\n```", "edits and commits locally", "`--push`", "Review and merge the repaired PR yourself"} {
 				if !strings.Contains(out.String(), text) {
 					t.Fatalf("missing %q in:\n%s", text, &out)
 				}
@@ -563,5 +570,54 @@ func TestFixChecksBaseBranchBeforeWaitingOrEditing(t *testing.T) {
 	_, err := s.Fix(context.Background(), remote.Target, "")
 	if err == nil || c.reads != 1 || a.calls != 0 || w.checkouts != 0 || w.pushes != 0 {
 		t.Fatalf("err=%v reads=%d agent=%d workspace=%+v", err, c.reads, a.calls, w)
+	}
+}
+
+func TestFixPreparesLocallyWithoutPushingOrWaitingForNewCI(t *testing.T) {
+	for _, state := range []github.CheckState{github.CheckFailed, github.CheckPassed} {
+		t.Run(string(state), func(t *testing.T) {
+			remote := snapshot(state)
+			remote.MergeState = "BEHIND"
+			c, a, w := &testClient{snapshots: []github.PRSnapshot{remote}}, &testAgent{}, &testWorkspace{}
+			// Omit Push to exercise the service's default behavior.
+			s := &Service{Client: c, Agent: a, Workspace: w, MaxAttempts: 3, WaitTimeout: time.Second, PollInterval: time.Millisecond}
+			got, err := s.Fix(context.Background(), remote.Target, "")
+			if err != nil || !got.Prepared || got.ChecksPassing || got.Attempts != 1 || got.Workspace == "" || len(got.LocalCommits) != 1 || len(got.Commits) != 0 || got.DiffStat == "" || w.commits != 1 || w.pushes != 0 || a.calls != 1 || c.reads != 2 {
+				t.Fatalf("result=%+v err=%v workspace=%+v agent=%+v reads=%d", got, err, w, a, c.reads)
+			}
+			if strings.Contains(a.prompt, "caller is authorized to push") {
+				t.Fatal("local repair authorized publication", a.prompt)
+			}
+			var out strings.Builder
+			if err := Markdown(&out, got); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"prepared locally", "Nothing pushed", "GitHub CI has not verified", "## Local commits", "## Repair diff summary"} {
+				if !strings.Contains(out.String(), want) {
+					t.Fatalf("missing %q in %s", want, &out)
+				}
+			}
+			if strings.Contains(out.String(), "## Pushed commits") {
+				t.Fatal(out.String())
+			}
+		})
+	}
+}
+
+func TestLocalPreparationStillRejectsConcurrentPRChanges(t *testing.T) {
+	for _, field := range []string{"head", "base"} {
+		before := snapshot(github.CheckFailed)
+		after := before
+		if field == "head" {
+			after.HeadOID = "human"
+		} else {
+			after.BaseOID = "new-base"
+		}
+		s, _, _, w := service(before, after)
+		s.Push = false
+		got, err := s.Fix(context.Background(), before.Target, "")
+		if err == nil || got.Prepared || w.commits != 0 || w.pushes != 0 || got.Workspace == "" {
+			t.Fatalf("%s: result=%+v err=%v workspace=%+v", field, got, err, w)
+		}
 	}
 }

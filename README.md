@@ -106,7 +106,8 @@ deps-handler run -r Storefront --json  # one repo, machine-readable
 deps-handler run --markdown        # GitHub Markdown, as for an issue body
 deps-handler run --review --apply  # let an AI agent judge bigger updates too
 deps-handler pr diagnose acme/Storefront#123 > repair.md  # AI repair handoff
-deps-handler pr fix acme/Storefront#123 --agent codex    # edit, push and verify CI
+deps-handler pr fix acme/Storefront#123 --agent codex    # edit and commit locally for review
+deps-handler pr fix acme/Storefront#123 --agent codex --push  # publish and verify CI
 deps-handler verdicts              # the agent's cached verdicts
 deps-handler verdicts acme/Storefront --json  # one repo's, with concerns
 ```
@@ -125,7 +126,7 @@ deps-handler pr diagnose https://github.com/acme/Storefront/pull/123 \
 deps-handler pr diagnose acme/Storefront#123 --focus 'Linux build failure'
 deps-handler pr diagnose acme/Storefront#123 --json
 
-# Apply a saved report (edit repair.md first if you want to refine its steps).
+# Prepare a local repair from a saved report (edit its steps first if needed).
 # The report identifies the PR, so no PR argument is needed.
 deps-handler pr fix --plan repair.md --agent codex
 
@@ -136,8 +137,13 @@ deps-handler pr fix acme/Storefront#123 --plan repair.md --agent codex
 deps-handler pr fix --plan repair.md --agent codex \
   --working-directory /path/to/Storefront
 
-# Authorize a repair without an existing plan.
-deps-handler pr fix acme/Storefront#123 --agent codex \
+# Publish a reviewed local repair and verify its GitHub CI.
+# Use the checkout path printed by the preparation command.
+deps-handler pr fix acme/Storefront#123 --agent codex --push \
+  --working-directory /path/to/retained/checkout
+
+# Or repair, push and verify CI directly, without an existing plan.
+deps-handler pr fix acme/Storefront#123 --agent codex --push \
   --max-attempts 3 --wait-timeout 15m
 ```
 
@@ -153,7 +159,8 @@ For a PR that meets the repair prerequisites, diagnosis includes a
 a base-branch repair is needed. Save the Markdown report, review or edit its steps, and substitute
 its saved path in that command. Claude and Codex diagnoses keep their agent
 choice; API diagnoses suggest Codex for the repair. JSON reports expose the
-same command as `repair_command` when available.
+same command as `repair_command` when available. The suggested command prepares
+the repair locally; it does not push unless you add `--push`.
 
 With `--plan repair.md`, the AI implements the saved diagnosis and any edits
 you made to its steps and validation commands. It reads the file without
@@ -170,13 +177,13 @@ a new plan. Plans must be non-empty UTF-8 Markdown files of at most 1 MiB.
 existing checkout, including a Git worktree. The directory must be the
 repository root, with no staged, unstaged or untracked changes, on a non-base
 branch or detached HEAD. It can be at the selected PR head or contain local
-commits on top of it. Those commits are preserved and included in the PR update.
-If they already fix the issue, the AI validates them and the command pushes
-them without creating an empty commit. The command never resets, cleans,
-switches branches or deletes this directory; ignored dependencies such as `node_modules` are
-preserved. Successful repairs commit to its current branch (or detached HEAD)
-and push to the selected PR branch. An exclusive lock prevents two deps-handler
-repairs from sharing the checkout. Existing remote URLs are left unchanged.
+commits on top of it. Those commits are preserved and included in the repair.
+If they already fix the issue, the AI validates them without creating an empty
+commit. With `--push`, the command publishes them and verifies their CI.
+The command never resets, cleans, switches branches or deletes this directory;
+ignored dependencies such as `node_modules` are preserved. Successful repairs commit to its current branch (or detached HEAD)
+and remain local unless `--push` publishes them to the selected PR branch.
+An exclusive lock prevents two deps-handler repairs from sharing the checkout. Existing remote URLs are left unchanged.
 Directory selection does not change the agent's network permissions or fix
 registry/DNS failures.
 
@@ -185,33 +192,45 @@ Diverged history is rejected with instructions to merge, rebase or cherry-pick
 your work onto the PR. Commits made on `main` belong to the base branch: check
 out the PR branch and merge/rebase `main` into it before rerunning. The command
 keeps the base branch protected. Passing or pending CI on the older remote
-commit never skips unpublished local commits; the tool validates and publishes
-the local code, then observes CI for the resulting head.
+commit never skips unpublished local commits; the tool validates the local code.
+With `--push`, it publishes that code and observes CI for the resulting head.
 
-`fix` uses a temporary checkout by default. It waits for pending CI before
-editing, runs a writable Claude Code or Codex task, commits the resulting file
-changes and pushes to the PR's head branch. It verifies the new commit's CI,
-retrying failures up to the attempt limit. An already passing PR needs no
-code repair unless it has merge conflicts or is behind its base. API models
+`fix` prepares a repair locally by default. It waits for pending CI before
+editing, runs a writable Claude Code or Codex task, and commits the resulting
+file changes once. It retains the checkout for inspection and prints its path,
+a diff summary, local validation results and a continuation command using
+`--push --working-directory`. Nothing is pushed, and local preparation does
+not confirm passing GitHub CI. The continuation runs the repair agent again to
+validate the local code and may make further edits before publication.
+
+With `--push`, `fix` publishes to the PR's head branch and verifies the new
+commit's CI, retrying failures up to `--max-attempts` (3 by default). An already
+passing PR needs no code repair unless it has merge conflicts or is behind its
+base, or the checkout has unpublished local commits. API models
 support `diagnose` only. Agent selection, model, budget and per-task timeout
 come from your existing `agent:` config; `--agent` overrides the selection.
 Without a config, Claude is the default. A config containing only agent
 settings is accepted by these commands.
 
-The command checks for concurrent PR and base changes before pushing. If
-anything moved, its error identifies the changed fields and old/new values;
-that attempt's edits remain local. It uses a Git lease to avoid overwriting a concurrent push. It never merges the
-PR. Reviews, draft status, branch protection and other merge gates remain
+The command checks for concurrent PR and base changes before committing or
+pushing. If anything moved, its error identifies the changed fields and old/new
+values; that attempt's edits remain local. It uses a Git lease to avoid
+overwriting a concurrent push. It never merges the PR. Reviews, draft status, branch protection and other merge gates remain
 visible even when CI passes. An empty or all-skipped check list does not
 confirm passing CI. The wait is bounded per commit; a timeout or incomplete
 check list is a failure, with any repair checkout retained for recovery.
 `diagnose` exits 0 when its report completes even if it finds blockers;
-`fix` exits 0 when checks pass and code merge conflicts are resolved, and 1
-on an unsuccessful repair.
+`fix` exits 0 when a local repair is prepared or no code repair is needed;
+with `--push`, exit 0 confirms passing CI and resolved code merge conflicts.
+An unsuccessful preparation, repair or CI confirmation exits 1.
 Both use 2 for invalid arguments and 130 for interruption. `--json` includes
-errors and the retained checkout path when available.
+errors and the retained checkout path when available. Local preparation sets
+`prepared: true`, records local commit heads in `local_commits`, and includes
+`diff_stat` and `publish_command`; `commits` continues to list pushed commit
+heads only. A prepared local repair has `checks_passing: false`, since the PR
+snapshot's checks describe the older remote commit.
 
-A repair adds commits that Dependabot did not author. The existing `run`
+Publishing a repair adds commits that Dependabot did not author. The existing `run`
 command therefore leaves that PR alone under its authorship policy; review
 and merge the repaired PR yourself after its checks and remaining gates pass.
 These commands are CLI-only and unavailable in the demo build.

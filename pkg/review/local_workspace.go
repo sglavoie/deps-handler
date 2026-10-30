@@ -153,18 +153,37 @@ func (w *LocalWorkspace) FetchBase(ctx context.Context, dir, base string) error 
 }
 
 func (w *LocalWorkspace) CommitAndPush(ctx context.Context, dir, owner, repo, branch, expected string) (string, error) {
+	if err := w.validateRepair(ctx, dir, expected); err != nil {
+		return "", err
+	}
+	return w.git.commitAndPush(ctx, dir, owner, repo, branch, w.localHead, expected)
+}
+
+// Commit keeps the repair in the selected checkout without pushing.
+func (w *LocalWorkspace) Commit(ctx context.Context, dir, expected string) (string, error) {
+	if err := w.validateRepair(ctx, dir, expected); err != nil {
+		return "", err
+	}
+	return w.git.commitRepair(ctx, dir, w.localHead, expected)
+}
+
+func (w *LocalWorkspace) DiffSummary(ctx context.Context, dir, expected string) (string, error) {
+	return w.git.DiffSummary(ctx, dir, expected)
+}
+
+func (w *LocalWorkspace) validateRepair(ctx context.Context, dir, expected string) error {
 	if dir != w.Directory {
-		return "", errors.New("unexpected repair working directory")
+		return errors.New("unexpected repair working directory")
 	}
 	currentBranch, err := w.git.output(ctx, dir, "branch", "--show-current")
 	if err != nil {
-		return "", err
+		return err
 	}
 	if currentBranch != w.branch {
-		return "", errors.New("local branch changed during repair; edits kept locally, nothing pushed")
+		return errors.New("local branch changed during repair; edits kept locally, nothing pushed")
 	}
 	if expected != w.remoteHead {
-		return "", errors.New("remote PR head differs from the prepared lease; nothing pushed")
+		return errors.New("remote PR head differs from the prepared lease; nothing pushed")
 	}
-	return w.git.commitAndPush(ctx, dir, owner, repo, branch, w.localHead, expected)
+	return nil
 }

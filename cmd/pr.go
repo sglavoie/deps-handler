@@ -55,12 +55,12 @@ func newPRCmd() *cobra.Command {
 
 func newPRTaskCmd(fix bool) *cobra.Command {
 	var agentName, focus, planPath, workingDirectory string
-	var asJSON bool
+	var asJSON, push bool
 	var attempts int
 	var waitTimeout time.Duration
 	verb, short := "diagnose", "Explain merge blockers and produce a reusable AI repair handoff"
 	if fix {
-		verb, short = "fix", "Edit, commit and push AI repairs, then verify the PR's CI"
+		verb, short = "fix", "Prepare an AI repair locally; --push publishes and verifies CI"
 	}
 	targetArgs := cobra.ExactArgs(1)
 	use := verb + " <owner/repo#number | PR-URL>"
@@ -163,7 +163,7 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 				}
 			}()
 			service := &pr.Service{Client: client, Agent: agent, Plan: plan, Workspace: workspace,
-				AgentTimeout: cfg.Timeout, WaitTimeout: waitTimeout, PollInterval: 10 * time.Second, MaxAttempts: attempts,
+				AgentTimeout: cfg.Timeout, WaitTimeout: waitTimeout, PollInterval: 10 * time.Second, MaxAttempts: attempts, Push: push,
 				Progress: func(message string) { fmt.Fprintln(cmd.ErrOrStderr(), review.Clean(message)) },
 			}
 			var result pr.Result
@@ -175,7 +175,16 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 			if err != nil {
 				result.Error = review.Clean(err.Error())
 			}
-			keep = local || (fix && err != nil && result.Workspace != "")
+			keep = local || (fix && (result.Prepared || err != nil) && result.Workspace != "")
+			if result.Prepared {
+				result.PublishCommand = fmt.Sprintf("deps-handler pr fix %s --push --working-directory %s --agent %s", target, shellQuote(result.Workspace), name)
+				if configPath != "" {
+					result.PublishCommand += " --config " + shellQuote(configPath)
+				}
+				if plan != nil {
+					result.PublishCommand += " --plan " + shellQuote(plan.Source)
+				}
+			}
 			if !keep {
 				result.Workspace = ""
 			} else if result.Workspace != "" {
@@ -207,11 +216,12 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 	c.Flags().StringVar(&focus, "focus", "", "failure or area to investigate")
 	c.Flags().BoolVar(&asJSON, "json", false, "print the structured report as JSON")
 	if fix {
+		c.Flags().BoolVar(&push, "push", false, "push repair commits to the PR branch and verify GitHub CI")
 		c.Flags().StringVar(&workingDirectory, "working-directory", "", "edit a clean checkout at or ahead of the PR head; include local commits and preserve dependencies")
 		_ = c.MarkFlagDirname("working-directory")
 		c.Flags().StringVar(&planPath, "plan", "", "follow a saved Markdown repair plan (infer PR from diagnose report when omitted)")
 		_ = c.MarkFlagFilename("plan", "md", "markdown")
-		c.Flags().IntVar(&attempts, "max-attempts", 3, "maximum edit/push/CI attempts")
+		c.Flags().IntVar(&attempts, "max-attempts", 3, "maximum edit/push/CI attempts with --push (local preparation runs once)")
 		c.Flags().DurationVar(&waitTimeout, "wait-timeout", 15*time.Minute, "maximum wait for CI per commit")
 	}
 	return c
@@ -244,10 +254,14 @@ or config file is not required. Without a config, Claude is the default.
 --agent overrides that choice. --focus selects a failure or area to examine.
 --json prints a structured report. Invalid arguments exit 2; interrupts exit 130.`
 	if fix {
-		return `Repair the selected PR in a private disposable checkout by default. This command
-explicitly authorizes the AI to edit files, run tests and push commits to the
-PR head branch. It checks for concurrent updates, waits for CI and retries
-failures up to --max-attempts. --wait-timeout bounds each wait for CI.
+		return `Repair the selected PR in a private checkout by default. Without --push,
+edit files, run local validation and commit once locally. The checkout is
+kept for inspection, with a diff summary and a command to continue with --push.
+Local preparation does not confirm passing GitHub CI.
+
+Use --push to publish repair commits to the PR head branch, wait for CI and
+retry failures up to --max-attempts. Both modes check for concurrent updates
+and wait for pending checks before editing. --wait-timeout bounds each CI wait.
 
 Use --plan repair.md to implement a saved diagnosis or edited repair handoff.
 The PR can be omitted when the file contains metadata from pr diagnose. An
@@ -257,16 +271,18 @@ plans and later retries get fresh evidence to adapt to current code.
 Use --working-directory /path/to/repo to edit an existing local checkout.
 It must be clean, on a non-base branch or detached HEAD, at the PR head or
 containing local commits on top of it. Existing commits are preserved and
-included in the push, even if the agent needs no further file edits. Remote
-CI is checked again after publication. Diverged histories need reconciliation;
-commits on the base branch must first be merged/rebased onto the PR branch.
+included in the repair, even if the agent needs no further file edits. With
+--push, remote CI is checked again after publication. Diverged histories need
+reconciliation; commits on the base branch must first be merged/rebased onto
+the PR branch.
 The command never resets or cleans the checkout. Ignored dependencies are
 reused, and the directory is kept on every outcome.
 
 Requires Claude or Codex. It never merges the PR; reviews and other manual
 merge gates remain in the report. A failed repair keeps its checkout for
-recovery. Exit 0 confirms passing CI, with code merge conflicts resolved;
-exit 1 means repair or CI confirmation failed.
+recovery. Exit 0 means a local repair was prepared or no repair was needed;
+with --push it confirms passing CI with code merge conflicts resolved.
+Exit 1 means preparation, repair or CI confirmation failed.
 ` + common
 	}
 	return `Read the selected PR and produce a concrete AI repair handoff. The report

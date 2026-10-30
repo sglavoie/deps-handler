@@ -39,18 +39,40 @@ func (w *Workspace) CommitAndPush(ctx context.Context, dir, owner, repo, branch,
 	return w.commitAndPush(ctx, dir, owner, repo, branch, expected, expected)
 }
 
+// Commit records a repair locally without publishing it.
+func (w *Workspace) Commit(ctx context.Context, dir, expected string) (string, error) {
+	return w.commitRepair(ctx, dir, expected, expected)
+}
+
+// DiffSummary describes all local changes since the remote PR head.
+func (w *Workspace) DiffSummary(ctx context.Context, dir, expected string) (string, error) {
+	return w.output(ctx, dir, "diff", "--stat", expected, "HEAD", "--")
+}
+
 // commitAndPush pins the agent's starting HEAD separately from the remote
 // lease, so pre-existing local commits can be published without rewriting them.
 func (w *Workspace) commitAndPush(ctx context.Context, dir, owner, repo, branch, localHead, remoteHead string) (string, error) {
 	if err := w.git(ctx, dir, "check-ref-format", "refs/heads/"+branch); err != nil {
 		return "", err
 	}
+	oid, err := w.commitRepair(ctx, dir, localHead, remoteHead)
+	if err != nil {
+		return "", err
+	}
+	ref := "refs/heads/" + branch
+	if err := w.git(ctx, dir, "push", "--porcelain", "--force-with-lease="+ref+":"+remoteHead, w.url(owner, repo), "HEAD:"+ref); err != nil {
+		return "", err
+	}
+	return oid, nil
+}
+
+func (w *Workspace) commitRepair(ctx context.Context, dir, localHead, remoteHead string) (string, error) {
 	head, err := w.output(ctx, dir, "rev-parse", "HEAD")
 	if err != nil {
 		return "", err
 	}
 	if head != localHead {
-		return "", fmt.Errorf("agent changed HEAD; refusing to publish (expected %s, got %s)", localHead, head)
+		return "", fmt.Errorf("agent changed HEAD; refusing to commit or publish (expected %s, got %s)", localHead, head)
 	}
 	status, err := w.output(ctx, dir, "status", "--porcelain")
 	if err != nil {
@@ -58,7 +80,7 @@ func (w *Workspace) commitAndPush(ctx context.Context, dir, owner, repo, branch,
 	}
 	if strings.TrimSpace(status) == "" {
 		if localHead == remoteHead {
-			return "", fmt.Errorf("agent made no file changes; nothing to push")
+			return "", fmt.Errorf("agent made no file changes; nothing to commit or push")
 		}
 	} else {
 		if err := w.git(ctx, dir, "add", "--all"); err != nil {
@@ -74,10 +96,6 @@ func (w *Workspace) commitAndPush(ctx context.Context, dir, owner, repo, branch,
 	}
 	if err := w.git(ctx, dir, "merge-base", "--is-ancestor", remoteHead, oid); err != nil {
 		return "", fmt.Errorf("repair does not descend from PR head: %w", err)
-	}
-	ref := "refs/heads/" + branch
-	if err := w.git(ctx, dir, "push", "--porcelain", "--force-with-lease="+ref+":"+remoteHead, w.url(owner, repo), "HEAD:"+ref); err != nil {
-		return "", err
 	}
 	return oid, nil
 }

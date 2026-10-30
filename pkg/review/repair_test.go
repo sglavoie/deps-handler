@@ -173,3 +173,35 @@ func TestRepairCanPublishResolvedMergeConflicts(t *testing.T) {
 		t.Fatalf("merge parents %s", parents)
 	}
 }
+
+func TestRepairCommitDoesNotPublish(t *testing.T) {
+	origin, head := gitOrigin(t)
+	gitAt(t, origin, "update-ref", "refs/heads/repair", head)
+	w := &Workspace{Root: t.TempDir(), URL: func(string, string) string { return origin }}
+	ctx := context.Background()
+	dir, err := w.Checkout(ctx, "o", "r", 7, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.URL = func(string, string) string { t.Fatal("local commit attempted network access"); return "" }
+	if err := os.WriteFile(filepath.Join(dir, "fixed.txt"), []byte("repair\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oid, err := w.Commit(ctx, dir, head)
+	if err != nil || oid == head {
+		t.Fatalf("oid=%s err=%v", oid, err)
+	}
+	if parent := gitAt(t, dir, "rev-parse", oid+"^"); parent != head {
+		t.Fatal("rewrote PR history", parent)
+	}
+	if status := gitAt(t, dir, "status", "--porcelain"); status != "" {
+		t.Fatal("repair not committed", status)
+	}
+	if remote := gitAt(t, origin, "rev-parse", "refs/heads/repair"); remote != head {
+		t.Fatal("local preparation moved remote", remote)
+	}
+	stat, err := w.DiffSummary(ctx, dir, head)
+	if err != nil || !strings.Contains(stat, "fixed.txt") || !strings.Contains(stat, "1 insertion") {
+		t.Fatalf("stat=%s err=%v", stat, err)
+	}
+}

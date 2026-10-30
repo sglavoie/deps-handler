@@ -17,7 +17,9 @@ func Markdown(w io.Writer, r Result) error {
 	if r.PlanSource != "" {
 		text += "Repair plan: `" + r.PlanSource + "`\n\n"
 	}
-	if r.ChecksPassing {
+	if r.Prepared {
+		text += "Repair: prepared locally. Nothing pushed; GitHub CI has not verified the local commit.\n\n"
+	} else if r.ChecksPassing {
 		text += "Checks: passing at this snapshot.\n\n"
 	} else {
 		text += "Checks: not confirmed passing.\n\n"
@@ -55,7 +57,20 @@ func Markdown(w io.Writer, r Result) error {
 	}
 	if r.RepairCommand != "" {
 		text += "## Next step\n\nSave this Markdown report as `repair.md` and review or edit its repair steps and validation commands. Then run:\n\n```sh\n" + r.RepairCommand + "\n```\n\n"
-		text += "Use the path where you saved this report in place of `repair.md`. Choose an installed repair agent (`codex` or `claude`); API models support diagnosis only. This command edits, commits and pushes to the PR branch, then verifies CI. Review and merge the repaired PR yourself after its checks and remaining gates pass.\n\n"
+		text += "Use the path where you saved this report in place of `repair.md`. Choose an installed repair agent (`codex` or `claude`); API models support diagnosis only. This command edits and commits locally for inspection. Add `--push` to publish the repair and verify GitHub CI. Review and merge the repaired PR yourself after its checks and remaining gates pass.\n\n"
+	}
+	if len(r.LocalCommits) > 0 {
+		text += "## Local commits\n\n"
+		for _, oid := range r.LocalCommits {
+			text += "- `" + oid + "`\n"
+		}
+		text += "\n"
+	}
+	if r.DiffStat != "" {
+		text += "## Repair diff summary\n\n```text\n" + r.DiffStat + "\n```\n\n"
+	}
+	if r.PublishCommand != "" {
+		text += "## Publish after review\n\nInspect the retained checkout and validation results, then run:\n\n```sh\n" + r.PublishCommand + "\n```\n\nThis resumes repair in the checkout, validates the local code, and may make further edits before pushing and verifying GitHub CI.\n\n"
 	}
 	if len(r.Commits) > 0 {
 		text += "## Pushed commits\n\n"

@@ -37,6 +37,12 @@ func (w commandWorkspace) Checkout(context.Context, string, string, int, string)
 	return w.root, nil
 }
 func (commandWorkspace) FetchBase(context.Context, string, string) error { return nil }
+func (commandWorkspace) Commit(context.Context, string, string) (string, error) {
+	return "local-head", nil
+}
+func (commandWorkspace) DiffSummary(context.Context, string, string) (string, error) {
+	return " src/app.go | 2 +-", nil
+}
 func (commandWorkspace) CommitAndPush(context.Context, string, string, string, string, string) (string, error) {
 	return "", errors.New("unexpected push")
 }
@@ -333,5 +339,86 @@ func TestPRFixRejectsEmptyWorkingDirectoryFlag(t *testing.T) {
 		if code != 2 || !strings.Contains(stderr, "--working-directory needs a directory path") {
 			t.Fatalf("code=%d stderr=%s", code, stderr)
 		}
+	}
+}
+
+func TestPRFixDefaultsToRetainedLocalRepair(t *testing.T) {
+	for _, format := range []string{"json", "markdown", "explicit false"} {
+		t.Run(format, func(t *testing.T) {
+			mockPRCommands(t)
+			cfg := writeConfig(t, "agent:\n  use: codex\n")
+			var checkout string
+			newPRWorkspace = func(root string) pr.Workspace {
+				checkout = root
+				if err := os.MkdirAll(root, 0700); err != nil {
+					t.Fatal(err)
+				}
+				return commandWorkspace{root: root} // Any push fails this test.
+			}
+			args := []string{"pr", "fix", "o/r#7", "-c", cfg}
+			if format != "markdown" {
+				args = append(args, "--json")
+			}
+			if format == "explicit false" {
+				args = append(args, "--push=false")
+			}
+			code, out, stderr := run(args...)
+			if checkout != "" {
+				t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(checkout)) })
+			}
+			if code != 0 || checkout == "" {
+				t.Fatalf("code=%d out=%s stderr=%s", code, out, stderr)
+			}
+			if _, err := os.Stat(checkout); err != nil {
+				t.Fatal("successful local repair was deleted", err)
+			}
+			if format == "markdown" {
+				for _, want := range []string{"prepared locally", "## Local commits", "src/app.go", "## Publish after review", "--push --working-directory", checkout} {
+					if !strings.Contains(out, want) {
+						t.Fatalf("missing %q in %s", want, out)
+					}
+				}
+				return
+			}
+			var result pr.Result
+			if err := json.Unmarshal([]byte(out), &result); err != nil {
+				t.Fatal(err, out)
+			}
+			wantCommand := "deps-handler pr fix o/r#7 --push --working-directory " + shellQuote(checkout) + " --agent codex --config " + shellQuote(cfg)
+			if !result.Prepared || result.ChecksPassing || result.Workspace != checkout || len(result.LocalCommits) != 1 || len(result.Commits) != 0 || result.PublishCommand != wantCommand {
+				t.Fatalf("unexpected local result: %+v", result)
+			}
+		})
+	}
+}
+
+type publishingCommandWorkspace struct {
+	commandWorkspace
+	pushes *int
+}
+
+func (w publishingCommandWorkspace) CommitAndPush(context.Context, string, string, string, string, string) (string, error) {
+	*w.pushes++
+	return "", errors.New("test publication reached")
+}
+
+func TestPRFixPushFlagEnablesPublication(t *testing.T) {
+	mockPRCommands(t)
+	cfg := writeConfig(t, "agent:\n  use: codex\n")
+	pushes := 0
+	newPRWorkspace = func(root string) pr.Workspace {
+		if err := os.MkdirAll(root, 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(root)) })
+		return publishingCommandWorkspace{commandWorkspace{root: root}, &pushes}
+	}
+	code, out, stderr := run("pr", "fix", "o/r#7", "--push", "-c", cfg, "--json")
+	var result pr.Result
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatal(err, out)
+	}
+	if code != 1 || pushes != 1 || result.Prepared || len(result.LocalCommits) != 0 || result.Error != "test publication reached" || result.Workspace == "" {
+		t.Fatalf("code=%d pushes=%d out=%s stderr=%s", code, pushes, out, stderr)
 	}
 }

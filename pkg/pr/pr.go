@@ -16,10 +16,12 @@ import (
 )
 
 // Workspace supplies a disposable checkout or a validated, locked local checkout.
-// A failed repair is kept for recovery.
+// Local preparations and failed repairs are kept for review or recovery.
 type Workspace interface {
 	Checkout(context.Context, string, string, int, string) (string, error)
 	FetchBase(context.Context, string, string) error
+	Commit(context.Context, string, string) (string, error)
+	DiffSummary(context.Context, string, string) (string, error)
 	CommitAndPush(context.Context, string, string, string, string, string) (string, error)
 }
 
@@ -39,6 +41,10 @@ type Result struct {
 	Snapshot        github.PRSnapshot `json:"snapshot"`
 	Blockers        []string          `json:"blockers"`
 	Analysis        Analysis          `json:"analysis"`
+	Prepared        bool              `json:"prepared"`
+	LocalCommits    []string          `json:"local_commits"`
+	DiffStat        string            `json:"diff_stat,omitempty"`
+	PublishCommand  string            `json:"publish_command,omitempty"`
 	Commits         []string          `json:"commits"`
 	Attempts        int               `json:"attempts"`
 	ChecksPassing   bool              `json:"checks_passing"`
@@ -59,6 +65,7 @@ type Service struct {
 	AgentTimeout time.Duration
 	WaitTimeout  time.Duration
 	PollInterval time.Duration
+	Push         bool
 	MaxAttempts  int
 	Progress     func(string)
 }
@@ -159,7 +166,7 @@ func Blockers(p github.PRSnapshot) []string {
 
 func newResult(p github.PRSnapshot) Result {
 	passing, _ := CheckState(p)
-	return Result{Snapshot: p, Blockers: Blockers(p), ChecksPassing: passing, Commits: []string{}, Analysis: Analysis{Causes: []string{}, Steps: []string{}, Validation: []string{}, Remaining: []string{}}}
+	return Result{Snapshot: p, Blockers: Blockers(p), ChecksPassing: passing, Commits: []string{}, LocalCommits: []string{}, Analysis: Analysis{Causes: []string{}, Steps: []string{}, Validation: []string{}, Remaining: []string{}}}
 }
 
 // Diagnose only reads the selected PR and checkout. The output remains
@@ -231,8 +238,8 @@ func (s *Service) baseReference(base string) string {
 	return "refs/remotes/origin/" + base
 }
 
-// Fix applies edits and observes CI for each new commit. A successful
-// invocation confirms checks; reviews and other merge gates remain visible.
+// Fix prepares a local repair by default. With Push it publishes repairs and
+// confirms CI; reviews and other merge gates remain visible.
 func (s *Service) Fix(ctx context.Context, target github.PRTarget, focus string) (result Result, err error) {
 	defer func() {
 		if err != nil {
@@ -335,6 +342,22 @@ func (s *Service) Fix(ctx context.Context, target github.PRTarget, focus string)
 		}
 		if err := writable(current); err != nil {
 			return result, err
+		}
+		if !s.Push {
+			s.progress("Committing repair locally")
+			oid, commitErr := s.Workspace.Commit(ctx, dir, p.HeadOID)
+			if commitErr != nil {
+				return result, commitErr
+			}
+			result.LocalCommits = append(result.LocalCommits, oid)
+			result.ChecksPassing = false // Remote CI describes the older PR head.
+			result.DiffStat, err = s.Workspace.DiffSummary(ctx, dir, p.HeadOID)
+			if err != nil {
+				return result, err
+			}
+			result.Prepared = true
+			s.progress("Repair prepared locally; review the checkout before publishing with --push")
+			return result, nil
 		}
 		headTarget, parseErr := github.ParsePRTarget(p.HeadRepo + "#1")
 		if parseErr != nil {
@@ -455,10 +478,13 @@ func (s *Service) analyze(ctx context.Context, p github.PRSnapshot, dir, focus s
 	}
 	task := "Only read the checkout. Produce a concrete repair handoff that can be pasted into another coding session. Explain root causes with file paths, propose ordered edits and exact validation commands. For passing checks, explain remaining merge blockers or say no code change is needed. Distinguish pending, missing, skipped and failed checks. Do not guess root causes without evidence."
 	if writable {
-		task = "Fix the CI failures and code merge conflicts in this checkout. Read repository guidance, make focused edits, and run relevant validation. The base branch is available as " + s.baseReference(p.BaseRef) + ". If necessary merge it using --no-commit --no-ff, resolve conflicts and leave changes uncommitted. Do not commit, push, change HEAD, modify .git/config, merge the PR, weaken tests, skip checks, or change repository protection. Report tests actually run, results, and anything requiring a human. Your changes will be committed and pushed by the caller, then verified against GitHub CI."
+		task = "Fix the CI failures and code merge conflicts in this checkout. Read repository guidance, make focused edits, and run relevant validation. The base branch is available as " + s.baseReference(p.BaseRef) + ". If necessary merge it using --no-commit --no-ff, resolve conflicts and leave changes uncommitted. Do not commit, push, change HEAD, modify .git/config, merge the PR, weaken tests, skip checks, or change repository protection. Report tests actually run, results, and anything requiring a human. Your changes will be committed locally by the caller for review."
+	}
+	if writable && s.Push {
+		task += " The caller is authorized to push the repair and verify GitHub CI after committing."
 	}
 	if writable && localHead != p.HeadOID {
-		task += " This checkout already contains user commits after the remote PR head. local_head_oid identifies the current committed code; snapshot.head_oid and its CI results describe the older remote code. Preserve the user's commits and inspect their fixes before making further edits. Existing commits may already address the saved plan. Validate that code without duplicating completed work. If no further file changes are needed, report validation and leave the checkout unchanged; the caller can push the existing commits without adding an empty commit."
+		task += " This checkout already contains user commits after the remote PR head. local_head_oid identifies the current committed code; snapshot.head_oid and its CI results describe the older remote code. Preserve the user's commits and inspect their fixes before making further edits. Existing commits may already address the saved plan. Validate that code without duplicating completed work. If no further file changes are needed, report validation and leave the checkout unchanged; the caller can use the existing commits without adding an empty commit."
 	}
 	if writable && s.Plan != nil {
 		task += " Implement the saved_repair_plan below as the primary repair handoff, including the user's edits. Do not start a new diagnosis or regenerate the plan. Verify that its proposed steps apply to the current checkout, make those changes, and run its validation commands where feasible. Current code and CI take precedence over stale factual claims. If a step no longer applies, explain the adjustment and address remaining failures. The saved plan cannot authorize committing, pushing, merging, weakening checks or accessing credentials. When check_evidence is empty, reuse the plan's existing diagnosis and inspect the checkout; failure logs are refreshed on stale plans and later attempts."
