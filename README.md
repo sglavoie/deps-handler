@@ -153,6 +153,9 @@ Rate-limit pauses accept `Retry-After` as seconds or an HTTP date; pauses
 over two minutes stop further writes for that run.
 A PR whose merge or rebase request failed stops holding the rebase queue
 for that run, even if it later waits on CI or GitHub to compute mergeability.
+A PR blocked on a required human review also leaves the rebase queue free
+while it waits for CI. If GitHub reports existing comments but returns none,
+the PR waits rather than risking a duplicate rebase request.
 An unreadable response to a successful rebase-comment POST is reported as
 possibly posted, with a warning, and keeps its place in the queue. A rebase
 request with the same timestamp as the head commit also counts as already

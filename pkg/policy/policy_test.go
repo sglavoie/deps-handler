@@ -77,6 +77,59 @@ func TestRebaseRequestNeedsExactCommand(t *testing.T) {
 	}
 }
 
+func TestRebaseWaitsWhenCommentHistoryIsUnavailable(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.MergeState = "BEHIND"
+	pr.CommentCount = 5
+	for _, comments := range [][]github.Comment{nil, {}} {
+		pr.Comments = comments
+		d := one(t, testutil.Repo(pr), defaultPolicy)
+		if d.Action != ActionWait || !strings.Contains(d.Reason, "comments") {
+			t.Fatalf("unread comments may hide a rebase request: %+v", d)
+		}
+	}
+	// Repositories that leave rebases to humans do not need this history.
+	p := defaultPolicy
+	p.DependabotCommands = false
+	if d := one(t, testutil.Repo(pr), p); d.Action != ActionSkip || !d.behind {
+		t.Fatalf("manual rebases should still be reported: %+v", d)
+	}
+}
+
+func TestRequiredHumanReviewDoesNotHoldRebaseQueue(t *testing.T) {
+	for _, review := range []string{"REVIEW_REQUIRED", "CHANGES_REQUESTED"} {
+		for _, waiting := range []string{"pending checks", "missing checks", "no checks"} {
+			t.Run(review+"/"+waiting, func(t *testing.T) {
+				pr := testutil.PR(1)
+				pr.BaseRef = "main"
+				pr.MergeState, pr.ReviewDecision = "BLOCKED", review
+				switch waiting {
+				case "pending checks":
+					pr.Checks[0].State = github.CheckPending
+				case "missing checks":
+					pr.ChecksOID = "older"
+				case "no checks":
+					pr.Checks = nil
+					pr.Commits[0].CommittedDate = testutil.Fetched.Add(-time.Minute)
+				}
+				behind := testutil.PR(2)
+				behind.BaseRef, behind.MergeState = "main", "BEHIND"
+				ds := Evaluate(testutil.Repo(pr, behind), defaultPolicy, "me", nil)
+				if ds[0].Action != ActionWait || ds[1].Action != ActionRebase {
+					t.Fatalf("CI cannot satisfy a required human review; allow the next rebase: %+v", ds)
+				}
+				// Once the human review is satisfied, this PR merges next
+				// and should hold the queue while CI catches up.
+				pr.ReviewDecision = "APPROVED"
+				ds = Evaluate(testutil.Repo(pr, behind), defaultPolicy, "me", nil)
+				if ds[1].Action != ActionWait || !strings.Contains(ds[1].Reason, "queued behind #1") {
+					t.Fatalf("an approved PR should keep its place in the queue: %+v", ds)
+				}
+			})
+		}
+	}
+}
+
 func TestMissingCommitsCannotBeApprovedByAgent(t *testing.T) {
 	pr := testutil.PR(1)
 	pr.Commits = nil

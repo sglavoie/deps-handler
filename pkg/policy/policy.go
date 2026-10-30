@@ -277,9 +277,12 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	}
 	// wait leaves the PR for a later run; inFlight says whether it holds
 	// the rebase queue meanwhile, which a PR not yet approved never does.
+	reviewBlocked := pr.MergeState == "BLOCKED" && (pr.ReviewDecision == "REVIEW_REQUIRED" || pr.ReviewDecision == "CHANGES_REQUESTED")
 	wait := func(inFlight bool, format string, args ...any) Decision {
 		d.Action, d.Reason = ActionWait, fmt.Sprintf(format, args...)
-		d.inFlight = inFlight && (oversized == "" || d.Verdict != nil && d.Verdict.Approved)
+		// CI finishing cannot make a PR merge while a human review is
+		// required. It must not hold other PRs' rebases in the meantime.
+		d.inFlight = inFlight && !reviewBlocked && (oversized == "" || d.Verdict != nil && d.Verdict.Approved)
 		return d
 	}
 	// A PR in conflict will not merge next either, whatever its checks do.
@@ -458,6 +461,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		if p.DependabotCommands && pushedAt(pr).IsZero() {
 			return wait(false, "head commit timestamp not reported; cannot determine whether a rebase was already requested")
 		}
+		if p.DependabotCommands && pr.CommentCount > 0 && len(pr.Comments) == 0 {
+			return wait(false, "comments not yet reported; cannot determine whether a rebase was already requested")
+		}
 		if at, seen, ok := rebaseRequested(pr, viewer); ok && p.DependabotCommands {
 			requested := "rebase requested"
 			if !seen {
@@ -475,7 +481,7 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 		safe = d
 		safe.Action, safe.Reason = ActionRebase, "behind base branch"
 	case "BLOCKED":
-		if pr.ReviewDecision == "REVIEW_REQUIRED" || pr.ReviewDecision == "CHANGES_REQUESTED" {
+		if reviewBlocked {
 			d.needsReview = true
 			return skip("branch protection requires an approving review")
 		}

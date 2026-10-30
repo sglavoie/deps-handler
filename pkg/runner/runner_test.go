@@ -216,6 +216,31 @@ func TestDryRunChangesNothing(t *testing.T) {
 	}
 }
 
+func TestApplyDoesNotRebaseWithoutReportedCommentHistory(t *testing.T) {
+	pr := testutil.PR(1)
+	pr.MergeState, pr.CommentCount = "BEHIND", 5
+	fc := &fakeClient{repo: testutil.Repo(pr)}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if res.Failed() || len(fc.comments) != 0 || len(fc.merges) != 0 || len(res.Events) != 0 {
+		t.Fatalf("unavailable comment history must wait without writing: %+v; comments=%v, merges=%v", res, fc.comments, fc.merges)
+	}
+	if len(res.Decisions) != 1 || res.Decisions[0].Action != policy.ActionWait {
+		t.Fatalf("expected a waiting decision: %+v", res.Decisions)
+	}
+}
+
+func TestApplyRebasesPastPRRequiringHumanReview(t *testing.T) {
+	blocked, behind := testutil.PR(1), testutil.PR(2)
+	blocked.MergeState, blocked.ReviewDecision = "BLOCKED", "REVIEW_REQUIRED"
+	blocked.Checks[0].State = github.CheckPending
+	behind.MergeState = "BEHIND"
+	fc := &fakeClient{repo: testutil.Repo(blocked, behind)}
+	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+	if res.Failed() || len(fc.merges) != 0 || len(fc.comments) != 1 || len(fc.comments[2]) != 1 || fc.comments[2][0] != policy.RebaseCommand {
+		t.Fatalf("required human review must let the next PR rebase: %+v; comments=%v, merges=%v", res, fc.comments, fc.merges)
+	}
+}
+
 func TestApplyMergesSequentiallyAndWaitsForRecompute(t *testing.T) {
 	major := testutil.PR(3, "lib:major")
 	behind := testutil.PR(4)
