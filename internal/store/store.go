@@ -451,12 +451,17 @@ WHERE prs.outcome NOT IN ('merged', 'merged-by-app')`, installation, repo, numbe
 }
 
 // ClosePR records how a PR left: one of the PR outcomes other than open.
+// A confirmed merge is final. Later evidence can attribute it to the App,
+// but overlapping runs cannot downgrade it or replace its recorded time.
 func (s *Store) ClosePR(ctx context.Context, repo string, number int, outcome string, at time.Time) error {
 	return closePR(ctx, s.db, repo, number, outcome, at)
 }
 
 func closePR(ctx context.Context, db execer, repo string, number int, outcome string, at time.Time) error {
-	_, err := db.ExecContext(ctx, `UPDATE prs SET outcome = ?, closed_at = ? WHERE repo = ? AND number = ?`, outcome, at.UTC(), repoKey(repo), number)
+	_, err := db.ExecContext(ctx, `
+UPDATE prs SET outcome = ?1, closed_at = ?2 WHERE repo = ?3 AND number = ?4
+AND (outcome NOT IN ('merged', 'merged-by-app') OR (outcome = 'merged' AND ?1 = 'merged-by-app'))`,
+		outcome, at.UTC(), repoKey(repo), number)
 	return err
 }
 

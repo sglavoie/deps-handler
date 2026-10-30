@@ -27,6 +27,8 @@ Unknown PR states also fail tracking and preserve the previously open record
 instead of counting the PR as closed.
 Uninstall cleanup cannot be undone by a run finishing in another process:
 tracking results and issue numbers are saved only while the original run exists.
+Overlapping runs also preserve confirmed PR merges, their recorded times and
+the App's merge attribution when a delayed run saves an older outcome.
 The App shares GitHub's rate-limit cooldown across each installation's
 repositories, retries, repository listings, review comments and health issues,
 including issue pinning. Other installations keep running with their own quotas.

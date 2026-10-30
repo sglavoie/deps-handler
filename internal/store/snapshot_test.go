@@ -196,3 +196,74 @@ func TestConcurrentSnapshotAndCleanupLeaveNoRecords(t *testing.T) {
 		}
 	}
 }
+
+func TestLateSnapshotCannotDowngradeConfirmedMerge(t *testing.T) {
+	for _, tc := range []struct {
+		name, first, late, want string
+	}{
+		{"merged then closed", PRMerged, PRClosed, PRMerged},
+		{"app merge then closed", PRMergedByApp, PRClosed, PRMergedByApp},
+		{"app merge then unattributed merge", PRMergedByApp, PRMerged, PRMergedByApp},
+		{"repeated merge", PRMerged, PRMerged, PRMerged},
+		{"repeated app merge", PRMergedByApp, PRMergedByApp, PRMergedByApp},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			firstRun, err := s.StartRun(ctx, 1, "o/r", "first", t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lateRun, err := s.StartRun(ctx, 1, "o/r", "overlapping", t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, runID := range []int64{firstRun, lateRun} {
+				outcome := tc.first
+				if i == 1 {
+					outcome = tc.late
+				}
+				at := t0.Add(time.Duration(i+1) * time.Minute)
+				snapshot := RunSnapshot{At: at,
+					PRs:    []PRObservation{{Number: 1, Title: "update", OpenedAt: t0}},
+					Closed: []PRClosure{{Number: 1, Outcome: outcome, At: at}}}
+				if recorded, err := s.RecordRunSnapshot(ctx, runID, snapshot); err != nil || !recorded {
+					t.Fatalf("recorded = %t, %v", recorded, err)
+				}
+			}
+			var outcome string
+			var closed time.Time
+			if err := s.db.QueryRowContext(ctx, `SELECT outcome, closed_at FROM prs WHERE repo = 'o/r' AND number = 1`).Scan(&outcome, &closed); err != nil {
+				t.Fatal(err)
+			}
+			if outcome != tc.want || !closed.Equal(t0.Add(time.Minute)) {
+				t.Fatalf("late snapshot replaced confirmed merge: outcome = %q, closed = %s", outcome, closed)
+			}
+		})
+	}
+}
+
+func TestAppMergeCanRefinePreviouslyRecordedClosure(t *testing.T) {
+	for _, previous := range []string{PRClosed, PRMerged} {
+		t.Run(previous, func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			if err := s.InstallationAdded(ctx, 1, "o", t0); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.SeenPR(ctx, 1, "o/r", 1, "update", t0, t0); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.ClosePR(ctx, "o/r", 1, previous, t0.Add(2*time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			// A delayed audit can establish both attribution and the actual
+			// merge time after another run first noticed the PR had closed.
+			if err := s.ClosePR(ctx, "o/r", 1, PRMergedByApp, t0.Add(time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			m, err := s.Metrics(ctx, t0.Add(time.Hour))
+			if err != nil || len(m) != 1 || m[0].MergedByApp != 1 || m[0].MergeTimeApp != time.Minute {
+				t.Fatalf("merge attribution = %+v, %v", m, err)
+			}
+		})
+	}
+}
