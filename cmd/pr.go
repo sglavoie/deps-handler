@@ -287,7 +287,9 @@ Exit 1 means preparation, repair or CI confirmation failed.
 	}
 	return `Read the selected PR and produce a concrete AI repair handoff. The report
 includes current checks, merge blockers, failure evidence, proposed edits
-and validation commands. It works for passing, failing or pending CI.
+and validation commands. It compares matching CI jobs at the recorded base
+commit, with bounded base failure logs and explicit evidence gaps. It works
+for passing, failing or pending CI.
 
 Prints Markdown you can save or paste into a coding session. The checkout
 is read-only to the agent and nothing is pushed. Supports Claude, Codex or

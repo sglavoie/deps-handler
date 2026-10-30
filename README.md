@@ -152,11 +152,30 @@ deps-handler pr fix acme/Storefront#123 --agent codex --push \
 ```
 
 `diagnose` reads the PR's current checks, merge state, description, diff and
-available failed GitHub Actions job logs and annotations. Its Markdown handoff
-identifies the PR and commit, explains likely causes, proposes concrete edits
+available failed GitHub Actions job logs and annotations. It also reads checks
+at the recorded base commit SHA and bounded failure logs for that commit.
+Its Markdown handoff identifies the PR and commit, explains likely causes,
+proposes concrete edits
 and validation commands, and lists remaining work and evidence gaps. It also
 works when checks pass, are pending, are missing, or only some fail. External
 CI, expired logs and access failures are reported as evidence gaps.
+
+The base CI comparison matches jobs by app, workflow and name, preferring the
+same event. It labels observed outcomes such as `both-failed` and
+`base-passed-pr-failed`. A `push` baseline can be compared with a
+`pull_request` job, but the report flags different triggers because their
+inputs, permissions and conditions may differ. Matching failures do not prove
+the same root cause, and a passing base job does not prove the update caused
+the PR failure. Missing checks, incomplete lists (more than 100 contexts),
+ambiguous runs and unknown producer identities remain explicit uncertainties.
+Status contexts and external checks without workflow identity are uncomparable.
+Markdown includes base check links and failure excerpts; JSON exposes the
+same evidence and per-job outcomes under `base_comparison`, with producer IDs
+and events on each check. The comparison records its own head SHA, so it still
+identifies the evidence if a repair later publishes a new commit. Both
+diagnosis and fresh repair attempts give this comparison to the agent before
+it proposes or makes edits. A matching saved plan reuses the comparison in
+its Markdown without downloading the evidence again.
 
 For a PR that meets the repair prerequisites, diagnosis includes a
 `pr fix --plan repair.md` command when checks are not confirmed passing or

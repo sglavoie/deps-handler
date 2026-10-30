@@ -20,8 +20,8 @@ type commandPRClient struct{ snapshot github.PRSnapshot }
 func (c commandPRClient) Snapshot(context.Context, github.PRTarget) (github.PRSnapshot, error) {
 	return c.snapshot, nil
 }
-func (commandPRClient) Evidence(context.Context, github.PRSnapshot) (*github.PullRequestDetails, []github.PRCheck, error) {
-	return &github.PullRequestDetails{Diff: "diff"}, nil, nil
+func (commandPRClient) Evidence(context.Context, github.PRSnapshot) (github.PREvidence, error) {
+	return github.PREvidence{Details: &github.PullRequestDetails{Diff: "diff"}}, nil
 }
 
 type commandTaskAgent struct{ err error }

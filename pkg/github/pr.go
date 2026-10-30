@@ -57,6 +57,36 @@ type PRCheck struct {
 	EvidenceError string `json:"evidence_error,omitempty"`
 }
 
+// MarshalJSON retains producer identities for comparisons without changing
+// the JSON representation of checks in automatic Dependabot reports.
+func (c PRCheck) MarshalJSON() ([]byte, error) {
+	type plain PRCheck
+	return json.Marshal(struct {
+		plain
+		App      int64  `json:"app_id,omitempty"`
+		Workflow int64  `json:"workflow_id,omitempty"`
+		Suite    int64  `json:"suite_id,omitempty"`
+		Event    string `json:"event,omitempty"`
+		Status   bool   `json:"status_context"`
+	}{plain(c), c.App, c.Workflow, c.Suite, c.Event, c.Status})
+}
+
+// BaseChecks records CI at the exact base commit, never a later branch tip.
+// Collection failures are evidence gaps, not failures of the whole diagnosis.
+type BaseChecks struct {
+	OID            string    `json:"oid"`
+	ChecksComplete bool      `json:"checks_complete"`
+	Checks         []PRCheck `json:"checks"`
+	EvidenceError  string    `json:"evidence_error,omitempty"`
+}
+
+// PREvidence groups bounded head and base evidence from one snapshot.
+type PREvidence struct {
+	Details *PullRequestDetails
+	Checks  []PRCheck
+	Base    BaseChecks
+}
+
 // PRSnapshot is a head-pinned view of an explicitly selected PR, regardless
 // of author. Incomplete check lists are reported and never considered green.
 type PRSnapshot struct {
@@ -83,7 +113,7 @@ type PRSnapshot struct {
 // head branch; merging remains a separate user action.
 type PRClient interface {
 	Snapshot(context.Context, PRTarget) (PRSnapshot, error)
-	Evidence(context.Context, PRSnapshot) (*PullRequestDetails, []PRCheck, error)
+	Evidence(context.Context, PRSnapshot) (PREvidence, error)
 }
 
 type prClient struct{ *client }
@@ -163,22 +193,30 @@ func (c *prClient) Snapshot(ctx context.Context, target PRTarget) (PRSnapshot, e
 		return s, fmt.Errorf("%s: checks do not identify the PR head", target)
 	}
 	raw := p.Commits.Nodes[0].Commit.StatusCheckRollup
+	var err error
+	s.Checks, s.ChecksComplete, err = parsePRChecks(raw)
+	if err != nil {
+		return s, fmt.Errorf("%s: %w", target, err)
+	}
+	return s, nil
+}
+
+func parsePRChecks(raw json.RawMessage) ([]PRCheck, bool, error) {
+	checks := []PRCheck{}
 	if len(raw) == 0 {
-		return s, fmt.Errorf("%s: missing check rollup", target)
+		return checks, false, fmt.Errorf("missing check rollup")
 	}
 	var rollup *gqlCheckRollup
 	if err := json.Unmarshal(raw, &rollup); err != nil {
-		return s, err
+		return checks, false, err
 	}
-	s.ChecksComplete = true
 	if rollup == nil {
-		return s, nil
+		return checks, true, nil
 	}
 	cx := rollup.Contexts
 	if cx.TotalCount == nil || cx.Nodes == nil || *cx.TotalCount < len(cx.Nodes) {
-		return s, fmt.Errorf("%s: incomplete check rollup", target)
+		return checks, false, fmt.Errorf("incomplete check rollup")
 	}
-	s.ChecksComplete = *cx.TotalCount == len(cx.Nodes)
 	for _, n := range cx.Nodes {
 		check := PRCheck{ID: n.DatabaseID, URL: n.DetailsURL, Check: Check{Name: n.Name, State: CheckUnknown}}
 		switch n.Typename {
@@ -198,9 +236,55 @@ func (c *prClient) Snapshot(ctx context.Context, target PRTarget) (PRSnapshot, e
 			check.Name, check.State, check.Status = n.Context, statusState(n.State), true
 			check.URL, check.Description = n.TargetURL, n.Description
 		}
-		s.Checks = append(s.Checks, check)
+		checks = append(checks, check)
 	}
-	return s, nil
+	return checks, *cx.TotalCount == len(cx.Nodes), nil
+}
+
+const baseChecksQuery = `query($owner: String!, $name: String!, $oid: GitObjectID!) {
+ repository(owner: $owner, name: $name) {
+  object(oid: $oid) { ... on Commit { oid statusCheckRollup { contexts(first: 100) {
+   totalCount nodes {
+    __typename
+    ... on CheckRun { databaseId name status conclusion detailsUrl
+     checkSuite { databaseId app { databaseId } workflowRun { event workflow { databaseId } } }
+    }
+    ... on StatusContext { context state targetUrl description }
+   }
+  } } } }
+ }
+}`
+
+func (c *prClient) baseChecks(ctx context.Context, s PRSnapshot) BaseChecks {
+	b := BaseChecks{OID: s.BaseOID, Checks: []PRCheck{}}
+	if s.BaseOID == "" {
+		b.EvidenceError = "base commit is missing"
+		return b
+	}
+	var out struct {
+		Repository *struct {
+			Object *struct {
+				OID               string
+				StatusCheckRollup json.RawMessage
+			}
+		}
+	}
+	err := c.gql.DoWithContext(ctx, baseChecksQuery, map[string]any{"owner": s.Target.Owner, "name": s.Target.Repo, "oid": s.BaseOID}, &out)
+	if err != nil {
+		b.EvidenceError = "base checks unavailable: " + err.Error()
+		return b
+	}
+	if out.Repository == nil || out.Repository.Object == nil || out.Repository.Object.OID != s.BaseOID {
+		b.EvidenceError = "base checks do not identify the recorded base commit"
+		return b
+	}
+	b.Checks, b.ChecksComplete, err = parsePRChecks(out.Repository.Object.StatusCheckRollup)
+	if err != nil {
+		b.EvidenceError = err.Error()
+	} else if !b.ChecksComplete {
+		b.EvidenceError = "base check list is incomplete; only the first 100 contexts were read"
+	}
+	return b
 }
 
 const maxEvidenceBytes = 80_000
@@ -209,12 +293,19 @@ var actionsJobPath = regexp.MustCompile(`^/([^/]+)/([^/]+)/actions/runs/[0-9]+/j
 
 // Evidence reads bounded failure logs and annotations. Unavailable logs
 // are explicit gaps, so external CI and expired logs still allow diagnosis.
-func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (*PullRequestDetails, []PRCheck, error) {
+func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (PREvidence, error) {
 	d, err := c.PullRequestDetails(ctx, s.Target.Owner, s.Target.Repo, s.Target.Number)
 	if err != nil {
-		return nil, nil, err
+		return PREvidence{}, err
 	}
 	checks := append([]PRCheck{}, s.Checks...)
+	c.failureEvidence(ctx, s.Target, checks)
+	base := c.baseChecks(ctx, s)
+	c.failureEvidence(ctx, s.Target, base.Checks)
+	return PREvidence{Details: d, Checks: checks, Base: base}, nil
+}
+
+func (c *prClient) failureEvidence(ctx context.Context, target PRTarget, checks []PRCheck) {
 	budget := maxEvidenceBytes * 3
 	for i := range checks {
 		check := &checks[i]
@@ -226,7 +317,7 @@ func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (*PullRequestDeta
 			continue
 		}
 		if check.ID > 0 && !check.Status {
-			path := fmt.Sprintf("repos/%s/%s/check-runs/%d/annotations?per_page=30", s.Target.Owner, s.Target.Repo, check.ID)
+			path := fmt.Sprintf("repos/%s/%s/check-runs/%d/annotations?per_page=30", target.Owner, target.Repo, check.ID)
 			var annotations []struct {
 				Path      string
 				StartLine int `json:"start_line"`
@@ -243,8 +334,8 @@ func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (*PullRequestDeta
 		u, err := url.Parse(check.URL)
 		if err == nil && u.Scheme == "https" && u.Host == "github.com" && u.User == nil {
 			m := actionsJobPath.FindStringSubmatch(u.Path)
-			if m != nil && strings.EqualFold(m[1], s.Target.Owner) && strings.EqualFold(m[2], s.Target.Repo) {
-				path := fmt.Sprintf("repos/%s/%s/actions/jobs/%s/logs", s.Target.Owner, s.Target.Repo, m[3])
+			if m != nil && strings.EqualFold(m[1], target.Owner) && strings.EqualFold(m[2], target.Repo) {
+				path := fmt.Sprintf("repos/%s/%s/actions/jobs/%s/logs", target.Owner, target.Repo, m[3])
 				resp, err := c.rest.RequestWithContext(ctx, "GET", path, nil)
 				if err != nil {
 					check.EvidenceError += " logs: " + err.Error()
@@ -261,8 +352,15 @@ func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (*PullRequestDeta
 							data = data[:maxLogBytes]
 							prefix = "[download truncated at 4 MiB; excerpt is not the end of the full log]\n"
 						}
-						if len(data) > maxEvidenceBytes {
-							data = append([]byte("[log tail; truncated]\n"), data[len(data)-maxEvidenceBytes:]...)
+						logLimit := max(0, min(maxEvidenceBytes, budget)-len(check.Log)-len(prefix))
+						if len(data) > logLimit {
+							const marker = "[log tail; truncated]\n"
+							if logLimit >= len(marker) {
+								data = append([]byte(marker), data[len(data)-(logLimit-len(marker)):]...)
+							} else {
+								data = nil
+								check.EvidenceError += " logs: no excerpt space remains after annotations"
+							}
 						}
 						check.Log += prefix + string(data)
 					}
@@ -274,9 +372,13 @@ func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (*PullRequestDeta
 		}
 		limit := min(maxEvidenceBytes, budget)
 		if len(check.Log) > limit {
-			check.Log = check.Log[:limit] + "\n[evidence truncated]"
+			const marker = "\n[evidence truncated]"
+			if limit >= len(marker) {
+				check.Log = check.Log[:limit-len(marker)] + marker
+			} else {
+				check.Log = check.Log[:limit]
+			}
 		}
 		budget -= len(check.Log)
 	}
-	return d, checks, nil
 }

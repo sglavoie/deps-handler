@@ -86,7 +86,8 @@ func TestFailureEvidence(t *testing.T) {
 		{Check: Check{Name: "external", State: CheckFailed, Status: true}, URL: "https://external.example/log"},
 		{Check: Check{Name: "pass", State: CheckPassed}, ID: 99},
 	}}
-	d, checks, err := c.Evidence(context.Background(), p)
+	evidence, err := c.Evidence(context.Background(), p)
+	d, checks := evidence.Details, evidence.Checks
 	if err != nil || d.Body != "description" || d.Diff != "diff" || !strings.Contains(checks[0].Log, "src/app.go:12: removed API") || !strings.Contains(checks[0].Log, "compiler failure") || checks[1].EvidenceError == "" || checks[2].Log != "" {
 		t.Fatalf("details %+v checks %+v err %v", d, checks, err)
 	}

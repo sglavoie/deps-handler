@@ -17,6 +17,7 @@ type testClient struct {
 	reads         int
 	evidenceErr   error
 	evidenceReads int
+	base          github.BaseChecks
 }
 
 func (c *testClient) Snapshot(ctx context.Context, _ github.PRTarget) (github.PRSnapshot, error) {
@@ -27,9 +28,9 @@ func (c *testClient) Snapshot(ctx context.Context, _ github.PRTarget) (github.PR
 	c.reads++
 	return c.snapshots[i], nil
 }
-func (c *testClient) Evidence(context.Context, github.PRSnapshot) (*github.PullRequestDetails, []github.PRCheck, error) {
+func (c *testClient) Evidence(context.Context, github.PRSnapshot) (github.PREvidence, error) {
 	c.evidenceReads++
-	return &github.PullRequestDetails{Body: "release notes", Diff: "-old\n+new"}, []github.PRCheck{{Log: "compiler: missing symbol"}}, c.evidenceErr
+	return github.PREvidence{Details: &github.PullRequestDetails{Body: "release notes", Diff: "-old\n+new"}, Checks: []github.PRCheck{{Log: "compiler: missing symbol"}}, Base: c.base}, c.evidenceErr
 }
 
 type testAgent struct {

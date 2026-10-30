@@ -36,6 +36,9 @@ func Markdown(w io.Writer, r Result) error {
 		text += "\n"
 	}
 	text += "\n"
+	if r.BaseComparison != nil {
+		text += comparisonMarkdown(r.BaseComparison)
+	}
 	sections := []struct {
 		title string
 		items []string
