@@ -11,6 +11,9 @@ import (
 func Markdown(w io.Writer, r Result) error {
 	// Build before writing so the writer's first error is preserved.
 	text := fmt.Sprintf("# %s: %s\n\nPR: %s\nHead: `%s`\nBase: `%s` (`%s`)\n\n", r.Snapshot.Target, review.Clean(r.Snapshot.Title), r.Snapshot.URL, r.Snapshot.HeadOID, r.Snapshot.BaseRef, r.Snapshot.BaseOID)
+	if r.StartingHeadOID != "" && r.StartingHeadOID != r.Snapshot.HeadOID {
+		text += "Local repair started at: `" + r.StartingHeadOID + "`\n\n"
+	}
 	if r.PlanSource != "" {
 		text += "Repair plan: `" + r.PlanSource + "`\n\n"
 	}

@@ -207,7 +207,7 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 	c.Flags().StringVar(&focus, "focus", "", "failure or area to investigate")
 	c.Flags().BoolVar(&asJSON, "json", false, "print the structured report as JSON")
 	if fix {
-		c.Flags().StringVar(&workingDirectory, "working-directory", "", "edit this existing clean checkout at the PR head; preserve it and its installed dependencies")
+		c.Flags().StringVar(&workingDirectory, "working-directory", "", "edit a clean checkout at or ahead of the PR head; include local commits and preserve dependencies")
 		_ = c.MarkFlagDirname("working-directory")
 		c.Flags().StringVar(&planPath, "plan", "", "follow a saved Markdown repair plan (infer PR from diagnose report when omitted)")
 		_ = c.MarkFlagFilename("plan", "md", "markdown")
@@ -255,9 +255,13 @@ explicit PR must match the report. The saved steps guide the repair; stale
 plans and later retries get fresh evidence to adapt to current code.
 
 Use --working-directory /path/to/repo to edit an existing local checkout.
-It must be clean and already checked out at the selected PR head, on a
-non-base branch or detached HEAD. The command never resets or cleans it;
-ignored dependencies are reused, and the directory is kept on every outcome.
+It must be clean, on a non-base branch or detached HEAD, at the PR head or
+containing local commits on top of it. Existing commits are preserved and
+included in the push, even if the agent needs no further file edits. Remote
+CI is checked again after publication. Diverged histories need reconciliation;
+commits on the base branch must first be merged/rebased onto the PR branch.
+The command never resets or cleans the checkout. Ignored dependencies are
+reused, and the directory is kept on every outcome.
 
 Requires Claude or Codex. It never merges the PR; reviews and other manual
 merge gates remain in the report. A failed repair keeps its checkout for

@@ -185,3 +185,116 @@ func TestLocalWorkspaceLocksAndValidatesRoot(t *testing.T) {
 		}
 	}
 }
+
+func addLocalRepairCommit(t *testing.T, w *LocalWorkspace) string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(w.Directory, "user-fix.txt"), []byte("my committed fix"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitAt(t, w.Directory, "add", "user-fix.txt")
+	gitAt(t, w.Directory, "commit", "-qm", "user repair")
+	return gitAt(t, w.Directory, "rev-parse", "HEAD")
+}
+
+func TestLocalWorkspaceAcceptsAndPublishesExistingCommits(t *testing.T) {
+	for _, furtherEdits := range []bool{false, true} {
+		t.Run(map[bool]string{false: "existing commits only", true: "additional agent edits"}[furtherEdits], func(t *testing.T) {
+			w, origin, remoteHead, base := localRepairCheckout(t)
+			localHead := addLocalRepairCommit(t, w)
+			ctx := context.Background()
+			if _, err := w.Checkout(ctx, "o", "r", 7, remoteHead); err != nil {
+				t.Fatal(err)
+			}
+			if w.LocalHeadOID() != localHead {
+				t.Fatal("lost starting commit", w.LocalHeadOID())
+			}
+			if err := w.FetchBase(ctx, w.Directory, base); err != nil {
+				t.Fatal(err)
+			}
+			if furtherEdits {
+				if err := os.WriteFile(filepath.Join(w.Directory, "agent-fix.txt"), []byte("additional fix"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			oid, err := w.CommitAndPush(ctx, w.Directory, "o", "r", "repair", remoteHead)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := gitAt(t, origin, "rev-parse", "refs/heads/repair"); got != oid {
+				t.Fatal("wrong remote head", got, oid)
+			}
+			if !furtherEdits && oid != localHead {
+				t.Fatal("created unnecessary commit", oid, localHead)
+			}
+			if furtherEdits && gitAt(t, w.Directory, "rev-parse", oid+"^") != localHead {
+				t.Fatal("rewrote user's commit")
+			}
+			if got := gitAt(t, origin, "show", "refs/heads/repair:user-fix.txt"); got != "my committed fix" {
+				t.Fatal("user work lost", got)
+			}
+			if got := gitAt(t, w.Directory, "rev-parse", localHead); got != localHead {
+				t.Fatal("user commit lost")
+			}
+		})
+	}
+}
+
+func TestLocalWorkspaceRejectsDivergedHistoryWithoutRewriting(t *testing.T) {
+	w, origin, _, _ := localRepairCheckout(t)
+	localHead := addLocalRepairCommit(t, w)
+	if err := os.WriteFile(filepath.Join(origin, "remote-fix.txt"), []byte("remote change"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitAt(t, origin, "add", "remote-fix.txt")
+	gitAt(t, origin, "commit", "-qm", "remote repair")
+	remoteHead := gitAt(t, origin, "rev-parse", "HEAD")
+	gitAt(t, origin, "update-ref", "refs/pull/7/head", remoteHead)
+	gitAt(t, origin, "update-ref", "refs/heads/repair", remoteHead)
+	_, err := w.Checkout(context.Background(), "o", "r", 7, remoteHead)
+	if err == nil || !strings.Contains(err.Error(), "does not descend") {
+		t.Fatal(err)
+	}
+	if got := gitAt(t, w.Directory, "rev-parse", "HEAD"); got != localHead {
+		t.Fatal("local history moved", got)
+	}
+	if got := read(t, filepath.Join(w.Directory, "user-fix.txt")); got != "my committed fix" {
+		t.Fatal(got)
+	}
+}
+
+func TestLocalCommittedRepairsStillHonorRemoteLeaseAndAgentHead(t *testing.T) {
+	for _, kind := range []string{"remote push", "agent commit", "PR moved during fetch"} {
+		t.Run(kind, func(t *testing.T) {
+			w, origin, remoteHead, _ := localRepairCheckout(t)
+			localHead := addLocalRepairCommit(t, w)
+			ctx := context.Background()
+			if kind != "PR moved during fetch" {
+				if _, err := w.Checkout(ctx, "o", "r", 7, remoteHead); err != nil {
+					t.Fatal(err)
+				}
+			}
+			expectedRemote := remoteHead
+			if kind == "agent commit" {
+				gitAt(t, w.Directory, "commit", "--allow-empty", "-qm", "unexpected agent commit")
+			} else {
+				gitAt(t, origin, "commit", "--allow-empty", "-qm", "concurrent remote change")
+				expectedRemote = gitAt(t, origin, "rev-parse", "HEAD")
+				gitAt(t, origin, "update-ref", "refs/heads/repair", expectedRemote)
+				gitAt(t, origin, "update-ref", "refs/pull/7/head", expectedRemote)
+			}
+			var err error
+			if kind == "PR moved during fetch" {
+				_, err = w.Checkout(ctx, "o", "r", 7, remoteHead)
+			} else {
+				_, err = w.CommitAndPush(ctx, w.Directory, "o", "r", "repair", remoteHead)
+			}
+			if err == nil {
+				t.Fatal("accepted concurrent change")
+			}
+			if got := gitAt(t, origin, "rev-parse", "refs/heads/repair"); got != expectedRemote {
+				t.Fatal("overwrote remote", got)
+			}
+			gitAt(t, w.Directory, "cat-file", "-e", localHead)
+		})
+	}
+}

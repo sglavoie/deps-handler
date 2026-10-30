@@ -13,10 +13,11 @@ import (
 // LocalWorkspace edits an existing checkout without resetting, cleaning or
 // switching its branch. Ignored dependencies and build caches stay in place.
 type LocalWorkspace struct {
-	Directory           string
-	git                 Workspace
-	owner, repo, branch string
-	release             func()
+	Directory             string
+	git                   Workspace
+	owner, repo, branch   string
+	localHead, remoteHead string
+	release               func()
 }
 
 // NewLocalWorkspace validates the repository root and holds an exclusive
@@ -73,14 +74,12 @@ func (w *LocalWorkspace) Close() {
 	}
 }
 
-func (w *LocalWorkspace) Checkout(ctx context.Context, owner, repo string, _ int, expected string) (string, error) {
+func (w *LocalWorkspace) Checkout(ctx context.Context, owner, repo string, number int, expected string) (string, error) {
 	head, err := w.git.output(ctx, w.Directory, "rev-parse", "HEAD")
 	if err != nil {
 		return "", err
 	}
-	if head != expected {
-		return "", fmt.Errorf("working directory HEAD is %s; selected PR head is %s; check out the PR first (no files changed)", head, expected)
-	}
+
 	status, err := w.git.output(ctx, w.Directory, "status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return "", err
@@ -99,8 +98,44 @@ func (w *LocalWorkspace) Checkout(ctx context.Context, owner, repo string, _ int
 	if err != nil {
 		return "", err
 	}
+	if head != expected {
+		// Fetch into a private ref to obtain a missing PR commit or shallow history.
+		// The working tree, local branches and origin tracking refs are untouched.
+		source := fmt.Sprintf("refs/pull/%d/head", number)
+		reference := "refs/worktree/deps-merger/pr-head"
+		if err := w.git.fetchRef(ctx, w.Directory, w.git.url(owner, repo), source, reference); err != nil {
+			return "", fmt.Errorf("fetch selected PR head to compare local history: %w", err)
+		}
+		fetched, err := w.git.output(ctx, w.Directory, "rev-parse", reference)
+		if err != nil {
+			return "", err
+		}
+		if fetched != expected {
+			return "", fmt.Errorf("%w: selected PR head changed from %s to %s while preparing local history (no files changed)", ErrHeadMoved, expected, fetched)
+		}
+		if err := w.git.git(ctx, w.Directory, "merge-base", "--is-ancestor", expected, head); err != nil {
+			return "", fmt.Errorf("working directory HEAD %s does not descend from selected PR head %s; check out the PR branch and merge, rebase or cherry-pick your commits onto it (no files changed)", head, expected)
+		}
+	}
+	w.localHead, w.remoteHead = head, expected
 	w.owner, w.repo, w.branch = owner, repo, branch
 	return w.Directory, nil
+}
+
+// LocalHeadOID identifies the existing committed code the agent will edit.
+func (w *LocalWorkspace) LocalHeadOID() string { return w.localHead }
+
+// ValidateBaseBranch prevents publishing a local base branch's history as a
+// PR repair. Callers can perform this before fetching or waiting for remote CI.
+func (w *LocalWorkspace) ValidateBaseBranch(ctx context.Context, base string) error {
+	branch, err := w.git.output(ctx, w.Directory, "branch", "--show-current")
+	if err != nil {
+		return err
+	}
+	if branch == base {
+		return fmt.Errorf("working directory is on base branch %q; check out the PR branch, then merge, rebase or cherry-pick your committed edits onto it before pr fix (no files changed)", base)
+	}
+	return nil
 }
 
 // BaseReference is separate from the user's origin tracking refs, including
@@ -111,8 +146,8 @@ func (w *LocalWorkspace) FetchBase(ctx context.Context, dir, base string) error 
 	if dir != w.Directory {
 		return errors.New("unexpected repair working directory")
 	}
-	if w.branch == base {
-		return fmt.Errorf("working directory is on base branch %q; check out the PR branch or detach at its head before pr fix", base)
+	if err := w.ValidateBaseBranch(ctx, base); err != nil {
+		return err
 	}
 	return w.git.fetchBase(ctx, dir, w.git.url(w.owner, w.repo), base, w.BaseReference(base))
 }
@@ -128,5 +163,8 @@ func (w *LocalWorkspace) CommitAndPush(ctx context.Context, dir, owner, repo, br
 	if currentBranch != w.branch {
 		return "", errors.New("local branch changed during repair; edits kept locally, nothing pushed")
 	}
-	return w.git.CommitAndPush(ctx, dir, owner, repo, branch, expected)
+	if expected != w.remoteHead {
+		return "", errors.New("remote PR head differs from the prepared lease; nothing pushed")
+	}
+	return w.git.commitAndPush(ctx, dir, owner, repo, branch, w.localHead, expected)
 }

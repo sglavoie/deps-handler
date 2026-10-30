@@ -142,15 +142,25 @@ a new plan. Plans must be non-empty UTF-8 Markdown files of at most 1 MiB.
 
 `--working-directory /path/to/repo` runs the repair agent directly in an
 existing checkout, including a Git worktree. The directory must be the
-repository root, with no staged, unstaged or untracked changes, already at
-the selected PR head on a non-base branch or detached HEAD. Check out the PR
-before running the command. The command never resets, cleans, switches branches
-or deletes this directory; ignored dependencies such as `node_modules` are
+repository root, with no staged, unstaged or untracked changes, on a non-base
+branch or detached HEAD. It can be at the selected PR head or contain local
+commits on top of it. Those commits are preserved and included in the PR update.
+If they already fix the issue, the AI validates them and the command pushes
+them without creating an empty commit. The command never resets, cleans,
+switches branches or deletes this directory; ignored dependencies such as `node_modules` are
 preserved. Successful repairs commit to its current branch (or detached HEAD)
 and push to the selected PR branch. An exclusive lock prevents two deps-merger
 repairs from sharing the checkout. Existing remote URLs are left unchanged.
 Directory selection does not change the agent's network permissions or fix
 registry/DNS failures.
+
+The remote PR head is fetched into a private ref when needed to check ancestry.
+Diverged history is rejected with instructions to merge, rebase or cherry-pick
+your work onto the PR. Commits made on `main` belong to the base branch: check
+out the PR branch and merge/rebase `main` into it before rerunning. The command
+keeps the base branch protected. Passing or pending CI on the older remote
+commit never skips unpublished local commits; the tool validates and publishes
+the local code, then observes CI for the resulting head.
 
 `fix` uses a temporary checkout by default. It waits for pending CI before
 editing, runs a writable Claude Code or Codex task, commits the resulting file

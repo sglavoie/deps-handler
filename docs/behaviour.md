@@ -607,9 +607,10 @@ and new values. It does not approve or merge PRs or modify protection.
 
 With `--working-directory DIRECTORY`, the repair uses an existing repository
 root directly rather than making a temporary clone. It supports normal
-checkouts and linked Git worktrees. The checkout must already identify the
-selected PR's head commit, have no staged, unstaged or untracked changes, and
-have no merge, rebase, cherry-pick or revert in progress. It refuses the local
+checkouts and linked Git worktrees. The checkout must identify the
+selected PR's head commit or a descendant containing committed local work,
+have no staged, unstaged or untracked changes, and have no merge, rebase,
+cherry-pick or revert in progress. It refuses the local
 base branch; a non-base branch or detached HEAD is required. It takes a repair
 lock, never resets/cleans or changes branches, and preserves ignored dependency
 and build caches. The agent receives this exact canonical working directory.
@@ -620,6 +621,28 @@ preserved; base history is fetched from the selected PR repository into a
 separate ref private to the worktree. The directory is never deleted, on
 success or failure. Network restrictions of the selected agent are unchanged.
 A temporary checkout remains the default when the flag is omitted.
+
+For a local HEAD ahead of the remote PR, the command fetches the PR head into
+a private worktree ref, verifies it still matches the GitHub snapshot and
+checks that it is an ancestor of local HEAD. Diverged histories are rejected
+without checking out, rebasing or rewriting anything. Local HEAD before the
+agent runs is recorded as `starting_head_oid` in the result and supplied to
+the model separately from the remote head and its CI evidence. The model is
+asked to preserve existing commits, inspect which fixes are already done,
+and validate the local code before adding further edits.
+
+Publication pins local HEAD to that starting commit and pins the remote push
+lease to the original PR head. New file edits produce a child of the user's
+commit. If no further edits are needed, an ahead local HEAD is pushed directly;
+no empty commit is created. The new published head must descend from the
+original remote PR commit in both cases. Concurrent remote pushes, branch
+switches and agent changes to HEAD still stop publication. Older remote CI
+cannot establish that unpublished local commits passed: an ahead checkout
+runs the repair/validation task even when old CI passed or is pending, then
+waits for CI on the published local code. A base-branch checkout is rejected
+before waiting or editing; changes committed on main must be brought onto
+the PR branch explicitly.
+
 
 CI is polled for the exact pushed head, allowing brief API propagation of the
 old head after a push. Passing checks are observed twice to allow newly queued

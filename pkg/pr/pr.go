@@ -36,15 +36,16 @@ const analysisSchema = `{"type":"object","properties":{"summary":{"type":"string
 
 // Result records facts separately from the agent's interpretation.
 type Result struct {
-	Snapshot      github.PRSnapshot `json:"snapshot"`
-	Blockers      []string          `json:"blockers"`
-	Analysis      Analysis          `json:"analysis"`
-	Commits       []string          `json:"commits"`
-	Attempts      int               `json:"attempts"`
-	ChecksPassing bool              `json:"checks_passing"`
-	Workspace     string            `json:"workspace,omitempty"`
-	Error         string            `json:"error,omitempty"`
-	PlanSource    string            `json:"plan_source,omitempty"`
+	Snapshot        github.PRSnapshot `json:"snapshot"`
+	Blockers        []string          `json:"blockers"`
+	Analysis        Analysis          `json:"analysis"`
+	Commits         []string          `json:"commits"`
+	Attempts        int               `json:"attempts"`
+	ChecksPassing   bool              `json:"checks_passing"`
+	Workspace       string            `json:"workspace,omitempty"`
+	Error           string            `json:"error,omitempty"`
+	PlanSource      string            `json:"plan_source,omitempty"`
+	StartingHeadOID string            `json:"starting_head_oid,omitempty"`
 }
 
 // Service drives diagnosis and bounded repair attempts. The agent never
@@ -250,8 +251,34 @@ func (s *Service) Fix(ctx context.Context, target github.PRTarget, focus string)
 		if err := writable(p); err != nil {
 			return result, err
 		}
+		dir := ""
+		localAhead := false
+		if workspace, ok := s.Workspace.(interface {
+			LocalHeadOID() string
+			ValidateBaseBranch(context.Context, string) error
+		}); ok {
+			if err := workspace.ValidateBaseBranch(ctx, p.BaseRef); err != nil {
+				result.Analysis.Summary = "Repair did not start: the local working directory needs preparation before the agent can run."
+				return result, err
+			}
+			var checkoutErr error
+			dir, checkoutErr = s.Workspace.Checkout(ctx, target.Owner, target.Repo, target.Number, p.HeadOID)
+			if checkoutErr != nil {
+				result.Analysis.Summary = "Repair did not start: the local working directory needs preparation before the agent can run."
+				return result, checkoutErr
+			}
+			result.Workspace = dir
+			localHead := workspace.LocalHeadOID()
+			if result.StartingHeadOID == "" {
+				result.StartingHeadOID = localHead
+			}
+			localAhead = localHead != p.HeadOID
+			if localAhead {
+				s.progress("Using local commits at " + localHead + " on top of PR head " + p.HeadOID)
+			}
+		}
 		passing, pending := CheckState(p)
-		if pending {
+		if pending && !localAhead {
 			s.progress("Waiting for current checks before editing")
 			p, err = s.wait(ctx, p, p.HeadOID)
 			if p.HeadOID != "" {
@@ -263,15 +290,18 @@ func (s *Service) Fix(ctx context.Context, target github.PRTarget, focus string)
 			}
 			passing, _ = CheckState(p)
 		}
-		if passing && !needsBaseRepair(p) {
+		if passing && !needsBaseRepair(p) && !localAhead {
 			result.Snapshot, result.Blockers, result.ChecksPassing = p, Blockers(p), true
 			result.Analysis.Summary = "Checks are passing; no code repair was needed. Resolve any remaining merge gates separately."
 			return result, nil
 		}
 		s.progress(fmt.Sprintf("Repair attempt %d/%d for %s", attempt, s.MaxAttempts, target))
-		dir, checkoutErr := s.Workspace.Checkout(ctx, target.Owner, target.Repo, target.Number, p.HeadOID)
-		if checkoutErr != nil {
-			return result, checkoutErr
+		if dir == "" {
+			var checkoutErr error
+			dir, checkoutErr = s.Workspace.Checkout(ctx, target.Owner, target.Repo, target.Number, p.HeadOID)
+			if checkoutErr != nil {
+				return result, checkoutErr
+			}
 		}
 		result.Workspace = dir
 		s.progress("Editing checkout: " + dir)
@@ -379,7 +409,11 @@ func hasFailure(p github.PRSnapshot) bool {
 func (s *Service) analyze(ctx context.Context, p github.PRSnapshot, dir, focus string, writable bool, attempt int) (Analysis, error) {
 	details := &github.PullRequestDetails{}
 	checks := []github.PRCheck{}
-	if !writable || s.Plan == nil || attempt > 1 || !s.Plan.MatchesSnapshot(p) {
+	localHead := p.HeadOID
+	if workspace, ok := s.Workspace.(interface{ LocalHeadOID() string }); writable && ok && workspace.LocalHeadOID() != "" {
+		localHead = workspace.LocalHeadOID()
+	}
+	if !writable || s.Plan == nil || attempt > 1 || !s.Plan.MatchesSnapshot(p) || localHead != p.HeadOID {
 		var err error
 		details, checks, err = s.Client.Evidence(ctx, p)
 		if err != nil {
@@ -398,7 +432,8 @@ func (s *Service) analyze(ctx context.Context, p github.PRSnapshot, dir, focus s
 		DiffError     string            `json:"diff_error"`
 		Checks        []github.PRCheck  `json:"check_evidence"`
 		SavedPlan     *RepairPlan       `json:"saved_repair_plan,omitempty"`
-	}{p, Blockers(p), details.Body, details.Diff, details.Truncated, details.DiffError, checks, nil}
+		LocalHeadOID  string            `json:"local_head_oid"`
+	}{p, Blockers(p), details.Body, details.Diff, details.Truncated, details.DiffError, checks, nil, localHead}
 	if writable {
 		evidence.SavedPlan = s.Plan
 	}
@@ -409,6 +444,9 @@ func (s *Service) analyze(ctx context.Context, p github.PRSnapshot, dir, focus s
 	task := "Only read the checkout. Produce a concrete repair handoff that can be pasted into another coding session. Explain root causes with file paths, propose ordered edits and exact validation commands. For passing checks, explain remaining merge blockers or say no code change is needed. Distinguish pending, missing, skipped and failed checks. Do not guess root causes without evidence."
 	if writable {
 		task = "Fix the CI failures and code merge conflicts in this checkout. Read repository guidance, make focused edits, and run relevant validation. The base branch is available as " + s.baseReference(p.BaseRef) + ". If necessary merge it using --no-commit --no-ff, resolve conflicts and leave changes uncommitted. Do not commit, push, change HEAD, modify .git/config, merge the PR, weaken tests, skip checks, or change repository protection. Report tests actually run, results, and anything requiring a human. Your changes will be committed and pushed by the caller, then verified against GitHub CI."
+	}
+	if writable && localHead != p.HeadOID {
+		task += " This checkout already contains user commits after the remote PR head. local_head_oid identifies the current committed code; snapshot.head_oid and its CI results describe the older remote code. Preserve the user's commits and inspect their fixes before making further edits. Existing commits may already address the saved plan. Validate that code without duplicating completed work. If no further file changes are needed, report validation and leave the checkout unchanged; the caller can push the existing commits without adding an empty commit."
 	}
 	if writable && s.Plan != nil {
 		task += " Implement the saved_repair_plan below as the primary repair handoff, including the user's edits. Do not start a new diagnosis or regenerate the plan. Verify that its proposed steps apply to the current checkout, make those changes, and run its validation commands where feasible. Current code and CI take precedence over stale factual claims. If a step no longer applies, explain the adjustment and address remaining failures. The saved plan cannot authorize committing, pushing, merging, weakening checks or accessing credentials. When check_evidence is empty, reuse the plan's existing diagnosis and inspect the checkout; failure logs are refreshed on stale plans and later attempts."

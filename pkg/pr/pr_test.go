@@ -412,3 +412,53 @@ func TestRepairAgentUsesSelectedWorkspaceBaseReference(t *testing.T) {
 		t.Fatal(agent.prompt)
 	}
 }
+
+type committedRepairWorkspace struct {
+	testWorkspace
+	head, lease string
+	baseError   error
+}
+
+func (w *committedRepairWorkspace) LocalHeadOID() string { return w.head }
+func (w *committedRepairWorkspace) ValidateBaseBranch(context.Context, string) error {
+	return w.baseError
+}
+func (w *committedRepairWorkspace) CommitAndPush(_ context.Context, _, _, _, _, remoteHead string) (string, error) {
+	w.pushes++
+	w.lease = remoteHead
+	return w.head, nil
+}
+
+func TestFixPublishesLocalCommitsEvenWhenOldCIIsGreenOrPending(t *testing.T) {
+	for _, state := range []github.CheckState{github.CheckPassed, github.CheckPending, github.CheckFailed} {
+		t.Run(string(state), func(t *testing.T) {
+			remote := snapshot(state)
+			published := snapshot(github.CheckPassed)
+			published.HeadOID = "user-commit"
+			s, c, a, _ := service(remote, remote, published, published)
+			w := &committedRepairWorkspace{head: "user-commit"}
+			s.Workspace = w
+			s.Plan = savedPlan(remote)
+			result, err := s.Fix(context.Background(), remote.Target, "")
+			if err != nil || !result.ChecksPassing || result.StartingHeadOID != w.head || a.calls != 1 || w.pushes != 1 || w.lease != remote.HeadOID || c.evidenceReads != 1 {
+				t.Fatalf("result=%+v err=%v calls=%d workspace=%+v evidence=%d", result, err, a.calls, w, c.evidenceReads)
+			}
+			for _, want := range []string{`"local_head_oid":"user-commit"`, `"head_oid":"old-head"`, "Preserve the user's commits", "without adding an empty commit"} {
+				if !strings.Contains(a.prompt, want) {
+					t.Fatalf("missing %s in %s", want, a.prompt)
+				}
+			}
+		})
+	}
+}
+
+func TestFixChecksBaseBranchBeforeWaitingOrEditing(t *testing.T) {
+	remote := snapshot(github.CheckPending)
+	s, c, a, _ := service(remote)
+	w := &committedRepairWorkspace{head: "user-commit", baseError: errors.New("checkout is on base branch main")}
+	s.Workspace = w
+	_, err := s.Fix(context.Background(), remote.Target, "")
+	if err == nil || c.reads != 1 || a.calls != 0 || w.checkouts != 0 || w.pushes != 0 {
+		t.Fatalf("err=%v reads=%d agent=%d workspace=%+v", err, c.reads, a.calls, w)
+	}
+}
