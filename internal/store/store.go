@@ -308,13 +308,23 @@ func (s *Store) Installations(ctx context.Context) ([]Installation, error) {
 	return out, rows.Err()
 }
 
-// StartRun records a run of repo starting, and returns its id.
+// ErrInstallationInactive means an installation was removed or suspended
+// before its run could be recorded.
+var ErrInstallationInactive = errors.New("installation inactive")
+
+// StartRun records a run of repo starting, and returns its id. The access
+// check shares the insert so cleanup cannot be followed by a stale start.
 func (s *Store) StartRun(ctx context.Context, installation int64, repo, trigger string, at time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO runs (installation_id, repo, trigger, started_at) VALUES (?, ?, ?, ?)`, installation, repoKey(repo), trigger, at.UTC())
-	if err != nil {
-		return 0, err
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
+INSERT INTO runs (installation_id, repo, trigger, started_at)
+SELECT ?1, ?2, ?3, ?4
+WHERE NOT EXISTS (SELECT 1 FROM installations WHERE id = ?1 AND removed_at IS NOT NULL)
+RETURNING id`, installation, repoKey(repo), trigger, at.UTC()).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrInstallationInactive
 	}
-	return res.LastInsertId()
+	return id, err
 }
 
 // RunOutcome is what a run found.
@@ -345,6 +355,15 @@ func (s *Store) IssueNumber(ctx context.Context, repo string) (int, error) {
 
 func (s *Store) SetIssueNumber(ctx context.Context, repo string, n int) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO issues (repo, number) VALUES (?, ?) ON CONFLICT (repo) DO UPDATE SET number = excluded.number`, repoKey(repo), n)
+	return err
+}
+
+// SetRunIssueNumber remembers an issue only while its original run exists.
+// Cleanup may have removed the run while GitHub was answering the write.
+func (s *Store) SetRunIssueNumber(ctx context.Context, runID int64, n int) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO issues (repo, number) SELECT repo, ? FROM runs WHERE id = ?
+ON CONFLICT (repo) DO UPDATE SET number = excluded.number`, n, runID)
 	return err
 }
 
@@ -416,8 +435,12 @@ const (
 // merged stays so: a merge is final, and the read that saw it open is
 // older than the one that saw it merged.
 func (s *Store) SeenPR(ctx context.Context, installation int64, repo string, number int, title string, opened, seen time.Time) error {
+	return seenPR(ctx, s.db, installation, repo, number, title, opened, seen)
+}
+
+func seenPR(ctx context.Context, db execer, installation int64, repo string, number int, title string, opened, seen time.Time) error {
 	repo = repoKey(repo)
-	_, err := s.db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 INSERT INTO prs (installation_id, repo, number, title, opened_at, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo, number) DO UPDATE SET installation_id = excluded.installation_id,
 	title = excluded.title, last_seen_at = excluded.last_seen_at,
@@ -429,7 +452,11 @@ WHERE prs.outcome NOT IN ('merged', 'merged-by-app')`, installation, repo, numbe
 
 // ClosePR records how a PR left: one of the PR outcomes other than open.
 func (s *Store) ClosePR(ctx context.Context, repo string, number int, outcome string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE prs SET outcome = ?, closed_at = ? WHERE repo = ? AND number = ?`, outcome, at.UTC(), repoKey(repo), number)
+	return closePR(ctx, s.db, repo, number, outcome, at)
+}
+
+func closePR(ctx context.Context, db execer, repo string, number int, outcome string, at time.Time) error {
+	_, err := db.ExecContext(ctx, `UPDATE prs SET outcome = ?, closed_at = ? WHERE repo = ? AND number = ?`, outcome, at.UTC(), repoKey(repo), number)
 	return err
 }
 
@@ -468,12 +495,16 @@ func (s *Store) OpenPRs(ctx context.Context, repo string) ([]int, error) {
 // SeenRepo records the mode repo ran in, and whether the App could merge
 // there. merge_since keeps when merging was first on.
 func (s *Store) SeenRepo(ctx context.Context, installation int64, repo, mode string, merging bool, at time.Time) error {
+	return seenRepo(ctx, s.db, installation, repo, mode, merging, at)
+}
+
+func seenRepo(ctx context.Context, db execer, installation int64, repo, mode string, merging bool, at time.Time) error {
 	repo = repoKey(repo)
 	var since any
 	if merging {
 		since = at.UTC()
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 INSERT INTO repos (repo, installation_id, mode, merging, first_seen_at, merge_since, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo) DO UPDATE SET installation_id = excluded.installation_id, mode = excluded.mode, merging = excluded.merging,
 	first_seen_at = CASE WHEN repos.installation_id = excluded.installation_id THEN repos.first_seen_at ELSE excluded.first_seen_at END,

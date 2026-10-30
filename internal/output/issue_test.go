@@ -174,6 +174,110 @@ func TestSyncWithIssuesDisabled(t *testing.T) {
 	}
 }
 
+func TestSyncRequiresConfirmedIssueCreation(t *testing.T) {
+	valid := `{"number":7,"node_id":"I_7","user":{"login":"dmc[bot]"},"body":"` + Marker + `","state":"open"}`
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"null", `null`},
+		{"empty object", `{}`},
+		{"missing number", strings.Replace(valid, `"number":7,`, "", 1)},
+		{"zero number", strings.Replace(valid, `"number":7`, `"number":0`, 1)},
+		{"missing author", strings.Replace(valid, `"user":{"login":"dmc[bot]"},`, "", 1)},
+		{"wrong author", strings.Replace(valid, `dmc[bot]`, `someone-else`, 1)},
+		{"missing state", strings.Replace(valid, `,"state":"open"`, "", 1)},
+		{"unknown state", strings.Replace(valid, `"state":"open"`, `"state":"unknown"`, 1)},
+		{"missing marker", strings.Replace(valid, Marker, "", 1)},
+		{"pull request", strings.Replace(valid, `"number":7`, `"pull_request":{},"number":7`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			creates, pins := 0, 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodGet:
+					fmt.Fprint(w, "[]")
+				case r.Method == http.MethodPost && r.URL.Path == "/repos/o/r/issues":
+					creates++
+					w.WriteHeader(http.StatusCreated)
+					fmt.Fprint(w, tc.body)
+				case r.URL.Path == "/graphql":
+					pins++
+					fmt.Fprint(w, `{"data":{}}`)
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+					http.Error(w, "unexpected request", http.StatusInternalServerError)
+				}
+			}))
+			defer srv.Close()
+			base := srv.URL + "/"
+			c, err := gh.NewClient(gh.WithHTTPClient(srv.Client()), gh.WithURLs(&base, &base))
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, change, err := Sync(context.Background(), c, login, "o", "r", 0, Marker, true, true)
+			if err == nil || !strings.Contains(err.Error(), "confirm") || change != Unchanged || n != 0 || creates != 1 || pins != 0 {
+				t.Fatalf("unconfirmed creation: number %d, change %q, err %v, creates %d, pins %d", n, change, err, creates, pins)
+			}
+		})
+	}
+}
+
+func TestSyncReconcilesUnconfirmedCreationWithoutDuplicatingIssue(t *testing.T) {
+	f := fake()
+	creates := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/repos/o/r/issues" {
+			creates++
+			f.Add(login, Title, Marker, "open")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, "{}")
+			return
+		}
+		f.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	base := srv.URL + "/"
+	c, err := gh.NewClient(gh.WithHTTPClient(srv.Client()), gh.WithURLs(&base, &base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, change, err := Sync(context.Background(), c, login, "o", "r", 0, Marker, true, true); err == nil || n != 0 || change != Unchanged || f.Pins() != 0 {
+		t.Fatalf("unconfirmed creation = %d, %q, %v; pins %d", n, change, err, f.Pins())
+	}
+	if n, change, err := Sync(context.Background(), c, login, "o", "r", 0, Marker, true, true); err != nil || n != 1 || change != Unchanged || creates != 1 {
+		t.Fatalf("reconciliation = %d, %q, %v; creates %d", n, change, err, creates)
+	}
+}
+
+func TestSyncSkipsPinWhenCreatedIssueHasNoNodeID(t *testing.T) {
+	pins := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet:
+			fmt.Fprint(w, "[]")
+		case r.URL.Path == "/graphql":
+			pins++
+			fmt.Fprint(w, `{"data":{}}`)
+		default:
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprintf(w, `{"number":7,"user":{"login":"dmc[bot]"},"body":%q,"state":"open"}`, Marker)
+		}
+	}))
+	defer srv.Close()
+	base := srv.URL + "/"
+	c, err := gh.NewClient(gh.WithHTTPClient(srv.Client()), gh.WithURLs(&base, &base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, change, err := Sync(context.Background(), c, login, "o", "r", 0, Marker, true, true); err != nil || n != 7 || change != Created || pins != 0 {
+		t.Fatalf("creation = %d, %q, %v; pins %d", n, change, err, pins)
+	}
+}
+
 func TestSyncRejectsIncompleteIssueReads(t *testing.T) {
 	issue := `{"number":7,"user":{"login":"dmc[bot]"},"body":"` + Marker + `","state":"open"}`
 	for _, tc := range []struct {

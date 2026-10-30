@@ -454,7 +454,11 @@ func TestTrackingUnknownPRStateKeepsPROpen(t *testing.T) {
 				t.Fatal(err)
 			}
 			client := stateClient{Client: p.engine, state: state}
-			err := s.track(ctx, s.Log, client, 1, "o/r", runner.RepoResult{}, nil, nil, false, true)
+			runID, err := s.Store.StartRun(ctx, 1, "o/r", "test", t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = s.track(ctx, s.Log, client, runID, "o/r", runner.RepoResult{}, nil, nil, false, true)
 			if err == nil || !strings.Contains(err.Error(), "state") {
 				t.Fatalf("unknown PR state returned %v", err)
 			}

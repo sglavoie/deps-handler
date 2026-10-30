@@ -105,6 +105,10 @@ if the repository has not run yet.
 Health issue lookups also reject missing lists, unidentified entries, unknown
 states, mismatched issue numbers and broken pagination, including repeated
 cursors. These failures stop issue writes and return an error for retry.
+Creation responses must identify the App's health issue before the run
+reports success or pins it. An unconfirmed creation fails the run; the next
+run looks for the existing issue before creating another. A missing node ID
+skips best-effort pinning when the issue's identity is otherwise confirmed.
 An unknown PR state during tracking preserves its open record and fails the
 run, so it cannot be counted as closed without confirmation.
 Installation tokens refresh for API requests and checkout fetches during
@@ -125,6 +129,10 @@ Installation observation times are stored in SQLite, so stale sweeps or
 webhook reads cannot undo newer state recorded by another server or `-once`
 process. Cleanup checks that observation time in the same transaction that
 deletes records, preserving newer active or suspended installations.
+Run tracking commits its repository and PR evidence in one transaction that
+checks the original run still exists. A run deleted by cleanup cannot restore
+those records, even after reactivation. Starting runs and remembering issue
+numbers also check their eligibility atomically with the database write.
 The recipe clears inherited server settings before loading `DMC_ENV`, so
 an allowlist or merge setting exported for another App cannot carry over.
 

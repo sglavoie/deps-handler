@@ -455,6 +455,10 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	}
 	started := time.Now()
 	runID, err := s.Store.StartRun(ctx, installation, repo, trigger, started)
+	if errors.Is(err, store.ErrInstallationInactive) {
+		log.Info("installation inactive; repository skipped")
+		return nil
+	}
 	if err != nil {
 		log.Error("record run", "err", err)
 		return err
@@ -577,8 +581,14 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	// What a failed or interrupted run read and merged happened all the
 	// same: it is recorded, past the run's end if need be.
 	complete := res.Error == "" && ctx.Err() == nil
-	if err := s.track(context.WithoutCancel(ctx), log, client, installation, repo, res, client.seen, client.merged, repoMerges, complete); err != nil {
+	recorded, err := s.track(context.WithoutCancel(ctx), log, client, runID, repo, res, client.seen, client.merged, repoMerges, complete)
+	if err != nil {
 		runErr = errors.Join(runErr, err)
+	}
+	if !recorded {
+		// Another process completed cleanup while this run was reading.
+		// Its results must neither restore records nor publish a stale report.
+		return runErr
 	}
 	if runErr != nil {
 		outcome.Error = runErr.Error()
@@ -634,7 +644,7 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	n, change, err := output.Sync(ctx, rest, s.Platform.Login(), owner, name, known, output.Body(res, repoMerges), output.Wanted(res), res.Error == "")
 	g.write.Unlock()
 	if n != known && n != 0 {
-		if err := s.Store.SetIssueNumber(ctx, repo, n); err != nil {
+		if err := s.Store.SetRunIssueNumber(ctx, runID, n); err != nil {
 			log.Error("record issue", "err", err)
 			runErr = errors.Join(runErr, fmt.Errorf("record issue: %w", err))
 			if outcome.Error == "" {
@@ -669,23 +679,28 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 // how each PR open last time but not now left. The engine is asked about
 // those, as merged or closed, and a merge the App's writes record is the
 // App's. Only a complete run records the mode or judges which PRs left,
-// and none when the PRs read were cut short (over 100).
-func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Client, installation int64, repo string, res runner.RepoResult, read map[int]github.PullRequest, mergedAt map[int]time.Time, merging, complete bool) error {
+// and none when the PRs read were cut short (over 100). Evidence is saved
+// atomically after the reads; recorded is false if cleanup deleted the run.
+func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Client, runID int64, repo string, res runner.RepoResult, read map[int]github.PullRequest, mergedAt map[int]time.Time, merging, complete bool) (recorded bool, trackErr error) {
 	now := time.Now()
+	snapshot := store.RunSnapshot{Mode: res.Policy.Mode, Merging: merging, Complete: complete, At: now}
+	defer func() {
+		var err error
+		recorded, err = s.Store.RecordRunSnapshot(ctx, runID, snapshot)
+		if err != nil {
+			log.Error("track run", "err", err)
+			trackErr = errors.Join(trackErr, err)
+		}
+	}()
 	var failures []error
 	add := func(op string, err error) {
 		log.Error(op, "err", err)
 		failures = append(failures, fmt.Errorf("%s: %w", op, err))
 	}
-	if complete {
-		if err := s.Store.SeenRepo(ctx, installation, repo, res.Policy.Mode, merging, now); err != nil {
-			add("track repository", err)
-		}
-	}
 	before, err := s.Store.OpenPRs(ctx, repo)
 	if err != nil {
 		add("list tracked PRs", err)
-		return errors.Join(failures...)
+		return false, errors.Join(failures...)
 	}
 	// Every PR the run read, those it merged part way included, was open
 	// then; those in its last read are open still.
@@ -694,9 +709,7 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 		if opened.IsZero() {
 			opened = now
 		}
-		if err := s.Store.SeenPR(ctx, installation, repo, pr.Number, pr.Title, opened, now); err != nil {
-			add(fmt.Sprintf("track PR #%d", pr.Number), err)
-		}
+		snapshot.PRs = append(snapshot.PRs, store.PRObservation{Number: pr.Number, Title: pr.Title, OpenedAt: opened})
 	}
 	seen := map[int]bool{}
 	for _, d := range res.Decisions {
@@ -712,15 +725,13 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 	}
 	maps.Copy(byApp, mergedAt)
 	for n, at := range byApp {
-		if err := s.Store.ClosePR(ctx, repo, n, store.PRMergedByApp, at); err != nil {
-			add(fmt.Sprintf("track merged PR #%d", n), err)
-		}
+		snapshot.Closed = append(snapshot.Closed, store.PRClosure{Number: n, Outcome: store.PRMergedByApp, At: at})
 	}
 	if !complete {
-		return errors.Join(failures...)
+		return false, errors.Join(failures...)
 	}
 	if slices.ContainsFunc(res.Findings, func(f policy.Finding) bool { return f.Kind == policy.FindingTruncated }) {
-		return errors.Join(failures...)
+		return false, errors.Join(failures...)
 	}
 	owner, name, _ := strings.Cut(repo, "/")
 	for _, n := range before {
@@ -751,11 +762,9 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 			add(fmt.Sprintf("check PR #%d state", n), fmt.Errorf("unrecognized pull request state %q", state))
 			continue
 		}
-		if err := s.Store.ClosePR(ctx, repo, n, outcome, at); err != nil {
-			add(fmt.Sprintf("track closed PR #%d", n), err)
-		}
+		snapshot.Closed = append(snapshot.Closed, store.PRClosure{Number: n, Outcome: outcome, At: at})
 	}
-	return errors.Join(failures...)
+	return false, errors.Join(failures...)
 }
 
 func (s *Service) record(ctx context.Context, log *slog.Logger, w store.Write) error {

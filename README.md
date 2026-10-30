@@ -20,8 +20,13 @@ Large Dependency health reports keep complete lines within a 60,000-byte
 budget and show a truncation notice, so they can still be published.
 Dependency health issue lookups reject missing lists, unidentified entries,
 unknown issue states and broken pagination before creating or editing an issue.
+Issue creation also requires a valid response identifying the App's health
+issue before reporting success or attempting to pin it. An unconfirmed
+creation is looked up again on the next run.
 Unknown PR states also fail tracking and preserve the previously open record
 instead of counting the PR as closed.
+Uninstall cleanup cannot be undone by a run finishing in another process:
+tracking results and issue numbers are saved only while the original run exists.
 The App shares GitHub's rate-limit cooldown across each installation's
 repositories, retries, repository listings, review comments and health issues,
 including issue pinning. Other installations keep running with their own quotas.

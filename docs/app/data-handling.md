@@ -140,6 +140,10 @@ after that run finishes. What is kept is the installation's ID, account name, an
 when it was added and removed, for installation activity metrics, together
 with its latest observation time to prevent stale reads from restoring or
 deleting newer state across server processes.
+Runs still finishing in another process cannot restore deleted repository,
+PR or issue records: saving their results requires the original run to remain
+in the database, checked atomically with the write. Reactivating an installation
+does not make a deleted run eligible to save its old results.
 
 The "Dependency health" issues stay in your repositories, as GitHub
 content you own. Delete them if you like.

@@ -100,8 +100,19 @@ func Sync(ctx context.Context, c *gh.Client, login, owner, name string, known in
 		if err != nil {
 			return 0, Unchanged, fmt.Errorf("create issue: %w", err)
 		}
+		// A successful status alone cannot identify the issue we created.
+		// Leave its outcome unconfirmed for the next lookup to reconcile;
+		// do not report issue #0 or pin an unidentified response.
+		if err := validateIssue(created); err != nil {
+			return 0, Unchanged, fmt.Errorf("create issue: could not confirm creation: %w", err)
+		}
+		if !ours(created, login) {
+			return 0, Unchanged, errors.New("create issue: could not confirm creation of the App's health issue")
+		}
 		// Pinning is a courtesy: a repository pins at most three issues.
-		_ = pin(ctx, c, created.GetNodeID())
+		if nodeID := created.GetNodeID(); strings.TrimSpace(nodeID) != "" {
+			_ = pin(ctx, c, nodeID)
+		}
 		return created.GetNumber(), Created, nil
 	}
 
