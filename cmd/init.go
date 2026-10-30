@@ -120,7 +120,7 @@ With --stdout, the config is printed rather than written.`,
 			}
 			var err error
 			if discover {
-				_, err = fmt.Fprintf(out, "check the repositories it lists under repos: with `%s`, then try a dry run with `%s`\n", command("repos"), command("run"))
+				_, err = fmt.Fprintf(out, "check the repositories it lists under repos: with `%s`, then try a dry run with `%s`\n", command("repos"), command("dependabot"))
 			} else {
 				_, err = fmt.Fprintf(out, "list your repositories under repos:, then check them with `%s`\n", command("repos"))
 			}

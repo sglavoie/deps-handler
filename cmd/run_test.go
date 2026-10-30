@@ -86,7 +86,7 @@ func runFixture(t *testing.T) (*fakeClient, string) {
 
 func TestRunDryRun(t *testing.T) {
 	fc, cfg := runFixture(t)
-	code, out, _ := run("run", "-c", cfg)
+	code, out, _ := run("dependabot", "-c", cfg)
 	if code != 0 || len(fc.merges) != 0 {
 		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
 	}
@@ -99,7 +99,7 @@ func TestRunDryRun(t *testing.T) {
 
 func TestRunApply(t *testing.T) {
 	fc, cfg := runFixture(t)
-	code, out, _ := run("run", "-c", cfg, "--apply", "-r", " busy ")
+	code, out, _ := run("dependabot", "-c", cfg, "--apply", "-r", " busy ")
 	if code != 0 || len(fc.merges) != 1 || fc.merges[0] != 1 || !strings.Contains(out, "1 repo: 1 merged, 1 skipped") {
 		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
 	}
@@ -108,10 +108,10 @@ func TestRunApply(t *testing.T) {
 func TestRunIncludeSkipped(t *testing.T) {
 	fc, _ := runFixture(t)
 	cfg := writeConfig(t, "repos:\n  - o/quiet\n  - repo: o/busy\n    skip: true\n")
-	if _, out, _ := run("run", "-c", cfg, "--owner", "o"); strings.Contains(out, "o/busy") {
+	if _, out, _ := run("dependabot", "-c", cfg, "--owner", "o"); strings.Contains(out, "o/busy") {
 		t.Fatalf("--owner ran a skipped repo:\n%s", out)
 	}
-	code, out, _ := run("run", "-c", cfg, "--owner", "o", "--include-skipped")
+	code, out, _ := run("dependabot", "-c", cfg, "--owner", "o", "--include-skipped")
 	if code != 0 || len(fc.merges) != 0 || !strings.Contains(out, "o/busy") || !strings.Contains(out, "2 repos:") {
 		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
 	}
@@ -119,10 +119,10 @@ func TestRunIncludeSkipped(t *testing.T) {
 
 func TestRunOpenLeavesOutQuietRepos(t *testing.T) {
 	_, cfg := runFixture(t)
-	if _, out, _ := run("run", "-c", cfg, "--open"); strings.Contains(out, "o/quiet") || !strings.Contains(out, "o/busy") {
+	if _, out, _ := run("dependabot", "-c", cfg, "--open"); strings.Contains(out, "o/quiet") || !strings.Contains(out, "o/busy") {
 		t.Fatalf("output:\n%s", out)
 	}
-	_, out, _ := run("run", "-c", cfg, "--open", "--json")
+	_, out, _ := run("dependabot", "-c", cfg, "--open", "--json")
 	var doc struct {
 		Apply   bool
 		Results []struct {
@@ -140,7 +140,7 @@ func TestRunOpenLeavesOutQuietRepos(t *testing.T) {
 
 func TestRunMarkdown(t *testing.T) {
 	_, cfg := runFixture(t)
-	code, out, _ := run("run", "-c", cfg, "--markdown", "--open")
+	code, out, _ := run("dependabot", "-c", cfg, "--markdown", "--open")
 	if code != 0 {
 		t.Fatalf("code %d:\n%s", code, out)
 	}
@@ -157,7 +157,7 @@ func TestRunMarkdown(t *testing.T) {
 
 func TestRunOpenSummaryCountsHiddenRepos(t *testing.T) {
 	_, cfg := runFixture(t)
-	if _, out, _ := run("run", "-c", cfg, "--open"); !strings.Contains(out, "1 repo (1 without open PRs hidden): 1 would merge, 1 skipped") {
+	if _, out, _ := run("dependabot", "-c", cfg, "--open"); !strings.Contains(out, "1 repo (1 without open PRs hidden): 1 would merge, 1 skipped") {
 		t.Fatalf("output:\n%s", out)
 	}
 }
@@ -172,7 +172,7 @@ func TestRunKeepsTruncatedReposWithoutCurrentSearchHits(t *testing.T) {
 				// closed PRs; that does not establish that no open PRs remain.
 				r := fc.repos["o/quiet"]
 				r.OpenPRCount, r.SearchCount = 120, 100
-				args := []string{"run", "-c", cfg, "-r", "quiet"}
+				args := []string{"dependabot", "-c", cfg, "-r", "quiet"}
 				if format != "text" {
 					args = append(args, format)
 				}
@@ -198,14 +198,14 @@ func TestRunReviewSkipsSetupWithoutAgentReview(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", state)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir()) // no agent installed
-	code, out, stderr := run("run", "-c", cfg, "--review", "--max-reviews", "3")
+	code, out, stderr := run("dependabot", "-c", cfg, "--review", "--max-reviews", "3")
 	if code != 0 || !strings.Contains(stderr, "every selected repo sets agent_review: false") || !strings.Contains(out, "would merge") {
 		t.Fatalf("code %d, stderr %q:\n%s", code, stderr, out)
 	}
 	if _, err := os.Stat(filepath.Join(state, "deps-handler")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("review setup ran anyway: %v", err)
 	}
-	if code, _, stderr := run("run", "-c", cfg, "--agent", "gemini"); code != 2 || !strings.Contains(stderr, `unknown agent "gemini"`) {
+	if code, _, stderr := run("dependabot", "-c", cfg, "--agent", "gemini"); code != 2 || !strings.Contains(stderr, `unknown agent "gemini"`) {
 		t.Errorf("unknown agent: code %d, %q", code, stderr)
 	}
 }
@@ -213,7 +213,7 @@ func TestRunReviewSkipsSetupWithoutAgentReview(t *testing.T) {
 func TestRunFailedRepoExitsOne(t *testing.T) {
 	_, _ = runFixture(t)
 	cfg := writeConfig(t, "repos:\n  - o/busy\n  - o/missing\n")
-	code, out, _ := run("run", "-c", cfg)
+	code, out, _ := run("dependabot", "-c", cfg)
 	if code != 1 || !strings.Contains(out, "error: o/missing: repository not found") || !strings.Contains(out, "1 repo failed") {
 		t.Fatalf("code %d:\n%s", code, out)
 	}

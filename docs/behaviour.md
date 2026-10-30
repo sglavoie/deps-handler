@@ -7,7 +7,7 @@ output, and every config rule.
 
 ## What counts as safe
 
-A PR is merged only when all of these hold:
+The `dependabot` command and GitHub App merge a PR only when all of these hold:
 
 - opened by Dependabot, and every commit is authored by Dependabot's own
   GitHub account (a commit whose author only bears Dependabot's name or
@@ -150,9 +150,9 @@ digest). With `--review`, deps-handler asks an AI agent about those, once
 everything else about them would let them merge or rebase:
 
 ```bash
-deps-handler run --review                # dry run: review, merge nothing
-deps-handler run --review --apply
-deps-handler run --agent codex --apply   # another agent; implies --review
+deps-handler dependabot --review                # dry run: review, merge nothing
+deps-handler dependabot --review --apply
+deps-handler dependabot --agent codex --apply   # another agent; implies --review
 ```
 
 The agent gets a shallow checkout of the PR's head commit (kept under
@@ -366,11 +366,11 @@ installed. `--max-reviews` or `--review-parallel` without `--review` or
 
 ## Scripting
 
-A dry run never writes to GitHub, so `deps-handler run` is safe to
+A dry run never writes to GitHub, so `deps-handler dependabot` is safe to
 schedule. With `--review` it still runs the agent, which costs what a
 review costs, and caches its verdicts: a later `--apply` merges what a dry
 run's review approved without asking the agent again. For
-`deps-handler run --apply` from cron or CI, the exit status is:
+`deps-handler dependabot --apply` from cron or CI, the exit status is:
 
 - `0`: every repository was processed and every write succeeded;
 - `1`: a repository could not be processed, a merge or rebase request
@@ -425,7 +425,7 @@ a line per repository reports progress there while the JSON waits for the
 end.
 
 `deps-handler repos --json` prints `{"repos": [...], "agent": {...}}`: each
-repository's `repo`, `policy` (as in `run --json`) and `skip`, and the
+repository's `repo`, `policy` (as in `dependabot --json`) and `skip`, and the
 agent's `use`, `timeout`, `claude` (`model`, `config_dir`,
 `max_budget_usd`) and `codex` (`model`, `home`) as configured, with an
 empty `model` for the agent's default.
@@ -435,7 +435,7 @@ empty `model` for the agent's default.
 `approved`, `agent`, `head_oid` (the commit a rejection, or an
 approval of an update without versions, holds for, or `any`), `reviewed_at`, `expires`, `summary` and `concerns`.
 
-`run --markdown` prints each repository's section as GitHub Markdown, as
+`dependabot --markdown` prints each repository's section as GitHub Markdown, as
 an issue body or a GitHub Actions job summary would hold it: a heading,
 the policy line, the files the policy came from, a table of PRs with
 their status and reason, warnings, and the findings under "Needs
@@ -472,7 +472,7 @@ with `--review`), Claude as the agent. Every policy field under `defaults`
 `dependabot_commands`, `merge_without_checks_after`, `mode`) can be overridden per repo; the `agent`
 settings apply to every repo.
 `mode` is `merge` (the default) or `report`: a repo in report mode is
-only reported on, as in a dry run, even by `run --apply`, and its header
+only reported on, as in a dry run, even by `dependabot --apply`, and its header
 says `report only`.
 When a repo does not allow the configured merge method, the first one it
 allows (squash, merge, rebase) is used and the report header says so.
@@ -495,7 +495,7 @@ document, a recursive merge alias, a directory, a binary or a file too
 large), or that cannot be read, fails that repo: nothing in it is judged
 or written. The report
 names the files used under the repo's header (`policy from ...`), and
-`run --json` lists them in `config_files`. `deps-handler repos` reads
+`dependabot --json` lists them in `config_files`. `deps-handler repos` reads
 nothing from GitHub and shows the policy from your config alone.
 
 To leave a repo out without deleting it, give its entry `skip: true`:
@@ -509,8 +509,8 @@ repos:
 An empty `skip:` value, `null` or `~` is rejected rather than treated as
 `false`. Use an explicit boolean or omit the field to include the repository.
 
-`deps-handler run -r Mirror` still runs a skipped repo when you ask for it
-by name, and `deps-handler run --include-skipped` runs every repo, skipped
+`deps-handler dependabot -r Mirror` still runs a skipped repo when you ask for it
+by name, and `deps-handler dependabot --include-skipped` runs every repo, skipped
 or not (with `--owner`, every repo of those owners). A bare name that more than one owner's repo shares (`-r docs` with
 both `acme/docs` and `other/docs` listed) is an error; give `owner/name`.
 So is an empty name (`-r ""`, `-r "Billing,"`), which a script's unset
@@ -518,7 +518,7 @@ variable would otherwise turn into a run of every repo; spaces around a
 name are ignored. A run that would select no repos at all fails instead
 of reporting nothing.
 
-`deps-handler run --owner acme` runs every configured repo of `acme` (the
+`deps-handler dependabot --owner acme` runs every configured repo of `acme` (the
 owner is matched regardless of case; repeat the flag or separate owners
 with commas for more). It leaves out the owner's repos set to `skip: true`,
 as a run without filters does; add `-r Mirror` to run one of them too,
@@ -527,7 +527,7 @@ or `--include-skipped` to run them all.
 owner no configured repo has is an error, as is an empty one or one
 written `owner/name`.
 
-`deps-handler repos` takes `-r` and `--owner` as `run` does, and lists the
+`deps-handler repos` takes `-r` and `--owner` as `dependabot` does, and lists the
 repos they select, skipped ones included (its `SKIP` column says which).
 Both flags complete the configured names in a shell that loads
 `deps-handler completion` (bash, zsh, fish or PowerShell).
@@ -543,7 +543,7 @@ the config. The config must be a single YAML document, an empty entry
 under `repos` is an error rather than skipped, and
 `claude.max_budget_usd` must be a finite number. `claude.config_dir` and
 `codex.home` must be absolute or start with `~/`: a relative path would
-depend on the directory deps-handler runs from, which under cron is rarely
+depend on the directory deps-handler dependabots from, which under cron is rarely
 the config's. A repo entry can borrow another's settings with a YAML merge
 key, and the merged fields are checked like any other. Recursive merge
 aliases are rejected:
@@ -562,7 +562,7 @@ or whether the repository is configured. It reads a disposable checkout and
 uses no cached merge verdict. It reports current check contexts and
 separates GitHub facts from the agent's diagnosis. Superseded attempts are
 omitted from the report and failure evidence. Only the latest check run
-of an identified producer counts toward passing CI, as in `run`; an unknown,
+of an identified producer counts toward passing CI, as in `dependabot`; an unknown,
 pending, incomplete, absent or all-skipped result is not passing. Currently
 at most 100 contexts are read; a longer list is explicitly incomplete.
 Failed-check evidence includes bounded annotations and log excerpts where
@@ -698,7 +698,7 @@ exits 0 when prepared locally or no code repair is needed. With `--push`, exit 0
 confirms passing CI with code merge conflicts resolved, including an already
 passing PR. Preparation, repair or CI confirmation failures exit 1. Both
 commands support `--json`, report operational errors there, use 2 for invalid
-arguments and 130 for interruption. Existing `run` behavior is unchanged:
+arguments and 130 for interruption. The `dependabot` command keeps its authorship policy:
 a PR with published repair commits fails its Dependabot-only authorship gate
 and must be merged manually. Neither the GitHub App nor the
 demo build runs repairs.

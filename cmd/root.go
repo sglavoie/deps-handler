@@ -25,13 +25,17 @@ var configPath string
 func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "deps-handler",
-		Short: "Merge safe Dependabot pull requests across your repositories",
-		Long: `deps-handler finds open Dependabot PRs in the repositories listed in its
-config, merges those that are green and within policy, and reports what
-needs fixing in each repository. PRs not opened by Dependabot, or touched
-by anyone else, are never changed by run. Use pr diagnose for a repair
-handoff or pr fix to prepare local fixes to a selected PR; add --push to
-publish them and verify CI.`,
+		Short: "Manage Dependabot updates and diagnose or repair pull requests",
+		Long: `deps-handler manages Dependabot updates across repositories and helps
+diagnose or repair any explicitly selected pull request.
+
+Use dependabot to evaluate open Dependabot PRs in configured repositories
+and, with --apply, merge those that are green and within policy. PRs not
+opened by Dependabot, or touched by anyone else, are never changed by
+this command.
+
+Use pr diagnose for a repair handoff or pr fix to prepare local fixes to
+a selected PR; add --push to publish them and verify CI.`,
 		Version:       versionString(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -45,7 +49,7 @@ publish them and verify CI.`,
 		return nil
 	}
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-handler/config.yaml, or ~/.config/deps-handler/config.yaml when XDG_CONFIG_HOME is unset)")
-	root.AddCommand(newInitCmd(), newRunCmd(), newReposCmd(), newVerdictsCmd(), newPRCmd())
+	root.AddCommand(newInitCmd(), newDependabotCmd(), newReposCmd(), newVerdictsCmd(), newPRCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	// Cobra's help prints the usage for an unknown topic and succeeds:
 	// a topic that names no command is a usage error like any other.

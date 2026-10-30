@@ -64,7 +64,7 @@ func TestRunReviewSetsUpAgentOffOnlyInDefaults(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir()) // no agent installed
 	off := writeConfig(t, "defaults:\n  agent_review: false\nrepos:\n  - o/busy\n")
-	if code, _, stderr := run("run", "-c", off, "--review"); code == 0 || !strings.Contains(stderr, "claude is not installed") {
+	if code, _, stderr := run("dependabot", "-c", off, "--review"); code == 0 || !strings.Contains(stderr, "claude is not installed") {
 		t.Errorf("code %d, %q", code, stderr)
 	}
 }

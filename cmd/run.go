@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newRunCmd() *cobra.Command {
+func newDependabotCmd() *cobra.Command {
 	var (
 		apply      bool
 		asJSON     bool
@@ -40,7 +40,7 @@ func newRunCmd() *cobra.Command {
 		reviewPar  int
 	)
 	c := &cobra.Command{
-		Use:   "run",
+		Use:   "dependabot",
 		Short: "Evaluate Dependabot PRs and, with --apply, merge the safe ones",
 		Long: `Evaluate every open Dependabot PR in the configured repositories.
 

@@ -30,8 +30,8 @@ in a directory of its own, `deps-handler-demo` in your user cache directory
 (`~/Library/Caches` on macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux):
 
 ```bash
-just try run                    # dry run
-just try run --review --apply   # "merge", "rebase", have the "agent" review
+just try dependabot                    # dry run
+just try dependabot --review --apply   # "merge", "rebase", have the "agent" review
 just try verdicts
 ```
 

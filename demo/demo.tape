@@ -22,12 +22,12 @@ Sleep 400ms
 Enter
 Sleep 3s
 
-Type "clear && deps-handler run --open        # dry run: report only"
+Type "clear && deps-handler dependabot --open        # dry run: report only"
 Sleep 400ms
 Enter
 Sleep 7s
 
-Type "clear && deps-handler run --open --review --apply"
+Type "clear && deps-handler dependabot --open --review --apply"
 Sleep 400ms
 Enter
 Sleep 9s

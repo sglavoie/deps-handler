@@ -1,4 +1,4 @@
-# deps-handler - merge safe Dependabot PRs
+# deps-handler - manage Dependabot updates and diagnose or repair PRs
 
 binary_name := "deps-handler"
 install_dir := env("HOME") / ".local/bin"
@@ -112,13 +112,13 @@ demo:
     go build -tags demo -o .demo/bin/{{ binary_name }} .
     vhs demo/demo.tape
 
-# Try the CLI against fake repositories, e.g. `just try run --review --apply`
+# Try the CLI against fake repositories, e.g. `just try dependabot --review --apply`
 try *args:
     go run -tags demo . {{ args }}
 
 # Dry run against the configured repos
 dry-run *args:
-    go run . run {{ args }}
+    go run . dependabot {{ args }}
 
 # Run the GitHub App locally with the API model, Claude Code, or Codex
 app-local agent="":

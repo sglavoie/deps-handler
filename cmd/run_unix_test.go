@@ -37,7 +37,7 @@ func TestRunReviewFailsWhileAnotherHoldsTheLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	code, out, stderr := run("run", "-c", cfg, "--review")
+	code, out, stderr := run("dependabot", "-c", cfg, "--review")
 	if code != 1 || out != "" || !strings.Contains(stderr, "another deps-handler run is reviewing updates") {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
 	}
@@ -115,11 +115,11 @@ func TestRunReviewWarnsWhenPruneFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chmod(locked, 0o755)
-	code, out, stderr := run("run", "-c", cfg, "--review", "-r", "quiet")
+	code, out, stderr := run("dependabot", "-c", cfg, "--review", "-r", "quiet")
 	if code != 0 || !strings.Contains(out, "prune checkouts:") || !strings.Contains(out, "no open Dependabot PRs") {
 		t.Fatalf("code %d, out %q, stderr %q; a checkout that cannot be pruned must not stop the run", code, out, stderr)
 	}
-	_, out, _ = run("run", "-c", cfg, "--review", "-r", "quiet", "--json")
+	_, out, _ = run("dependabot", "-c", cfg, "--review", "-r", "quiet", "--json")
 	var doc struct{ Results []struct{ Warnings []string } }
 	if err := json.Unmarshal([]byte(out), &doc); err != nil || len(doc.Results) != 1 || len(doc.Results[0].Warnings) != 1 || !strings.HasPrefix(doc.Results[0].Warnings[0], "prune checkouts: ") {
 		t.Fatalf("json: %v:\n%s", err, out)

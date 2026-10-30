@@ -40,7 +40,7 @@ defaults:
 # owner's file overrides these defaults, the repo's overrides the owner's,
 # and the repo's entry below overrides both.
 
-# The AI agent `deps-handler run --review` uses to judge updates over
+# The AI agent `deps-handler dependabot --review` uses to judge updates over
 # max_update_type and of unknown size. --agent claude|codex|api overrides `use`.
 agent:
   use: claude

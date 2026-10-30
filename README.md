@@ -4,8 +4,8 @@
 [![Release](https://img.shields.io/github/v/release/sglavoie/deps-handler)](https://github.com/sglavoie/deps-handler/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Merges safe Dependabot pull requests across a list of repositories and
-reports what needs fixing in each one. It uses your `gh` login.
+Manages Dependabot updates across a list of repositories and diagnoses or
+repairs any explicitly selected pull request. It uses your `gh` login.
 
 The same repository also contains a free GitHub App server. It
 reports into a Dependency health issue and merges only in repositories
@@ -39,12 +39,12 @@ Later sweeps can also revoke access to discovered repositories that have not run
 Repositories with reviews disabled skip review setup, so a broken review
 cache or unavailable checkout credentials cannot fail their reports.
 
-It is deliberately conservative. A PR merges only when Dependabot alone
-wrote it, its checks are green and its update is within your policy. With
-`--review`, an AI agent (Claude Code or Codex) reads a read-only checkout
-to judge the bigger updates. Anything it can't merge is reported with the
-fix: a check broken on the base branch, an update to ignore, a review
-branch protection wants.
+The Dependabot workflow is deliberately conservative. A PR merges only
+when Dependabot alone wrote it, its checks are green and its update is
+within your policy. With `--review`, an AI agent (Claude Code or Codex)
+reads a read-only checkout to judge the bigger updates. Anything it can't
+merge is reported with the fix: a check broken on the base branch, an
+update to ignore, a review branch protection wants.
 
 ![deps-handler merging, rebasing and reviewing Dependabot PRs across fictional repositories](docs/demo.gif)
 
@@ -95,16 +95,20 @@ names. Existing Dependency health issues are recognized and updated.
 
 ## Usage
 
+Use `dependabot` for Dependabot PRs across configured repositories, or
+`pr diagnose` and `pr fix` for any explicitly selected PR. Update scripts
+and scheduled jobs that used `run` to use `dependabot` with the same flags.
+
 ```bash
-deps-handler init                  # write an example config, then list your repos in it
-deps-handler init --discover       # or fill it with your repos that use Dependabot
-deps-handler repos                 # effective policy per repo (--json, -r, --owner)
-deps-handler run                   # dry run: report only
-deps-handler run --apply           # merge safe PRs
-deps-handler run --open            # only repos with open Dependabot PRs
-deps-handler run -r Storefront --json  # one repo, machine-readable
-deps-handler run --markdown        # GitHub Markdown, as for an issue body
-deps-handler run --review --apply  # let an AI agent judge bigger updates too
+deps-handler init                         # write an example config, then list your repos in it
+deps-handler init --discover              # or fill it with your repos that use Dependabot
+deps-handler repos                        # effective policy per repo (--json, -r, --owner)
+deps-handler dependabot                   # dry run: report only
+deps-handler dependabot --apply           # merge safe PRs
+deps-handler dependabot --open            # only repos with open Dependabot PRs
+deps-handler dependabot -r Storefront --json  # one repo, machine-readable
+deps-handler dependabot --markdown        # GitHub Markdown, as for an issue body
+deps-handler dependabot --review --apply  # let an AI agent judge bigger updates too
 deps-handler pr diagnose acme/Storefront#123 > repair.md  # AI repair handoff
 deps-handler pr fix acme/Storefront#123 --agent codex    # edit and commit locally for review
 deps-handler pr fix acme/Storefront#123 --agent codex --push  # publish and verify CI
@@ -230,7 +234,7 @@ errors and the retained checkout path when available. Local preparation sets
 heads only. A prepared local repair has `checks_passing: false`, since the PR
 snapshot's checks describe the older remote commit.
 
-Publishing a repair adds commits that Dependabot did not author. The existing `run`
+Publishing a repair adds commits that Dependabot did not author. The `dependabot`
 command therefore leaves that PR alone under its authorship policy; review
 and merge the repaired PR yourself after its checks and remaining gates pass.
 These commands are CLI-only and unavailable in the demo build.
@@ -243,14 +247,14 @@ config, token or verdicts, so `--apply` is safe to try:
 
 ```bash
 git clone https://github.com/sglavoie/deps-handler && cd deps-handler
-go run -tags demo . run                    # dry run
-go run -tags demo . run --review --apply   # merge, rebase, agent verdicts
+go run -tags demo . dependabot                    # dry run
+go run -tags demo . dependabot --review --apply   # merge, rebase, agent verdicts
 go run -tags demo . verdicts
 ```
 
 ## What counts as safe
 
-A PR is merged only when all of these hold:
+The `dependabot` command and GitHub App merge a PR only when all of these hold:
 
 - Dependabot opened it and wrote every commit: authored by its GitHub
   account, committed and signed by GitHub, with no `Co-authored-by`
@@ -319,10 +323,10 @@ bump over `max_update_type`, or one Dependabot records no semver size for
 agent judges those:
 
 ```bash
-deps-handler run --review                # dry run: review, merge nothing
-deps-handler run --review --apply
-deps-handler run --agent codex --apply   # another agent; implies --review
-deps-handler run --agent api --review --review-parallel 1   # a local model
+deps-handler dependabot --review                # dry run: review, merge nothing
+deps-handler dependabot --review --apply
+deps-handler dependabot --agent codex --apply   # another agent; implies --review
+deps-handler dependabot --agent api --review --review-parallel 1   # a local model
 ```
 
 The agent reads a shallow checkout of the PR, its release notes and its
@@ -470,7 +474,7 @@ unread checks may include a passing rerun or the only check that ran.
 
 ## Scripting
 
-A dry run never writes to GitHub, so `deps-handler run` is safe to
+A dry run never writes to GitHub, so `deps-handler dependabot` is safe to
 schedule (with `--review` it still runs the agent, and caches its
 verdicts for a later `--apply`). The exit status is:
 
@@ -487,11 +491,11 @@ discarded and cannot become a cached approval for a later run.
 `init`, `repos` and `verdicts` also exit `1` if their output cannot be
 written, including confirmations after a config or cache change.
 
-`run`, `repos` and `verdicts` take `--json`. `run --json` prints
+`dependabot`, `repos` and `verdicts` take `--json`. `dependabot --json` prints
 `{"apply": bool, "results": [...]}`, one result per repository with its
 policy, a decision per PR, findings, the writes made and warnings. Lists
 are always arrays, never `null`. [Scripting](docs/behaviour.md#scripting)
-describes every field and what each exit status covers. `run --markdown`
+describes every field and what each exit status covers. `dependabot --markdown`
 prints each repository's section as GitHub Markdown instead, ready for an
 issue or a CI job summary.
 
@@ -522,7 +526,7 @@ repos:
     skip: true              # left out unless named with -r
 ```
 
-`deps-handler run -r Billing` runs one repo and `--owner acme` every repo
+`deps-handler dependabot -r Billing` runs one repo and `--owner acme` every repo
 of an owner. [Config](docs/behaviour.md#config) has every rule.
 A `skip:` field with no value (including `null` or `~`) is an error;
 use `true` or `false`, or omit the field to include the repository.
@@ -531,7 +535,7 @@ A repository can also set its own policy in `.github/deps-handler.yml` on
 its default branch, and an owner for all its repositories in
 `deps-handler.yml` in its `.github` repository. They take the policy
 fields `defaults` takes, plus `mode: report` to have the repository only
-reported on, even by `run --apply`:
+reported on, even by `dependabot --apply`:
 
 ```yaml
 # .github/deps-handler.yml

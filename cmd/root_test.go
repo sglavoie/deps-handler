@@ -252,42 +252,43 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		"missing config": {[]string{"run", "-c", missing}, 1, "config not found"},
-		"all skipped":    {[]string{"run", "-c", cfg}, 1, "every configured repo has skip: true"},
-		"unknown repo":   {[]string{"run", "-c", cfg, "-r", "zzz"}, 2, `repo "zzz" is not in the config`},
-		"ambiguous repo": {[]string{"run", "-c", writeConfig(t, "repos: [a/x, b/x]\n"), "-r", "x"}, 2, "ambiguous: x matches a/x, b/x"},
+		"missing config": {[]string{"dependabot", "-c", missing}, 1, "config not found"},
+		"all skipped":    {[]string{"dependabot", "-c", cfg}, 1, "every configured repo has skip: true"},
+		"unknown repo":   {[]string{"dependabot", "-c", cfg, "-r", "zzz"}, 2, `repo "zzz" is not in the config`},
+		"ambiguous repo": {[]string{"dependabot", "-c", writeConfig(t, "repos: [a/x, b/x]\n"), "-r", "x"}, 2, "ambiguous: x matches a/x, b/x"},
 		// An unset variable in `-r "$REPO"` must not select every repo.
-		"empty repo":      {[]string{"run", "-c", active, "-r", ""}, 2, "--repo needs a repo name"},
-		"empty agent":     {[]string{"run", "-c", active, "--agent", ""}, 2, "--agent needs an agent name"},
-		"empty config":    {[]string{"run", "-c", ""}, 2, "--config needs a file path"},
+		"empty repo":      {[]string{"dependabot", "-c", active, "-r", ""}, 2, "--repo needs a repo name"},
+		"empty agent":     {[]string{"dependabot", "-c", active, "--agent", ""}, 2, "--agent needs an agent name"},
+		"empty config":    {[]string{"dependabot", "-c", ""}, 2, "--config needs a file path"},
 		"empty init -c":   {[]string{"init", "--force", "-c", ""}, 2, "--config needs a file path"},
-		"blank repo":      {[]string{"run", "-c", active, "-r", "a, "}, 2, "--repo has an empty repo name"},
-		"blank --repo":    {[]string{"run", "-c", active, "--repo", " "}, 2, "--repo has an empty repo name"},
-		"unknown owner":   {[]string{"run", "-c", cfg, "--owner", "zzz"}, 2, `owner "zzz" has no repo in the config`},
-		"owner skipped":   {[]string{"run", "-c", cfg, "--owner", "o"}, 1, "every repo of the named owners has skip: true"},
-		"empty owner":     {[]string{"run", "-c", active, "--owner", ""}, 2, "--owner needs an owner name"},
-		"blank owner":     {[]string{"run", "-c", active, "--owner", "o, "}, 2, "--owner has an empty owner name"},
-		"owner/name":      {[]string{"run", "-c", active, "--owner", "o/a"}, 2, `--owner takes an owner, not "o/a"; use --repo for one repo`},
-		"bad repo name":   {[]string{"run", "-c", writeConfig(t, "repos: [acme/x.git]\n")}, 1, "drop the .git suffix"},
-		"unexpected arg":  {[]string{"run", "extra"}, 2, "unknown command"},
+		"blank repo":      {[]string{"dependabot", "-c", active, "-r", "a, "}, 2, "--repo has an empty repo name"},
+		"blank --repo":    {[]string{"dependabot", "-c", active, "--repo", " "}, 2, "--repo has an empty repo name"},
+		"unknown owner":   {[]string{"dependabot", "-c", cfg, "--owner", "zzz"}, 2, `owner "zzz" has no repo in the config`},
+		"owner skipped":   {[]string{"dependabot", "-c", cfg, "--owner", "o"}, 1, "every repo of the named owners has skip: true"},
+		"empty owner":     {[]string{"dependabot", "-c", active, "--owner", ""}, 2, "--owner needs an owner name"},
+		"blank owner":     {[]string{"dependabot", "-c", active, "--owner", "o, "}, 2, "--owner has an empty owner name"},
+		"owner/name":      {[]string{"dependabot", "-c", active, "--owner", "o/a"}, 2, `--owner takes an owner, not "o/a"; use --repo for one repo`},
+		"bad repo name":   {[]string{"dependabot", "-c", writeConfig(t, "repos: [acme/x.git]\n")}, 1, "drop the .git suffix"},
+		"unexpected arg":  {[]string{"dependabot", "extra"}, 2, "unknown command"},
 		"unknown command": {[]string{"nope"}, 2, "unknown command"},
-		"unknown flag":    {[]string{"run", "--nope"}, 2, "unknown flag"},
-		"bad flag value":  {[]string{"run", "--max-reviews", "many"}, 2, "invalid argument"},
+		"removed alias":   {[]string{"run"}, 2, `unknown command "run"`},
+		"unknown flag":    {[]string{"dependabot", "--nope"}, 2, "unknown flag"},
+		"bad flag value":  {[]string{"dependabot", "--max-reviews", "many"}, 2, "invalid argument"},
 		"missing arg":     {[]string{"verdicts", "forget"}, 2, "requires at least 1 arg"},
-		"unknown agent":   {[]string{"run", "-c", active, "--agent", "gemini"}, 2, `unknown agent "gemini" (want claude, codex or api)`},
-		"bad limit":       {[]string{"run", "-c", active, "--review", "--max-reviews", "-1"}, 2, "--max-reviews must not be negative"},
-		"limit alone":     {[]string{"run", "-c", active, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
-		"no parallel":     {[]string{"run", "-c", active, "--parallel", "0"}, 2, "--parallel must be at least 1"},
-		"no review slots": {[]string{"run", "-c", active, "--review", "--review-parallel", "0"}, 2, "--review-parallel must be at least 1"},
-		"slots alone":     {[]string{"run", "-c", active, "--review-parallel", "3"}, 2, "--review-parallel needs --review or --agent"},
-		"two formats":     {[]string{"run", "-c", missing, "--json", "--markdown"}, 2, "--json and --markdown cannot be used together"},
+		"unknown agent":   {[]string{"dependabot", "-c", active, "--agent", "gemini"}, 2, `unknown agent "gemini" (want claude, codex or api)`},
+		"bad limit":       {[]string{"dependabot", "-c", active, "--review", "--max-reviews", "-1"}, 2, "--max-reviews must not be negative"},
+		"limit alone":     {[]string{"dependabot", "-c", active, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
+		"no parallel":     {[]string{"dependabot", "-c", active, "--parallel", "0"}, 2, "--parallel must be at least 1"},
+		"no review slots": {[]string{"dependabot", "-c", active, "--review", "--review-parallel", "0"}, 2, "--review-parallel must be at least 1"},
+		"slots alone":     {[]string{"dependabot", "-c", active, "--review-parallel", "3"}, 2, "--review-parallel needs --review or --agent"},
+		"two formats":     {[]string{"dependabot", "-c", missing, "--json", "--markdown"}, 2, "--json and --markdown cannot be used together"},
 		// The command line is checked before the config is read.
-		"limit before config": {[]string{"run", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
-		"repo before config":  {[]string{"run", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},
-		"owner before config": {[]string{"run", "-c", missing, "--owner", ""}, 2, "--owner needs an owner name"},
+		"limit before config": {[]string{"dependabot", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
+		"repo before config":  {[]string{"dependabot", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},
+		"owner before config": {[]string{"dependabot", "-c", missing, "--owner", ""}, 2, "--owner needs an owner name"},
 		// pflag drops an empty value given beside others.
-		"empty repo among others":  {[]string{"run", "-c", missing, "-r", "", "-r", "a"}, 2, "--repo has an empty repo name"},
-		"empty owner among others": {[]string{"run", "-c", missing, "--owner", "o", "--owner", ""}, 2, "--owner has an empty owner name"},
+		"empty repo among others":  {[]string{"dependabot", "-c", missing, "-r", "", "-r", "a"}, 2, "--repo has an empty repo name"},
+		"empty owner among others": {[]string{"dependabot", "-c", missing, "--owner", "o", "--owner", ""}, 2, "--owner has an empty owner name"},
 		"repos empty repo":         {[]string{"repos", "-c", missing, "-r", "a", "-r", ""}, 2, "--repo has an empty repo name"},
 		"unknown help topic":       {[]string{"help", "nope"}, 2, `unknown help topic "nope"`},
 		"unknown completion shell": {[]string{"completion", "nope"}, 2, `unknown command "nope"`},
@@ -426,8 +427,8 @@ func TestInitDiscoverFillsRepos(t *testing.T) {
 		return []string{"o/a", "o/b"}, nil
 	}
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	if code, _, stderr := run("init", "-c", path, "--discover", "--owner", " o "); code != 0 || !slices.Equal(asked, []string{"o"}) {
-		t.Fatalf("code %d, asked %q, stderr %q", code, asked, stderr)
+	if code, out, stderr := run("init", "-c", path, "--discover", "--owner", " o "); code != 0 || !slices.Equal(asked, []string{"o"}) || !strings.Contains(out, "`deps-handler dependabot -c "+path+"`") {
+		t.Fatalf("code %d, asked %q, output %q, stderr %q", code, asked, out, stderr)
 	}
 	data, _ := os.ReadFile(path)
 	if strings.Contains(string(data), "acme/example") || !strings.HasSuffix(string(data), "  - o/a\n  - o/b\n") {
@@ -469,14 +470,14 @@ func TestMissingConfigSuggestsInit(t *testing.T) {
 
 func TestEmptyConfigSaysWhereToListRepos(t *testing.T) {
 	cfg := writeConfig(t, "defaults:\n  max_update_type: patch\nrepos:\n  # - o/a\n")
-	if code, _, stderr := run("run", "-c", cfg); code != 1 || !strings.Contains(stderr, cfg+" lists no repos yet; list yours under repos:, or fill them in with `deps-handler init -c "+cfg+" --discover --force`") {
+	if code, _, stderr := run("dependabot", "-c", cfg); code != 1 || !strings.Contains(stderr, cfg+" lists no repos yet; list yours under repos:, or fill them in with `deps-handler init -c "+cfg+" --discover --force`") {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
 }
 
 func TestCompletesRepoAndOwner(t *testing.T) {
 	cfg := writeConfig(t, "repos:\n  - o/a\n  - o/b\n  - p/c\n")
-	if _, out, _ := run("__complete", "-c", cfg, "run", "-r", ""); !strings.HasPrefix(out, "o/a\no/b\np/c\n:4\n") {
+	if _, out, _ := run("__complete", "-c", cfg, "dependabot", "-r", ""); !strings.HasPrefix(out, "o/a\no/b\np/c\n:4\n") {
 		t.Errorf("--repo: %q", out)
 	}
 	if _, out, _ := run("__complete", "-c", cfg, "repos", "--owner", ""); !strings.HasPrefix(out, "o\np\n:4\n") {

@@ -33,7 +33,7 @@ func TestRunHonorsCommandCancellation(t *testing.T) {
 				cancel()
 			}
 			root := newRoot()
-			root.SetArgs([]string{"run", "--apply", "-c", cfg, "-r", "busy"})
+			root.SetArgs([]string{"dependabot", "--apply", "-c", cfg, "-r", "busy"})
 			root.SetOut(io.Discard)
 			root.SetErr(io.Discard)
 			if err := root.ExecuteContext(ctx); !errors.Is(err, errInterrupted) {
@@ -66,7 +66,7 @@ func TestRunReportsOutputFailure(t *testing.T) {
 	for _, format := range []string{"text", "--markdown", "--json"} {
 		t.Run(format, func(t *testing.T) {
 			_, cfg := runFixture(t)
-			args := []string{"run", "-c", cfg}
+			args := []string{"dependabot", "-c", cfg}
 			if format != "text" {
 				args = append(args, format)
 			}
