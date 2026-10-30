@@ -46,6 +46,7 @@ type Result struct {
 	Error           string            `json:"error,omitempty"`
 	PlanSource      string            `json:"plan_source,omitempty"`
 	StartingHeadOID string            `json:"starting_head_oid,omitempty"`
+	RepairCommand   string            `json:"repair_command,omitempty"`
 }
 
 // Service drives diagnosis and bounded repair attempts. The agent never
@@ -185,6 +186,17 @@ func (s *Service) Diagnose(ctx context.Context, target github.PRTarget, focus st
 	}
 	if !sameTarget(p, current) || p.BaseOID != current.BaseOID {
 		return result, fmt.Errorf("PR changed during diagnosis: %s; run again for current evidence", changedFields(p, current))
+	}
+	passing, _ := CheckState(current)
+	if writable(current) == nil && (!passing || needsBaseRepair(current)) {
+		name := s.Agent.Name()
+		if name != "claude" && name != "codex" {
+			// API models diagnose only; repairs need a CLI agent.
+			name = "codex"
+		}
+		if _, err := github.ParsePRTarget(target.String()); err == nil {
+			result.RepairCommand = fmt.Sprintf("deps-handler pr fix %s --plan repair.md --agent %s", target, name)
+		}
 	}
 	return result, nil
 }

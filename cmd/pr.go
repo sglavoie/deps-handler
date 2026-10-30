@@ -275,7 +275,9 @@ and validation commands. It works for passing, failing or pending CI.
 
 Prints Markdown you can save or paste into a coding session. The checkout
 is read-only to the agent and nothing is pushed. Supports Claude, Codex or
-the API agent. A completed report exits 0 even when it finds blockers;
-an operational failure exits 1.
+the API agent. When a repair can help, the report includes a pr fix --plan
+command to run after saving and reviewing the Markdown report. JSON exposes
+the same command as repair_command. A completed report exits 0 even when it
+finds blockers; an operational failure exits 1.
 ` + common
 }

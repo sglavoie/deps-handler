@@ -7,10 +7,46 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sglavoie/deps-handler/internal/testutil"
 	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/policy"
 	"github.com/sglavoie/deps-handler/pkg/runner"
 )
+
+func TestFailingUpdateOffersDiagnosisInEveryFormat(t *testing.T) {
+	pr := testutil.PR(123, "lib:major")
+	pr.Checks[0].State = github.CheckFailed
+	repo := testutil.Repo(pr, testutil.PR(124))
+	repo.FullName = "acme/Storefront"
+	decisions := policy.Evaluate(repo, config.Builtin, "me", nil)
+	res := runner.RepoResult{Repo: repo.FullName, Policy: config.Builtin, Decisions: decisions,
+		Findings: policy.Diagnose(repo, config.Builtin, decisions)}
+	command := "deps-handler pr diagnose acme/Storefront#123 > repair.md"
+	var out bytes.Buffer
+	if err := Repo(&out, false, res); err != nil || !strings.Contains(out.String(), "suggest: "+command) {
+		t.Fatalf("terminal: %v\n%s", err, &out)
+	}
+	out.Reset()
+	if err := Markdown(&out, false, res); err != nil || !strings.Contains(out.String(), "Suggested: `"+command+"`") {
+		t.Fatalf("Markdown command is not copyable: %v\n%s", err, &out)
+	}
+	out.Reset()
+	if err := JSON(&out, false, []runner.RepoResult{res}); err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Results []struct{ Findings []policy.Finding }
+	}
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Results) != 1 || len(decoded.Results[0].Findings) != 1 ||
+		len(decoded.Results[0].Findings[0].Suggestions) != 2 || decoded.Results[0].Findings[0].Suggestions[0] != command ||
+		decoded.Results[0].Findings[0].Suggestions[1] != "@dependabot ignore this major version" {
+		t.Fatalf("JSON suggestions: %s", &out)
+	}
+}
 
 func decision(n int, a policy.Action, reason string) policy.Decision {
 	return policy.Decision{Number: n, Title: "bump lib", Grade: config.UpdatePatch, Action: a, Reason: reason}

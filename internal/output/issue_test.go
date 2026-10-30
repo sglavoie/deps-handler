@@ -12,12 +12,27 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 	"github.com/sglavoie/deps-handler/internal/ghfake"
+	"github.com/sglavoie/deps-handler/internal/testutil"
 	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/policy"
 	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 const login = "dmc[bot]"
+
+func TestHealthIssueOffersLocalDiagnosis(t *testing.T) {
+	pr := testutil.PR(7)
+	pr.Checks[0].State = github.CheckFailed
+	repo := testutil.Repo(pr)
+	decisions := policy.Evaluate(repo, config.Builtin, login, nil)
+	res := runner.RepoResult{Repo: repo.FullName, Policy: config.Builtin, Decisions: decisions,
+		Findings: policy.Diagnose(repo, config.Builtin, decisions)}
+	body := Body(res, false)
+	if !strings.Contains(body, "Suggested: `deps-handler pr diagnose o/r#7 > repair.md`") || strings.Contains(body, "deps-handler pr fix") {
+		t.Fatalf("health issue guidance:\n%s", body)
+	}
+}
 
 func fake() *ghfake.Issues { return &ghfake.Issues{Repo: "o/r", Login: login} }
 

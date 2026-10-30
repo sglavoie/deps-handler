@@ -150,7 +150,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 				Kind:        FindingIncompatible,
 				Summary:     fmt.Sprintf("#%d (%s) fails %s", d.Number, d.Grade, strings.Join(own, ", ")),
 				PRs:         []int{d.Number},
-				Suggestions: ignoreSuggestions(d),
+				Suggestions: updateSuggestions(repo.FullName, d),
 			})
 		case d.Verdict != nil && d.Verdict.Error != "":
 			out = append(out, Finding{
@@ -330,6 +330,16 @@ func orReview(p config.Policy) string {
 }
 
 const maxSuggestions = 5
+
+// updateSuggestions offers a read-only diagnosis before the alternative of
+// ignoring an update. Validate the reference before making it shell text.
+func updateSuggestions(repo string, d Decision) []string {
+	var out []string
+	if target, err := github.ParsePRTarget(fmt.Sprintf("%s#%d", repo, d.Number)); err == nil {
+		out = append(out, fmt.Sprintf("deps-handler pr diagnose %s > repair.md", target))
+	}
+	return append(out, ignoreSuggestions(d)...)
+}
 
 // ignoreSuggestions returns Dependabot comment commands that would stop the
 // failing update from coming back.

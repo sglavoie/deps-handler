@@ -253,8 +253,43 @@ func TestDiagnoseIncompatibleMajor(t *testing.T) {
 		testutil.PR(2),
 	))
 	inc := f[FindingIncompatible]
-	if len(inc) != 1 || len(inc[0].Suggestions) != 1 || inc[0].Suggestions[0] != "@dependabot ignore this major version" {
+	if len(inc) != 1 || len(inc[0].Suggestions) != 2 || inc[0].Suggestions[0] != "deps-handler pr diagnose o/r#1 > repair.md" || inc[0].Suggestions[1] != "@dependabot ignore this major version" {
 		t.Fatalf("incompatible = %+v", inc)
+	}
+}
+
+func TestDiagnosisSuggestionsKeepSharedAndHumanBlockersSeparate(t *testing.T) {
+	shared := failing(testutil.PR(1), "build")
+	other := failing(testutil.PR(2), "build")
+	review := testutil.PR(3)
+	review.Checks[0].Name = "review-only-test"
+	review.MergeState = "BLOCKED"
+	review.ReviewDecision = "REVIEW_REQUIRED"
+	f := findings(testutil.Repo(shared, other, review))
+	if len(f[FindingRepoCheck]) != 1 || len(f[FindingReviewRequired]) != 1 {
+		t.Fatalf("missing blockers: %+v", f)
+	}
+	for _, kind := range []FindingKind{FindingRepoCheck, FindingReviewRequired} {
+		for _, finding := range f[kind] {
+			if strings.Contains(strings.Join(finding.Suggestions, "\n"), "deps-handler pr") {
+				t.Fatalf("%s should retain its base-branch or human guidance: %+v", kind, finding)
+			}
+		}
+	}
+}
+
+func TestDiagnosisCommandUsesOnlyValidRepositoryReferences(t *testing.T) {
+	for _, name := range []string{"acme/Storefront", "acme/Storefront;touch pwned", "acme/$(whoami)", "-bad/repo"} {
+		repo := testutil.Repo(failing(testutil.PR(1), "build"))
+		repo.FullName = name
+		inc := findings(repo)[FindingIncompatible]
+		if len(inc) != 1 {
+			t.Fatalf("missing finding: %+v", inc)
+		}
+		suggestions := strings.Join(inc[0].Suggestions, "\n")
+		if strings.Contains(suggestions, "deps-handler pr diagnose") != (name == "acme/Storefront") {
+			t.Fatalf("%q: %s", name, suggestions)
+		}
 	}
 }
 
@@ -264,8 +299,8 @@ func TestDiagnoseGroupSuggestsPerDependency(t *testing.T) {
 		testutil.PR(2),
 	))
 	inc := f[FindingIncompatible]
-	want := []string{"@dependabot ignore b major version", "@dependabot ignore c major version"}
-	if len(inc) != 1 || len(inc[0].Suggestions) != 2 || inc[0].Suggestions[0] != want[0] || inc[0].Suggestions[1] != want[1] {
+	want := []string{"deps-handler pr diagnose o/r#1 > repair.md", "@dependabot ignore b major version", "@dependabot ignore c major version"}
+	if len(inc) != 1 || len(inc[0].Suggestions) != len(want) || strings.Join(inc[0].Suggestions, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("incompatible = %+v", inc)
 	}
 }

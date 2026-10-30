@@ -148,6 +148,13 @@ and validation commands, and lists remaining work and evidence gaps. It also
 works when checks pass, are pending, are missing, or only some fail. External
 CI, expired logs and access failures are reported as evidence gaps.
 
+For a PR that meets the repair prerequisites, diagnosis includes a
+`pr fix --plan repair.md` command when checks are not confirmed passing or
+a base-branch repair is needed. Save the Markdown report, review or edit its steps, and substitute
+its saved path in that command. Claude and Codex diagnoses keep their agent
+choice; API diagnoses suggest Codex for the repair. JSON reports expose the
+same command as `repair_command` when available.
+
 With `--plan repair.md`, the AI implements the saved diagnosis and any edits
 you made to its steps and validation commands. It reads the file without
 modifying it. The PR is inferred from the report header or `PR:` line; an
@@ -387,6 +394,7 @@ Under each repo the report lists, without acting on them:
   updates; the report names that branch. Only PRs Dependabot alone wrote,
   whose checks ran on their head commit, count towards either;
 - **incompatible updates**: a PR failing its own checks, with the
+  `pr diagnose` command to produce a repair plan and the alternative
   `@dependabot ignore …` command that would stop it coming back (only for
   PRs Dependabot alone wrote, whose checks ran on their head commit);
 - **held majors** and **held minors**: updates that would merge, rebase or

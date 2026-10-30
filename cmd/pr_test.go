@@ -68,7 +68,7 @@ func TestPRDiagnosisUsesExplicitTargetWithoutConfig(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(out, err)
 	}
-	if code != 0 || result.Analysis.Summary != "Repair plan" || result.Snapshot.Target.Number != 7 || result.ChecksPassing || result.Workspace != "" {
+	if code != 0 || result.Analysis.Summary != "Repair plan" || result.Snapshot.Target.Number != 7 || result.ChecksPassing || result.Workspace != "" || result.RepairCommand != "deps-handler pr fix o/r#7 --plan repair.md --agent codex" {
 		t.Fatalf("code %d out %s stderr %s", code, out, stderr)
 	}
 }
@@ -109,7 +109,7 @@ func TestPRFixReportsFailureAndKeepsWorkspace(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(out, err)
 	}
-	if code != 1 || result.Error != "agent timeout" || result.Workspace == "" || !strings.Contains(stderr, "checkout kept at") {
+	if code != 1 || result.Error != "agent timeout" || result.Workspace == "" || result.RepairCommand != "" || !strings.Contains(stderr, "checkout kept at") {
 		t.Fatalf("code %d out %s stderr %s", code, out, stderr)
 	}
 	if _, err := os.Stat(result.Workspace); err != nil {

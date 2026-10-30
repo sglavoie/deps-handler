@@ -159,10 +159,10 @@ func mdText(text string) string {
 	return s
 }
 
-// mdSuggestion shows a Dependabot command as code, to copy and comment
-// as is (GitHub reads no mention in code), and anything else as text.
+// mdSuggestion shows commands as code so they can be copied unchanged.
+// GitHub reads no mention or PR reference inside code.
 func mdSuggestion(s string) string {
-	if strings.HasPrefix(s, "@dependabot ") {
+	if strings.HasPrefix(s, "@dependabot ") || strings.HasPrefix(s, "deps-handler pr ") {
 		return mdCode(s)
 	}
 	return mdText(s)

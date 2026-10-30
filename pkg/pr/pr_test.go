@@ -74,6 +74,109 @@ func service(states ...github.PRSnapshot) (*Service, *testClient, *testAgent, *t
 	return &Service{Client: c, Agent: a, Workspace: w, AgentTimeout: time.Second, WaitTimeout: time.Second, PollInterval: time.Millisecond, MaxAttempts: 2}, c, a, w
 }
 
+type namedTaskAgent struct {
+	*testAgent
+	name string
+}
+
+func (a namedTaskAgent) Name() string { return a.name }
+
+func TestDiagnosisRepairGuidance(t *testing.T) {
+	for _, name := range []string{"claude", "codex", "api"} {
+		t.Run(name, func(t *testing.T) {
+			p := snapshot(github.CheckFailed)
+			s, _, a, w := service(p)
+			s.Agent = namedTaskAgent{a, name}
+			got, err := s.Diagnose(context.Background(), p.Target, "")
+			agent := name
+			if agent == "api" {
+				agent = "codex"
+			}
+			want := "deps-handler pr fix o/r#7 --plan repair.md --agent " + agent
+			if err != nil || got.RepairCommand != want || w.pushes != 0 || a.writable[0] {
+				t.Fatalf("result %+v, err %v; agent %+v workspace %+v", got, err, a, w)
+			}
+			var out strings.Builder
+			if err := Markdown(&out, got); err != nil {
+				t.Fatal(err)
+			}
+			for _, text := range []string{"## Next step", "Save this Markdown report as `repair.md`", "```sh\n" + want + "\n```", "edits, commits and pushes", "Review and merge the repaired PR yourself"} {
+				if !strings.Contains(out.String(), text) {
+					t.Fatalf("missing %q in:\n%s", text, &out)
+				}
+			}
+			plan, err := ParsePlan([]byte(out.String()))
+			if err != nil || plan.Target != p.Target || !plan.MatchesSnapshot(p) {
+				t.Fatalf("guidance broke saved plan: %+v, %v", plan, err)
+			}
+		})
+	}
+}
+
+func TestDiagnosisOmitsRepairCommandWhenItCannotHelp(t *testing.T) {
+	for _, kind := range []string{"passing", "review required", "draft", "closed", "archived", "read-only", "missing head", "base branch", "incomplete checks", "agent failure", "concurrent update", "checks finished"} {
+		t.Run(kind, func(t *testing.T) {
+			p := snapshot(github.CheckFailed)
+			s, c, a, _ := service(p)
+			switch kind {
+			case "passing", "review required", "draft":
+				p.Checks[0].State = github.CheckPassed
+				if kind != "passing" {
+					p.ReviewDecision = "REVIEW_REQUIRED"
+					p.MergeState = "BLOCKED"
+				}
+				p.Draft = kind == "draft"
+			case "closed":
+				p.State = "CLOSED"
+			case "archived":
+				p.Archived = true
+			case "read-only":
+				p.Permission = "READ"
+			case "missing head":
+				p.HeadRef = ""
+			case "base branch":
+				p.HeadRef = p.BaseRef
+			case "incomplete checks":
+				p.ChecksComplete = false
+			case "agent failure":
+				a.err = errors.New("agent unavailable")
+			}
+			c.snapshots = []github.PRSnapshot{p}
+			if kind == "concurrent update" {
+				moved := p
+				moved.HeadOID = "concurrent"
+				c.snapshots = append(c.snapshots, moved)
+			}
+			if kind == "checks finished" {
+				passing := p
+				passing.Checks = []github.PRCheck{{Check: github.Check{Name: "test", State: github.CheckPassed}}}
+				c.snapshots = append(c.snapshots, passing)
+			}
+			got, err := s.Diagnose(context.Background(), p.Target, "")
+			wantError := kind == "agent failure" || kind == "concurrent update"
+			if (err != nil) != wantError || got.RepairCommand != "" {
+				t.Fatalf("unexpected repair guidance: %+v, %v", got, err)
+			}
+			var out strings.Builder
+			if err := Markdown(&out, got); err != nil || strings.Contains(out.String(), "## Next step") {
+				t.Fatalf("unexpected Markdown guidance: %v\n%s", err, &out)
+			}
+		})
+	}
+}
+
+func TestDiagnosisOffersRepairForBaseConflictsWithPassingCI(t *testing.T) {
+	for _, state := range []string{"DIRTY", "BEHIND"} {
+		p := snapshot(github.CheckPassed)
+		p.MergeState = state
+		s, _, _, _ := service(p)
+		got, err := s.Diagnose(context.Background(), p.Target, "")
+		if err != nil || got.RepairCommand == "" {
+			t.Fatalf("%s: %+v, %v", state, got, err)
+		}
+	}
+}
+
 func TestDiagnoseAnyCheckOutcome(t *testing.T) {
 	for _, state := range []github.CheckState{github.CheckPassed, github.CheckFailed, github.CheckPending, github.CheckUnknown, github.CheckSkipped} {
 		t.Run(string(state), func(t *testing.T) {
@@ -139,7 +242,7 @@ func TestFixDoesNotEditPassingPR(t *testing.T) {
 	p := snapshot(github.CheckPassed)
 	s, _, a, w := service(p)
 	got, err := s.Fix(context.Background(), p.Target, "")
-	if err != nil || !got.ChecksPassing || a.calls != 0 || w.pushes != 0 {
+	if err != nil || !got.ChecksPassing || a.calls != 0 || w.pushes != 0 || got.RepairCommand != "" {
 		t.Fatalf("%+v %v; agent %+v ws %+v", got, err, a, w)
 	}
 }

@@ -410,6 +410,13 @@ PR's `url` and `grade`), `merge_method` (the one merges use; it and
 `warnings` (what went wrong without stopping the run), and `error`
 when the repository could not be read (`interrupted` if the run was
 stopped), or a failed review is no longer present in its latest decisions.
+
+For an incompatible update, `suggestions` offers a copyable
+`deps-handler pr diagnose owner/repo#123 > repair.md` command before any
+Dependabot ignore commands. Terminal reports, Markdown and the App's health
+issues show the same suggestions. Shared CI failures still direct fixes to
+the affected base branch, and required reviews still call for human approval.
+
 The text report of a repository that failed part way still lists
 the writes made and warnings raised before it failed. Durations such as `policy.merge_without_checks_after` are written
 as in the config (`"45m"`, `"0s"`), and give the value in effect: at least
@@ -563,6 +570,19 @@ available. GitHub API access needs PR/check read access and, for Actions
 logs, Actions read access. External check URLs are references only; they
 are never fetched with GitHub credentials. Head or base movement during
 analysis rejects the handoff as stale.
+
+A completed diagnosis includes an optional `repair_command` in JSON and a
+"Next step" section in Markdown when `pr fix` can attempt a repair: the PR
+must meet its write prerequisites and, at the final read, have checks that
+are not confirmed passing or need a base-branch repair. A passing PR blocked
+only by reviews, draft status or other merge gates gets no repair command.
+The command pins the selected PR, uses `--plan repair.md`, and preserves a
+Claude or Codex diagnosis's agent choice. API diagnoses suggest `--agent codex`
+because the API backend cannot repair; users can choose Claude instead.
+Save the Markdown report and review its steps before running the command,
+replacing `repair.md` with the actual saved path. Suggestions alone never
+start a repair or authorize writes. A failed or stale diagnosis has no repair
+command, and `pr fix` output does not suggest another repair automatically.
 
 `pr fix` explicitly authorizes changes to the selected PR, including non-bot
 PRs. It requires write permission, an open PR and an existing head branch,

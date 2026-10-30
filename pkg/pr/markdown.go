@@ -53,6 +53,10 @@ func Markdown(w io.Writer, r Result) error {
 		}
 		text += "\n"
 	}
+	if r.RepairCommand != "" {
+		text += "## Next step\n\nSave this Markdown report as `repair.md` and review or edit its repair steps and validation commands. Then run:\n\n```sh\n" + r.RepairCommand + "\n```\n\n"
+		text += "Use the path where you saved this report in place of `repair.md`. Choose an installed repair agent (`codex` or `claude`); API models support diagnosis only. This command edits, commits and pushes to the PR branch, then verifies CI. Review and merge the repaired PR yourself after its checks and remaining gates pass.\n\n"
+	}
 	if len(r.Commits) > 0 {
 		text += "## Pushed commits\n\n"
 		for _, oid := range r.Commits {
