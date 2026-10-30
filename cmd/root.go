@@ -29,7 +29,8 @@ func newRoot() *cobra.Command {
 		Long: `deps-merger finds open Dependabot PRs in the repositories listed in its
 config, merges those that are green and within policy, and reports what
 needs fixing in each repository. PRs not opened by Dependabot, or touched
-by anyone else, are never changed.`,
+by anyone else, are never changed by run. Use pr diagnose for a repair
+handoff or pr fix to explicitly edit and push fixes to a selected PR.`,
 		Version:       versionString(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -43,7 +44,7 @@ by anyone else, are never changed.`,
 		return nil
 	}
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-merger/config.yaml, or ~/.config/deps-merger/config.yaml when XDG_CONFIG_HOME is unset)")
-	root.AddCommand(newInitCmd(), newRunCmd(), newReposCmd(), newVerdictsCmd())
+	root.AddCommand(newInitCmd(), newRunCmd(), newReposCmd(), newVerdictsCmd(), newPRCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	// Cobra's help prints the usage for an unknown topic and succeeds:
 	// a topic that names no command is a usage error like any other.

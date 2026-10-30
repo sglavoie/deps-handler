@@ -86,9 +86,99 @@ deps-merger run --open            # only repos with open Dependabot PRs
 deps-merger run -r Storefront --json  # one repo, machine-readable
 deps-merger run --markdown        # GitHub Markdown, as for an issue body
 deps-merger run --review --apply  # let an AI agent judge bigger updates too
+deps-merger pr diagnose acme/Storefront#123 > repair.md  # AI repair handoff
+deps-merger pr fix acme/Storefront#123 --agent codex    # edit, push and verify CI
 deps-merger verdicts              # the agent's cached verdicts
 deps-merger verdicts acme/Storefront --json  # one repo's, with concerns
 ```
+
+### Diagnose or repair a specific PR
+
+Point at any PR by URL or `owner/repo#number`, including PRs outside your
+configured repositories and PRs opened by someone other than Dependabot:
+
+```bash
+# Get a plan to paste into your next coding session; nothing is pushed.
+deps-merger pr diagnose https://github.com/acme/Storefront/pull/123 \
+  --agent codex > repair.md
+
+# Focus on a particular failure, or request structured output.
+deps-merger pr diagnose acme/Storefront#123 --focus 'Linux build failure'
+deps-merger pr diagnose acme/Storefront#123 --json
+
+# Apply a saved report (edit repair.md first if you want to refine its steps).
+# The report identifies the PR, so no PR argument is needed.
+deps-merger pr fix --plan repair.md --agent codex
+
+# Or provide the PR explicitly alongside the saved plan.
+deps-merger pr fix acme/Storefront#123 --plan repair.md --agent codex
+
+# Reuse an existing PR checkout and its installed dependencies.
+deps-merger pr fix --plan repair.md --agent codex \
+  --working-directory /path/to/Storefront
+
+# Authorize a repair without an existing plan.
+deps-merger pr fix acme/Storefront#123 --agent codex \
+  --max-attempts 3 --wait-timeout 15m
+```
+
+`diagnose` reads the PR's current checks, merge state, description, diff and
+available failed GitHub Actions job logs and annotations. Its Markdown handoff
+identifies the PR and commit, explains likely causes, proposes concrete edits
+and validation commands, and lists remaining work and evidence gaps. It also
+works when checks pass, are pending, are missing, or only some fail. External
+CI, expired logs and access failures are reported as evidence gaps.
+
+With `--plan repair.md`, the AI implements the saved diagnosis and any edits
+you made to its steps and validation commands. It reads the file without
+modifying it. The PR is inferred from the report header or `PR:` line; an
+explicit PR must match. A custom Markdown plan without PR metadata requires
+an explicit PR argument. The command still reads current PR/check state and
+checks for concurrent updates. When the saved head and base match, it reuses
+the existing diagnosis without downloading failure logs again on the first
+attempt. If the code has changed, commit metadata is missing, or another attempt is needed, it
+refreshes failure evidence and adapts the saved steps rather than generating
+a new plan. Plans must be non-empty UTF-8 Markdown files of at most 1 MiB.
+
+`--working-directory /path/to/repo` runs the repair agent directly in an
+existing checkout, including a Git worktree. The directory must be the
+repository root, with no staged, unstaged or untracked changes, already at
+the selected PR head on a non-base branch or detached HEAD. Check out the PR
+before running the command. The command never resets, cleans, switches branches
+or deletes this directory; ignored dependencies such as `node_modules` are
+preserved. Successful repairs commit to its current branch (or detached HEAD)
+and push to the selected PR branch. An exclusive lock prevents two deps-merger
+repairs from sharing the checkout. Existing remote URLs are left unchanged.
+Directory selection does not change the agent's network permissions or fix
+registry/DNS failures.
+
+`fix` uses a temporary checkout by default. It waits for pending CI before
+editing, runs a writable Claude Code or Codex task, commits the resulting file
+changes and pushes to the PR's head branch. It verifies the new commit's CI,
+retrying failures up to the attempt limit. An already passing PR needs no
+code repair unless it has merge conflicts or is behind its base. API models
+support `diagnose` only. Agent selection, model, budget and per-task timeout
+come from your existing `agent:` config; `--agent` overrides the selection.
+Without a config, Claude is the default. A config containing only agent
+settings is accepted by these commands.
+
+The command checks for concurrent PR and base changes before pushing. If
+anything moved, its error identifies the changed fields and old/new values;
+that attempt's edits remain local. It uses a Git lease to avoid overwriting a concurrent push. It never merges the
+PR. Reviews, draft status, branch protection and other merge gates remain
+visible even when CI passes. An empty or all-skipped check list does not
+confirm passing CI. The wait is bounded per commit; a timeout or incomplete
+check list is a failure, with any repair checkout retained for recovery.
+`diagnose` exits 0 when its report completes even if it finds blockers;
+`fix` exits 0 when checks pass and code merge conflicts are resolved, and 1
+on an unsuccessful repair.
+Both use 2 for invalid arguments and 130 for interruption. `--json` includes
+errors and the retained checkout path when available.
+
+A repair adds commits that Dependabot did not author. The existing `run`
+command therefore leaves that PR alone under its authorship policy; review
+and merge the repaired PR yourself after its checks and remaining gates pass.
+These commands are CLI-only and unavailable in the demo build.
 
 ### Try it without your repositories
 

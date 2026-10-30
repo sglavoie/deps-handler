@@ -1,7 +1,7 @@
-// Package review asks an AI agent whether a Dependabot update the policy
-// alone would not merge (one over max_update_type, or of unknown size) is
-// safe for the repository. The agent only reads: it returns a verdict, and
-// deps-merger merges an approved PR through the same checks as any other.
+// Package review runs AI agents for Dependabot safety reviews and explicit
+// PR tasks. Safety reviews only read and return a verdict; approved PRs
+// pass the same merge checks as any other. Writable tasks are opt-in and
+// used by the separate PR repair workflow.
 package review
 
 import (

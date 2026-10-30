@@ -20,6 +20,7 @@ import (
 // state of a real install.
 func init() {
 	Version += "+demo"
+	prCommandsAvailable = false
 	dir := demoDir()
 	for _, v := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
 		os.Setenv(v, dir)

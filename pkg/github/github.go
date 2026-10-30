@@ -390,11 +390,15 @@ type gqlCheckRollup struct {
 	Contexts struct {
 		TotalCount *int
 		Nodes      []struct {
-			Typename   string `json:"__typename"`
-			Name       string
-			Status     string
-			Conclusion string
-			CheckSuite *struct {
+			Typename    string `json:"__typename"`
+			DatabaseID  int64
+			DetailsURL  string
+			TargetURL   string
+			Description string
+			Name        string
+			Status      string
+			Conclusion  string
+			CheckSuite  *struct {
 				DatabaseID  int64
 				App         *struct{ DatabaseID int64 }
 				WorkflowRun *struct {

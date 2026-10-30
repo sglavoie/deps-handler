@@ -20,6 +20,8 @@ var ErrHeadMoved = errors.New("head moved")
 // reused across runs so a large repository is not cloned for every review.
 type Workspace struct {
 	Root string
+	// gitDir is set only for an explicitly selected local checkout/worktree.
+	gitDir string
 	// Token authenticates fetches from github.com; it is passed to git
 	// through the environment, never on the command line. On Linux, a
 	// process of the user's, such as Codex reading what its sandbox
@@ -218,14 +220,14 @@ func (w *Workspace) git(ctx context.Context, dir string, args ...string) error {
 // receive credentials and retain network configuration such as URL rewrites
 // and credential helpers. Hooks and fsmonitor are disabled for every command.
 func (w *Workspace) output(ctx context.Context, dir string, args ...string) (string, error) {
-	network := args[0] == "fetch" || args[0] == "ls-remote"
+	network := args[0] == "fetch" || args[0] == "ls-remote" || args[0] == "push"
 	opts := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}
 	if !network {
 		opts = append(opts, "-c", "core.attributesFile="+os.DevNull)
 	}
 	if args[0] != "init" {
 		// git init would record the work tree in the config.
-		opts = append(opts, "--git-dir=.git", "--work-tree=.")
+		opts = append(opts, "--git-dir="+or(w.gitDir, ".git"), "--work-tree=.")
 	}
 	cmd := exec.CommandContext(ctx, "git", append(opts, args...)...)
 	cmd.Dir = dir

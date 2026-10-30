@@ -23,7 +23,7 @@ func TestWorkspaceUsesCurrentTokenForNetworkCommands(t *testing.T) {
 	token := "first"
 	var sourceErr error
 	w := &Workspace{Token: "stale", TokenSource: func(context.Context) (string, error) { return token, sourceErr }}
-	for _, command := range []string{"fetch", "ls-remote"} {
+	for _, command := range []string{"fetch", "ls-remote", "push"} {
 		out, err := w.output(context.Background(), bin, command)
 		want := "AUTHORIZATION: basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+token))
 		if err != nil || out != want {

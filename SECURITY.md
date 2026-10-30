@@ -12,6 +12,17 @@ worth reporting:
 - a GitHub token reaching the agent, its output, the verdict cache or
   the report.
 
+`pr diagnose` uses the same read-only agents as reviews. `pr fix` is an
+explicit writable operation: its agent edits a disposable checkout and can
+run repository commands. Codex uses its workspace-write sandbox; Claude
+permits Bash and editing. This is a broader execution boundary than review.
+The parent process supplies GitHub authentication only to Git network commands,
+checks the selected PR again before publishing, and uses a head-pinned lease.
+With `--working-directory`, the agent runs in the selected existing checkout
+under a repair lock; its HEAD and clean state are validated before editing,
+and the directory is never reset, cleaned or deleted. Repair never authorizes
+merging or bypassing branch protection.
+
 ## Reporting
 
 Please report vulnerabilities privately through

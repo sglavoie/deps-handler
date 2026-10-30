@@ -15,6 +15,13 @@ import (
 	"time"
 )
 
+// TaskAgent runs a structured task. Writable tasks may edit and test the
+// disposable checkout; callers retain responsibility for commits and pushes.
+type TaskAgent interface {
+	Name() string
+	Task(ctx context.Context, dir, prompt, schema string, writable bool) (json.RawMessage, error)
+}
+
 // Agent runs an AI coding agent, read-only, in dir and returns its answer.
 type Agent interface {
 	Name() string
@@ -43,7 +50,8 @@ const Schema = `{
   "additionalProperties": false
 }`
 
-// Claude runs `claude -p` with only the read-only file tools, no MCP
+// Claude runs `claude -p`, using read-only file tools for reviews and
+// diagnosis and allowing editing and Bash for explicit repair tasks. No MCP
 // servers, no user or project settings and, with --safe-mode, none of the
 // user's customizations: no CLAUDE.md (the user's, or one in the checkout
 // or its vendored code), skills, plugins or hooks. The login is kept.
@@ -59,9 +67,28 @@ type Claude struct {
 func (c Claude) Name() string { return "claude" }
 
 func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
+	data, err := c.Task(ctx, dir, prompt, Schema, false)
+	if err != nil {
+		return Answer{}, err
+	}
+	a, err := decodeAnswer(data)
+	if err != nil {
+		return Answer{}, fmt.Errorf("claude: unreadable answer: %w", err)
+	}
+	return a, nil
+}
+
+func (c Claude) Task(ctx context.Context, dir, prompt, schema string, writable bool) (json.RawMessage, error) {
+	tools := "Read,Grep,Glob"
+	if writable {
+		tools = "Read,Grep,Glob,Edit,Write,Bash"
+	}
 	args := []string{
 		"-p", "--restricted", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
-		"--output-format", "json", "--tools", "Read,Grep,Glob", "--json-schema", Schema,
+		"--output-format", "json", "--tools", tools, "--json-schema", schema,
+	}
+	if writable {
+		args = append(args, "--allowedTools", "Read,Grep,Glob,Edit,Write,Bash", "--permission-mode", "acceptEdits", "--permission-prompts", "none")
 	}
 	if c.Model != "" {
 		args = append(args, "--model", c.Model)
@@ -90,41 +117,38 @@ func (c Claude) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 	if perr == nil && res.IsError != nil && *res.IsError {
 		if msg := clip(res.Result); msg != "" {
 			if strings.Contains(strings.ToLower(msg), "not logged in") {
-				return Answer{}, errors.New("claude: not logged in; run `claude auth login` with the server's CLAUDE_CONFIG_DIR")
+				return nil, errors.New("claude: not logged in; run `claude auth login` with the server's CLAUDE_CONFIG_DIR")
 			}
 			if res.Subtype == "" || res.Subtype == "success" {
-				return Answer{}, fmt.Errorf("claude: %s", msg)
+				return nil, fmt.Errorf("claude: %s", msg)
 			}
-			return Answer{}, fmt.Errorf("claude: %s: %s", res.Subtype, msg)
+			return nil, fmt.Errorf("claude: %s: %s", res.Subtype, msg)
 		}
 		if res.Subtype == "success" {
-			return Answer{}, errors.New("claude: error")
+			return nil, errors.New("claude: error")
 		}
-		return Answer{}, fmt.Errorf("claude: %s", or(res.Subtype, "error"))
+		return nil, fmt.Errorf("claude: %s", or(res.Subtype, "error"))
 	}
 	if runErr != nil {
-		return Answer{}, runErr
+		return nil, runErr
 	}
 	if perr != nil {
-		return Answer{}, fmt.Errorf("claude: unreadable output: %w", perr)
+		return nil, fmt.Errorf("claude: unreadable output: %w", perr)
 	}
 	// A structured verdict does not establish that the review completed.
 	// Limit failures can still carry output; missing flags must not become
 	// an implicit success and allow that output to authorize a merge.
 	if res.Type != "result" || res.Subtype != "success" || res.IsError == nil {
-		return Answer{}, fmt.Errorf("claude: incomplete or unsuccessful result (type %q, subtype %q)", Clean(res.Type), Clean(res.Subtype))
+		return nil, fmt.Errorf("claude: incomplete or unsuccessful result (type %q, subtype %q)", Clean(res.Type), Clean(res.Subtype))
 	}
 	if len(res.StructuredOutput) == 0 || bytes.Equal(res.StructuredOutput, []byte("null")) {
-		return Answer{}, errors.New("claude: no structured output")
+		return nil, errors.New("claude: no structured output")
 	}
-	a, err := decodeAnswer(res.StructuredOutput)
-	if err != nil {
-		return Answer{}, fmt.Errorf("claude: unreadable answer: %w", err)
-	}
-	return a, nil
+	return res.StructuredOutput, nil
 }
 
-// Codex runs `codex exec` in its read-only sandbox, without the user's
+// Codex runs `codex exec` in a read-only sandbox (workspace-write for
+// explicit repair tasks), without the user's
 // config.toml or execpolicy rules: they could add MCP servers, which run
 // outside the sandbox, or let commands escape it. CODEX_HOME still
 // provides the login.
@@ -139,26 +163,45 @@ type Codex struct {
 func (c Codex) Name() string { return "codex" }
 
 func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
+	data, err := c.Task(ctx, dir, prompt, Schema, false)
+	if err != nil {
+		return Answer{}, err
+	}
+	a, err := decodeAnswer(data)
+	if err != nil {
+		return Answer{}, fmt.Errorf("codex: unreadable answer: %w", err)
+	}
+	return a, nil
+}
+
+func (c Codex) Task(ctx context.Context, dir, prompt, schemaText string, writable bool) (json.RawMessage, error) {
 	// --cd is resolved by the child after cmd.Dir has already changed its
 	// working directory. Make it absolute so a relative checkout is not
 	// resolved a second time inside itself.
 	dir, err := filepath.Abs(dir)
 	if err != nil {
-		return Answer{}, err
+		return nil, err
 	}
 	tmp, err := os.MkdirTemp("", "deps-merger-codex-")
 	if err != nil {
-		return Answer{}, err
+		return nil, err
 	}
 	defer os.RemoveAll(tmp)
 	schema, last := filepath.Join(tmp, "schema.json"), filepath.Join(tmp, "answer.json")
-	if err := os.WriteFile(schema, []byte(Schema), 0o600); err != nil {
-		return Answer{}, err
+	if err := os.WriteFile(schema, []byte(schemaText), 0o600); err != nil {
+		return nil, err
+	}
+	sandbox := "read-only"
+	if writable {
+		sandbox = "workspace-write"
 	}
 	args := []string{
-		"exec", "--sandbox", "read-only", "--ignore-user-config", "--ignore-rules",
+		"exec", "--sandbox", sandbox, "--ignore-user-config", "--ignore-rules",
 		"--skip-git-repo-check", "--ephemeral", "--color", "never",
 		"--output-schema", schema, "--output-last-message", last, "--cd", dir,
+	}
+	if writable {
+		args = append(args, "--config", `approval_policy="never"`)
 	}
 	if c.Model != "" {
 		args = append(args, "--model", c.Model)
@@ -171,17 +214,13 @@ func (c Codex) Run(ctx context.Context, dir, prompt string) (Answer, error) {
 		cmd.Env = append(cmd.Env, "CODEX_HOME="+c.Home)
 	}
 	if _, err := run(cmd); err != nil {
-		return Answer{}, err
+		return nil, err
 	}
 	data, err := os.ReadFile(last)
 	if err != nil {
-		return Answer{}, fmt.Errorf("codex: no answer: %w", err)
+		return nil, fmt.Errorf("codex: no answer: %w", err)
 	}
-	a, err := decodeAnswer(data)
-	if err != nil {
-		return Answer{}, fmt.Errorf("codex: unreadable answer: %w", err)
-	}
-	return a, nil
+	return json.RawMessage(data), nil
 }
 
 // githubTokens are the environment variables gh and other GitHub tools

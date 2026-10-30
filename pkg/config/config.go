@@ -437,7 +437,19 @@ func Load(path string) (*Config, error) {
 }
 
 // Parse resolves raw YAML into a Config.
-func Parse(data []byte) (*Config, error) {
+func Parse(data []byte) (*Config, error) { return parse(data, false) }
+
+// LoadForPR reads agent settings without requiring configured repositories.
+// Targeted PR commands select their repository explicitly.
+func LoadForPR(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return parse(data, true)
+}
+
+func parse(data []byte, allowNoRepos bool) (*Config, error) {
 	var f file
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -487,7 +499,7 @@ func Parse(data []byte) (*Config, error) {
 		}
 		cfg.Repos = append(cfg.Repos, Repo{Owner: owner, Name: name, Policy: settle(p), Skip: e.Skip, layered: true, base: defaults, entry: e.overrides})
 	}
-	if len(cfg.Repos) == 0 {
+	if len(cfg.Repos) == 0 && !allowNoRepos {
 		return nil, ErrNoRepos
 	}
 	return cfg, nil

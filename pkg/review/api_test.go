@@ -605,3 +605,32 @@ func TestAPIErrors(t *testing.T) {
 		t.Errorf("usage not reported on failure: %+v", used)
 	}
 }
+
+func TestAPIDiagnosticTaskUsesRequestedSchema(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var req chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+		}
+		if strings.Contains(req.Messages[0].Content, "Dependabot") {
+			t.Error("task kept verdict-only system prompt")
+		}
+		if calls == 1 {
+			fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"incomplete answer"},"finish_reason":"stop"}]}`)
+			return
+		}
+		schema, _ := json.Marshal(req.ResponseFormat)
+		if !strings.Contains(string(schema), `"summary"`) || strings.Contains(string(schema), `"decision"`) {
+			t.Errorf("wrong schema: %s", schema)
+		}
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"{\"summary\":\"repair plan\"}"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+	a := API{URL: server.URL, Model: "test"}
+	got, err := a.Task(context.Background(), t.TempDir(), "diagnose", `{"type":"object","properties":{"summary":{"type":"string"}}}`, false)
+	if err != nil || string(got) != `{"summary":"repair plan"}` || calls != 2 {
+		t.Fatalf("%s %v calls=%d", got, err, calls)
+	}
+}

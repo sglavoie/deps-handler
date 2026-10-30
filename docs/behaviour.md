@@ -546,3 +546,99 @@ repos:
   - &strict {repo: acme/Billing, max_update_type: patch}
   - {<<: *strict, repo: acme/Payments}
 ```
+
+## Explicit PR diagnosis and repair
+
+`pr diagnose owner/repo#123` (or a github.com PR URL) always asks the selected
+agent for a repair handoff, regardless of check outcome, author, update size
+or whether the repository is configured. It reads a disposable checkout and
+uses no cached merge verdict. It reports current check contexts and
+separates GitHub facts from the agent's diagnosis. Superseded attempts are
+omitted from the report and failure evidence. Only the latest check run
+of an identified producer counts toward passing CI, as in `run`; an unknown,
+pending, incomplete, absent or all-skipped result is not passing. Currently
+at most 100 contexts are read; a longer list is explicitly incomplete.
+Failed-check evidence includes bounded annotations and log excerpts where
+available. GitHub API access needs PR/check read access and, for Actions
+logs, Actions read access. External check URLs are references only; they
+are never fetched with GitHub credentials. Head or base movement during
+analysis rejects the handoff as stale.
+
+`pr fix` explicitly authorizes changes to the selected PR, including non-bot
+PRs. It requires write permission, an open PR and an existing head branch,
+and refuses to push to the PR's base branch. It uses fresh checkouts separate
+from review caches. The agent may edit files and run commands; the parent
+process commits and pushes. The agent is instructed to leave HEAD unchanged,
+keep changes focused and preserve tests and checks. Codex uses its
+`workspace-write` sandbox; Claude enables file editing and Bash with its
+restricted customization settings. Repository tests run with the permissions
+of that agent. GitHub token environment variables are removed from the agent,
+and only parent Git network commands receive the fetch/push token.
+
+`pr fix --plan repair.md` reuses a saved diagnosis or user-edited Markdown
+handoff as the primary repair instructions. It infers the target from the
+report preamble (`# owner/repo#number: ...` or `PR: URL`) when the PR argument
+is omitted. An explicit target must match any recorded target, and conflicting
+preamble metadata is rejected before contacting GitHub or starting an agent.
+Free-form Markdown is accepted with an explicit target. The input must be a
+regular, non-empty UTF-8 text file without NUL bytes, at most 1 MiB. Its full
+contents are preserved and passed to the repair agent; the command never
+rewrites the plan. The report records its path as `plan_source` in JSON.
+
+A plan does not replace live PR, permissions or CI checks. If the recorded
+head, base commit or base branch has moved, the command reports the stale
+evidence and asks the agent to adapt the saved steps using current code and
+fresh failure evidence. Plans without complete commit metadata also get fresh
+evidence. Otherwise the first attempt uses the saved diagnosis
+without fetching a new description, diff or failure logs. Later attempts
+refresh that evidence while retaining the plan. No separate diagnosis task
+is run. The agent is asked to implement the plan and validate it, not regenerate
+it; saved text cannot authorize actions outside the existing repair scope.
+
+Before publishing, the command rechecks head, head repository, branch, base
+commit, base branch and permissions. It requires local HEAD to remain the
+original PR commit and makes a descendant commit, using a lease pinned to
+the original remote head. A fork repair pushes to the fork's head branch and
+also requires push access there; inability to push fails and retains edits.
+The base is fetched with history so the agent can resolve merge conflicts
+without committing. A pre-push mismatch reports exactly which head commit,
+head repository/branch, base commit/branch or PR state changed, with its old
+and new values. It does not approve or merge PRs or modify protection.
+
+With `--working-directory DIRECTORY`, the repair uses an existing repository
+root directly rather than making a temporary clone. It supports normal
+checkouts and linked Git worktrees. The checkout must already identify the
+selected PR's head commit, have no staged, unstaged or untracked changes, and
+have no merge, rebase, cherry-pick or revert in progress. It refuses the local
+base branch; a non-base branch or detached HEAD is required. It takes a repair
+lock, never resets/cleans or changes branches, and preserves ignored dependency
+and build caches. The agent receives this exact canonical working directory.
+Commits advance the current local branch or detached HEAD, and the normal
+head-pinned publication checks and lease still apply. A branch switch during
+the task stops publication. Existing remote URLs and origin tracking refs are
+preserved; base history is fetched from the selected PR repository into a
+separate ref private to the worktree. The directory is never deleted, on
+success or failure. Network restrictions of the selected agent are unchanged.
+A temporary checkout remains the default when the flag is omitted.
+
+CI is polled for the exact pushed head, allowing brief API propagation of the
+old head after a push. Passing checks are observed twice to allow newly queued
+jobs to appear. Missing, pending or all-skipped checks
+wait until `--wait-timeout` (15 minutes by default). Failed checks trigger a
+new repair, up to `--max-attempts` (3 by default). A changed PR stops the loop.
+No agent approval is treated as proof of passing tests: GitHub observations
+set `checks_passing`. This describes the observed checks, not a promise that
+no more jobs will be scheduled. Remaining manual merge gates are reported
+separately. Every agent invocation is bounded by `agent.timeout`, defaulting
+to 15 minutes. A failure retains the checkout and reports its path; successful
+operations remove their temporary checkouts. There is no automatic rollback
+of commits already pushed by earlier attempts.
+
+A successful diagnosis exits 0 even with blockers. A repair exits 0 for
+confirmed passing CI with code merge conflicts resolved, including an already
+passing PR; it exits 1 if repair
+or CI confirmation fails. Both commands support `--json`, report operational
+errors there, use 2 for invalid arguments and 130 for interruption. Existing
+`run` behavior is unchanged: a PR with repair commits fails its Dependabot-only
+authorship gate and must be merged manually. Neither the GitHub App nor the
+demo build runs repairs.
