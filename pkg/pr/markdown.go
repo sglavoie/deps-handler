@@ -48,6 +48,13 @@ func Markdown(w io.Writer, r Result) error {
 	if r.Analysis.Summary != "" {
 		text += "## Assessment\n\n" + r.Analysis.Summary + "\n\n"
 	}
+	if len(r.Analysis.Recommendations) > 0 {
+		text += "## Recommended actions\n\n"
+		for i, recommendation := range r.Analysis.Recommendations {
+			text += fmt.Sprintf("%d. **%s — %s**: %s\n\n   Next action: %s\n\n", i+1, recommendation.Subject, recommendation.Action.label(), recommendation.Reason, recommendation.NextStep)
+		}
+		text += "Recommendations describe supported next actions; CI reruns and external changes are not performed automatically.\n\n"
+	}
 	for _, section := range sections {
 		text += "## " + section.title + "\n\n"
 		if len(section.items) == 0 {
@@ -73,7 +80,7 @@ func Markdown(w io.Writer, r Result) error {
 		text += "## Repair diff summary\n\n```text\n" + r.DiffStat + "\n```\n\n"
 	}
 	if r.PublishCommand != "" {
-		text += "## Publish after review\n\nInspect the retained checkout and validation results, then run:\n\n```sh\n" + r.PublishCommand + "\n```\n\nThis resumes repair in the checkout, validates the local code, and may make further edits before pushing and verifying GitHub CI.\n\n"
+		text += "## Publish after review\n\nInspect the retained checkout and validation results, then run:\n\n```sh\n" + r.PublishCommand + "\n```\n\nThis assesses the local code again and may edit supported code repairs before pushing and verifying GitHub CI. Outstanding recommendations requiring external action or more evidence remain visible.\n\n"
 	}
 	if len(r.Commits) > 0 {
 		text += "## Pushed commits\n\n"

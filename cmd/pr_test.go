@@ -28,7 +28,7 @@ type commandTaskAgent struct{ err error }
 
 func (commandTaskAgent) Name() string { return "fake" }
 func (a commandTaskAgent) Task(context.Context, string, string, string, bool) (json.RawMessage, error) {
-	return json.RawMessage(`{"summary":"Repair plan","causes":["old API"],"steps":["edit src/app.go"],"validation":["run tests"],"remaining":[]}`), a.err
+	return json.RawMessage(`{"summary":"Repair plan","causes":["old API"],"steps":["edit src/app.go"],"validation":["run tests"],"remaining":[],"recommendations":[{"subject":"test","action":"code_repair","reason":"Replace removed API in src/app.go","next_step":"Edit src/app.go and run tests"}]}`), a.err
 }
 
 type commandWorkspace struct{ root string }
@@ -76,6 +76,60 @@ func TestPRDiagnosisUsesExplicitTargetWithoutConfig(t *testing.T) {
 	}
 	if code != 0 || result.Analysis.Summary != "Repair plan" || result.Snapshot.Target.Number != 7 || result.ChecksPassing || result.Workspace != "" || result.RepairCommand != "deps-handler pr fix o/r#7 --plan repair.md --agent codex" {
 		t.Fatalf("code %d out %s stderr %s", code, out, stderr)
+	}
+}
+
+type blockedTaskAgent struct{ t *testing.T }
+
+func (blockedTaskAgent) Name() string { return "fake" }
+func (a blockedTaskAgent) Task(_ context.Context, _, _, _ string, writable bool) (json.RawMessage, error) {
+	if writable {
+		a.t.Fatal("started an editing task for a billing failure")
+	}
+	return json.RawMessage(`{"summary":"CI requires an account billing fix","causes":["runner never started"],"steps":[],"validation":[],"remaining":["billing blocks CI"],"recommendations":[{"subject":"test","action":"human_action","reason":"The runner never started because billing failed.","next_step":"Resolve billing, then rerun the failed job."}]}`), nil
+}
+
+func TestPRCommandsReportExternalActionsAndExitWithoutRepair(t *testing.T) {
+	for _, args := range [][]string{
+		{"pr", "diagnose", "o/r#7"},
+		{"pr", "fix", "o/r#7"},
+		{"pr", "fix", "o/r#7", "--push"},
+	} {
+		for _, asJSON := range []bool{false, true} {
+			t.Run(strings.Join(args, " ")+map[bool]string{true: " JSON"}[asJSON], func(t *testing.T) {
+				mockPRCommands(t)
+				t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+				makeWorkspace := newPRWorkspace
+				newPRWorkspace = func(root string) pr.Workspace {
+					t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(root)) })
+					return makeWorkspace(root)
+				}
+				newTaskAgent = func(config.Agent, string) (review.TaskAgent, error) {
+					return blockedTaskAgent{t}, nil
+				}
+				arguments := append([]string{}, args...)
+				if asJSON {
+					arguments = append(arguments, "--json")
+				}
+				code, out, stderr := run(arguments...)
+				wantCode := 0
+				if args[1] == "fix" {
+					wantCode = 1
+				}
+				if code != wantCode || !strings.Contains(out, "Resolve billing, then rerun") || strings.Contains(out, "deps-handler pr fix") {
+					t.Fatalf("code=%d out=%s stderr=%s", code, out, stderr)
+				}
+				if asJSON {
+					var result pr.Result
+					if err := json.Unmarshal([]byte(out), &result); err != nil {
+						t.Fatal(out, err)
+					}
+					if result.Prepared || result.Attempts != 0 || len(result.LocalCommits) != 0 || len(result.Commits) != 0 || len(result.Analysis.Recommendations) != 1 || result.Analysis.Recommendations[0].Action != pr.HumanAction {
+						t.Fatalf("unexpected result: %+v", result)
+					}
+				}
+			})
+		}
 	}
 }
 func TestPRConfigCanHaveOnlyAgentSettings(t *testing.T) {
@@ -157,10 +211,13 @@ type planCommandAgent struct {
 }
 
 func (planCommandAgent) Name() string { return "fake" }
-func (a planCommandAgent) Task(_ context.Context, _, prompt, _ string, writable bool) (json.RawMessage, error) {
+func (a planCommandAgent) Task(ctx context.Context, dir, prompt, schema string, writable bool) (json.RawMessage, error) {
 	*a.calls++
-	if !writable || !strings.Contains(prompt, a.want) || !strings.Contains(prompt, "Do not start a new diagnosis") {
-		a.t.Errorf("saved plan missing from writable task: %s", prompt)
+	if !strings.Contains(prompt, a.want) || !strings.Contains(prompt, "Do not start a new diagnosis") {
+		a.t.Errorf("saved plan missing from task (writable=%v): %s", writable, prompt)
+	}
+	if !writable {
+		return (commandTaskAgent{}).Task(ctx, dir, prompt, schema, false)
 	}
 	return nil, errors.New("stop after checking the saved plan")
 }
@@ -196,7 +253,7 @@ func TestPRFixAcceptsSavedDiagnosisAndInfersTarget(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &result); err != nil {
 				t.Fatal(out, err)
 			}
-			if code != 1 || calls != 1 || result.PlanSource != path || result.Workspace == "" || !strings.Contains(stderr, "Using saved repair plan") {
+			if code != 1 || calls != 2 || result.PlanSource != path || result.Workspace == "" || !strings.Contains(stderr, "Using saved repair plan") {
 				t.Fatalf("code %d calls %d out %s stderr %s", code, calls, out, stderr)
 			}
 			t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(result.Workspace)) })
@@ -267,9 +324,12 @@ type localDirectoryAgent struct {
 }
 
 func (localDirectoryAgent) Name() string { return "fake" }
-func (a localDirectoryAgent) Task(_ context.Context, dir, _, _ string, writable bool) (json.RawMessage, error) {
-	if dir != a.directory || !writable {
+func (a localDirectoryAgent) Task(ctx context.Context, dir, prompt, schema string, writable bool) (json.RawMessage, error) {
+	if dir != a.directory {
 		a.t.Fatalf("agent directory=%s writable=%v", dir, writable)
+	}
+	if !writable {
+		return (commandTaskAgent{}).Task(ctx, dir, prompt, schema, false)
 	}
 	return nil, errors.New("stop after checking working directory")
 }

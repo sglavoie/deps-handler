@@ -18,6 +18,7 @@ type testClient struct {
 	evidenceErr   error
 	evidenceReads int
 	base          github.BaseChecks
+	checks        []github.PRCheck
 }
 
 func (c *testClient) Snapshot(ctx context.Context, _ github.PRTarget) (github.PRSnapshot, error) {
@@ -30,13 +31,18 @@ func (c *testClient) Snapshot(ctx context.Context, _ github.PRTarget) (github.PR
 }
 func (c *testClient) Evidence(context.Context, github.PRSnapshot) (github.PREvidence, error) {
 	c.evidenceReads++
-	return github.PREvidence{Details: &github.PullRequestDetails{Body: "release notes", Diff: "-old\n+new"}, Checks: []github.PRCheck{{Log: "compiler: missing symbol"}}, Base: c.base}, c.evidenceErr
+	checks := c.checks
+	if checks == nil {
+		checks = []github.PRCheck{{Log: "compiler: missing symbol"}}
+	}
+	return github.PREvidence{Details: &github.PullRequestDetails{Body: "release notes", Diff: "-old\n+new"}, Checks: checks, Base: c.base}, c.evidenceErr
 }
 
 type testAgent struct {
 	calls    int
 	writable []bool
 	prompt   string
+	raws     []string
 	err      error
 	raw      string
 }
@@ -46,8 +52,11 @@ func (a *testAgent) Task(_ context.Context, _, prompt, _ string, writable bool) 
 	a.calls++
 	a.writable = append(a.writable, writable)
 	a.prompt = prompt
+	if len(a.raws) > 0 {
+		return json.RawMessage(a.raws[min(a.calls-1, len(a.raws)-1)]), a.err
+	}
 	if a.raw == "" {
-		a.raw = `{"summary":"Update removed API usage in src/app.go","causes":["removed API"],"steps":["replace old call"],"validation":["go test ./...: passed"],"remaining":[]}`
+		a.raw = `{"summary":"Update removed API usage in src/app.go","causes":["removed API"],"steps":["replace old call"],"validation":["go test ./...: passed"],"remaining":[],"recommendations":[{"subject":"test","action":"code_repair","reason":"Replace removed API in src/app.go","next_step":"Edit src/app.go and run tests"}]}`
 	}
 	return json.RawMessage(a.raw), a.err
 }
@@ -238,7 +247,7 @@ func TestFixRetriesThenConfirmsCI(t *testing.T) {
 	passing.MergeState = "BLOCKED"
 	s, _, a, w := service(old, old, failed, failed, passing)
 	got, err := s.Fix(context.Background(), old.Target, "")
-	if err != nil || !got.ChecksPassing || got.Attempts != 2 || len(got.Commits) != 2 || w.pushes != 2 || a.calls != 2 || !a.writable[0] || !a.writable[1] {
+	if err != nil || !got.ChecksPassing || got.Attempts != 2 || len(got.Commits) != 2 || w.pushes != 2 || a.calls != 4 || a.writable[0] || !a.writable[1] || a.writable[2] || !a.writable[3] {
 		t.Fatalf("%+v %v; agent %+v ws %+v", got, err, a, w)
 	}
 	if !strings.Contains(strings.Join(got.Blockers, " "), "REVIEW_REQUIRED") {
@@ -301,7 +310,7 @@ func TestFixStopsWhenChecksNeverStart(t *testing.T) {
 	s, _, a, w := service(old, old, empty)
 	s.WaitTimeout = 20 * time.Millisecond
 	got, err := s.Fix(context.Background(), old.Target, "")
-	if err == nil || got.ChecksPassing || w.pushes != 1 || a.calls != 1 || len(got.Commits) != 1 {
+	if err == nil || got.ChecksPassing || w.pushes != 1 || a.calls != 2 || len(got.Commits) != 1 {
 		t.Fatalf("%+v %v; pushes %d calls %d", got, err, w.pushes, a.calls)
 	}
 }
@@ -312,7 +321,7 @@ func TestFixStopsAtAttemptLimit(t *testing.T) {
 	failed.HeadOID = "new-head"
 	s, _, a, w := service(old, old, failed, failed, failed)
 	got, err := s.Fix(context.Background(), old.Target, "")
-	if err == nil || !strings.Contains(err.Error(), "2 repair attempts") || got.ChecksPassing || w.pushes != 2 || a.calls != 2 {
+	if err == nil || !strings.Contains(err.Error(), "2 repair attempts") || got.ChecksPassing || w.pushes != 2 || a.calls != 4 {
 		t.Fatalf("%+v %v; pushes %d calls %d", got, err, w.pushes, a.calls)
 	}
 }
@@ -384,7 +393,7 @@ func TestCheckStateKeepsUnknownAndMissingChecksBlocked(t *testing.T) {
 }
 
 func TestInvalidAgentAnswerCannotPush(t *testing.T) {
-	for _, raw := range []string{`{}`, `{"summary":"ok"}`, `{"summary":"ok","causes":null,"steps":[],"validation":[],"remaining":[]}`, `garbage`} {
+	for _, raw := range []string{`{}`, `{"summary":"ok"}`, `{"summary":"ok","causes":null,"steps":[],"validation":[],"remaining":[],"recommendations":[{"subject":"test","action":"code_repair","reason":"Replace removed API in src/app.go","next_step":"Edit src/app.go and run tests"}]}`, `garbage`} {
 		s, _, a, w := service(snapshot(github.CheckFailed))
 		a.raw = raw
 		if _, err := s.Fix(context.Background(), snapshot(github.CheckFailed).Target, ""); err == nil || w.pushes != 0 {
@@ -432,7 +441,7 @@ func TestFixRetriesUnresolvedConflictsEvenWithGreenCI(t *testing.T) {
 	next.HeadOID = "new-head"
 	s, _, a, w := service(old, old, next, next, next)
 	got, err := s.Fix(context.Background(), old.Target, "")
-	if err == nil || w.pushes != 2 || a.calls != 2 || !got.ChecksPassing {
+	if err == nil || w.pushes != 2 || a.calls != 4 || !got.ChecksPassing {
 		t.Fatalf("%+v %v pushes=%d calls=%d", got, err, w.pushes, a.calls)
 	}
 }
@@ -449,7 +458,7 @@ func TestFixWaitToleratesPushPropagationAndSeesNewJobs(t *testing.T) {
 	final.Checks[1].State = github.CheckPassed
 	s, c, a, w := service(old, old, old, green, pending, final, final)
 	got, err := s.Fix(context.Background(), old.Target, "")
-	if err != nil || !got.ChecksPassing || c.reads != 7 || a.calls != 1 || w.pushes != 1 {
+	if err != nil || !got.ChecksPassing || c.reads != 7 || a.calls != 2 || w.pushes != 1 {
 		t.Fatalf("%+v %v reads=%d calls=%d pushes=%d", got, err, c.reads, a.calls, w.pushes)
 	}
 }
@@ -551,7 +560,7 @@ func TestFixPublishesLocalCommitsEvenWhenOldCIIsGreenOrPending(t *testing.T) {
 			s.Workspace = w
 			s.Plan = savedPlan(remote)
 			result, err := s.Fix(context.Background(), remote.Target, "")
-			if err != nil || !result.ChecksPassing || result.StartingHeadOID != w.head || a.calls != 1 || w.pushes != 1 || w.lease != remote.HeadOID || c.evidenceReads != 1 {
+			if err != nil || !result.ChecksPassing || result.StartingHeadOID != w.head || a.calls != 2 || w.pushes != 1 || w.lease != remote.HeadOID || c.evidenceReads != 1 {
 				t.Fatalf("result=%+v err=%v calls=%d workspace=%+v evidence=%d", result, err, a.calls, w, c.evidenceReads)
 			}
 			for _, want := range []string{`"local_head_oid":"user-commit"`, `"head_oid":"old-head"`, "Preserve the user's commits", "without adding an empty commit"} {
@@ -583,7 +592,7 @@ func TestFixPreparesLocallyWithoutPushingOrWaitingForNewCI(t *testing.T) {
 			// Omit Push to exercise the service's default behavior.
 			s := &Service{Client: c, Agent: a, Workspace: w, MaxAttempts: 3, WaitTimeout: time.Second, PollInterval: time.Millisecond}
 			got, err := s.Fix(context.Background(), remote.Target, "")
-			if err != nil || !got.Prepared || got.ChecksPassing || got.Attempts != 1 || got.Workspace == "" || len(got.LocalCommits) != 1 || len(got.Commits) != 0 || got.DiffStat == "" || w.commits != 1 || w.pushes != 0 || a.calls != 1 || c.reads != 2 {
+			if err != nil || !got.Prepared || got.ChecksPassing || got.Attempts != 1 || got.Workspace == "" || len(got.LocalCommits) != 1 || len(got.Commits) != 0 || got.DiffStat == "" || w.commits != 1 || w.pushes != 0 || a.calls != 2 || c.reads != 2 {
 				t.Fatalf("result=%+v err=%v workspace=%+v agent=%+v reads=%d", got, err, w, a, c.reads)
 			}
 			if strings.Contains(a.prompt, "caller is authorized to push") {

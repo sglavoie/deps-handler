@@ -571,9 +571,23 @@ logs, Actions read access. External check URLs are references only; they
 are never fetched with GitHub credentials. Head or base movement during
 analysis rejects the handoff as stale.
 
+Each failure gets a recommendation under `analysis.recommendations` in JSON
+and "Recommended actions" in Markdown. Entries contain `subject` (the check
+name or other problem), `action`, `reason` (supporting evidence) and `next_step`.
+The actions are `code_repair` for an evidenced code or workflow change,
+`rerun_candidate` for a suspected transient failure, `human_action` for account,
+service or manual merge work, and `insufficient_evidence` when no supported
+action can be identified. Unclassified failed or unknown checks remain explicit
+evidence gaps. Missing or incomplete checks never establish a code repair.
+Mixed cases preserve separate actions for each problem. Recommendations are
+agent interpretations, not proof of cause or permission to run their suggested
+commands. CI reruns, account changes and other external actions are never
+performed automatically.
+
 A completed diagnosis includes an optional `repair_command` in JSON and a
 "Next step" section in Markdown when `pr fix` can attempt a repair: the PR
-must meet its write prerequisites and, at the final read, have checks that
+must have at least one supported code repair, meet its write prerequisites
+and, at the final read, have checks that
 are not confirmed passing or need a base-branch repair. A passing PR blocked
 only by reviews, draft status or other merge gates gets no repair command.
 The command pins the selected PR, uses `--plan repair.md`, and preserves a
@@ -592,6 +606,16 @@ checkouts separate from review caches. The agent may edit files and run
 commands; the parent process commits locally. Only `--push` authorizes the
 parent to publish commits to the PR branch and verify GitHub CI.
 
+Before each editing task, a read-only agent task assesses repairability. If
+no code repair is supported, `fix` exits 1 and reports the actions without
+starting an editing task, committing or pushing on that attempt. This includes
+billing failures, rerun candidates and cases needing more evidence. Mixed cases
+allow supported code work while preserving the unresolved external actions in
+the final report. Both tasks use the same collected evidence; assessment does
+not cause another log download. Agent responses are checked for required fields,
+known actions, non-empty recommendation text and ambiguous JSON before they can
+start editing or committing. Each task has its own agent timeout and budget.
+
 Without `--push`, preparation stops after one repair task and local commit.
 It retains the checkout on success, reports local validation results and a
 Git diff summary, and prints a continuation with `--push --working-directory`.
@@ -602,7 +626,12 @@ in `snapshot` describe the older remote PR head, not the local commit. A local
 commit can be prepared even if the agent reports validation gaps; preparation
 success does not confirm passing tests or resolved merge conflicts. Review
 the validation results and remaining work before publication. The continuation
-runs the repair agent again, which validates and may edit the local code.
+assesses the local code again and edits only when a code repair is supported.
+An ahead checkout assessed as complete, with no outstanding recommended actions,
+can be committed or published using its existing commits after read-only inspection,
+without an editing task. The report explicitly records that local validation
+commands were not run in this case; `--push` still verifies GitHub CI for the
+published commits. Older remote CI does not invent failures in that local code.
 
 The agent is instructed to leave HEAD unchanged, keep changes focused and preserve tests and checks. Codex uses its
 `workspace-write` sandbox; Claude enables file editing and Bash with its
@@ -626,9 +655,11 @@ evidence and asks the agent to adapt the saved steps using current code and
 fresh failure evidence. Plans without complete commit metadata also get fresh
 evidence. Otherwise the first attempt uses the saved diagnosis
 without fetching a new description, diff or failure logs. Later attempts
-refresh that evidence while retaining the plan. No separate diagnosis task
-is run. The agent is asked to implement the plan and validate it, not regenerate
-it; saved text cannot authorize actions outside the existing repair scope.
+refresh that evidence while retaining the plan. The read-only assessment uses
+the saved instructions as its primary handoff to check repairability; it does
+not regenerate the plan. The editing task implements and validates supported
+code work from the plan. Saved text cannot authorize actions outside the existing
+repair scope.
 
 Before committing locally or publishing, the command rechecks head, head
 repository, branch, base commit, base branch and permissions. It requires local HEAD to remain the

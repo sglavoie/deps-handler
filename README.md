@@ -177,9 +177,19 @@ diagnosis and fresh repair attempts give this comparison to the agent before
 it proposes or makes edits. A matching saved plan reuses the comparison in
 its Markdown without downloading the evidence again.
 
+Diagnosis gives each failure a structured recommended action: `code_repair`,
+`rerun_candidate`, `human_action`, or `insufficient_evidence`, with supporting
+evidence and a concrete next step. A job that never started because of billing
+calls for an account fix; a suspected transient failure may call for a rerun.
+Reruns and external changes are suggestions only and are never performed
+automatically. Mixed failures keep separate actions for code and external blockers.
+JSON exposes these under `analysis.recommendations`, with `subject`, `action`,
+`reason` and `next_step` on each entry.
+
 For a PR that meets the repair prerequisites, diagnosis includes a
-`pr fix --plan repair.md` command when checks are not confirmed passing or
-a base-branch repair is needed. Save the Markdown report, review or edit its steps, and substitute
+`pr fix --plan repair.md` command only when at least one code repair is supported
+and either checks are not confirmed passing or a base-branch repair is needed.
+Save the Markdown report, review or edit its steps, and substitute
 its saved path in that command. Claude and Codex diagnoses keep their agent
 choice; API diagnoses suggest Codex for the repair. JSON reports expose the
 same command as `repair_command` when available. The suggested command prepares
@@ -218,13 +228,21 @@ keeps the base branch protected. Passing or pending CI on the older remote
 commit never skips unpublished local commits; the tool validates the local code.
 With `--push`, it publishes that code and observes CI for the resulting head.
 
-`fix` prepares a repair locally by default. It waits for pending CI before
-editing, runs a writable Claude Code or Codex task, and commits the resulting
+`fix` prepares a repair locally by default. It waits for pending CI and assesses
+repairability with a read-only agent task before editing. When no code repair
+is supported, it reports the recommended actions and exits 1 without starting
+an editing task, committing or pushing on that attempt. Mixed cases address
+supported code repairs and retain the other recommendations. Each attempt shares
+its collected evidence between assessment and editing; logs are not downloaded
+twice. It runs a writable Claude Code or Codex task and commits the resulting
 file changes once. It retains the checkout for inspection and prints its path,
 a diff summary, local validation results and a continuation command using
 `--push --working-directory`. Nothing is pushed, and local preparation does
-not confirm passing GitHub CI. The continuation runs the repair agent again to
-validate the local code and may make further edits before publication.
+not confirm passing GitHub CI. The continuation assesses the local code again
+and may make further edits when a code repair is supported. If existing local
+commits complete the work and no actions remain, it can publish them after
+read-only inspection without starting an editing task. The report records that
+local validation commands were not run in that case.
 
 With `--push`, `fix` publishes to the PR's head branch and verifies the new
 commit's CI, retrying failures up to `--max-attempts` (3 by default). An already

@@ -122,7 +122,7 @@ func TestFixFollowsSavedPlanWithoutNewFailureInvestigation(t *testing.T) {
 	s, c, a, w := service(old, old, passing, passing)
 	s.Plan = savedPlan(old)
 	result, err := s.Fix(context.Background(), old.Target, "compiler")
-	if err != nil || !result.ChecksPassing || c.evidenceReads != 0 || a.calls != 1 || w.pushes != 1 || result.PlanSource != "repair.md" {
+	if err != nil || !result.ChecksPassing || c.evidenceReads != 0 || a.calls != 2 || w.pushes != 1 || result.PlanSource != "repair.md" {
 		t.Fatalf("result %+v err %v evidence=%d agent=%d pushes=%d", result, err, c.evidenceReads, a.calls, w.pushes)
 	}
 	for _, want := range []string{"saved_repair_plan", "user-edited approach", "Do not start a new diagnosis", "User focus: compiler"} {

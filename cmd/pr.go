@@ -262,6 +262,11 @@ Local preparation does not confirm passing GitHub CI.
 Use --push to publish repair commits to the PR head branch, wait for CI and
 retry failures up to --max-attempts. Both modes check for concurrent updates
 and wait for pending checks before editing. --wait-timeout bounds each CI wait.
+Each attempt assesses repairability with a read-only task before editing.
+If only reruns, human actions or more evidence are needed, it reports those
+actions and exits 1 without starting an editing task or committing/pushing
+on that attempt. Mixed cases repair supported code issues and retain the
+other recommendations. CI reruns and external actions are never automatic.
 
 Use --plan repair.md to implement a saved diagnosis or edited repair handoff.
 The PR can be omitted when the file contains metadata from pr diagnose. An
@@ -289,11 +294,14 @@ Exit 1 means preparation, repair or CI confirmation failed.
 includes current checks, merge blockers, failure evidence, proposed edits
 and validation commands. It compares matching CI jobs at the recorded base
 commit, with bounded base failure logs and explicit evidence gaps. It works
-for passing, failing or pending CI.
+for passing, failing or pending CI. Each failure gets a recommended action:
+code repair, rerun candidate, human action or insufficient evidence, with
+supporting reasons and concrete next steps. JSON includes these under
+analysis.recommendations. Reruns and external actions are suggestions only.
 
 Prints Markdown you can save or paste into a coding session. The checkout
 is read-only to the agent and nothing is pushed. Supports Claude, Codex or
-the API agent. When a repair can help, the report includes a pr fix --plan
+the API agent. When a code repair is supported, the report includes a pr fix --plan
 command to run after saving and reviewing the Markdown report. JSON exposes
 the same command as repair_command. A completed report exits 0 even when it
 finds blockers; an operational failure exits 1.
