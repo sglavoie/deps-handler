@@ -71,3 +71,38 @@ func migrateRepoKeys(ctx context.Context, db *sql.DB) error {
 	}
 	return tx.Commit()
 }
+
+// Keep installation observations independent of added_at and removed_at:
+// those retain the first installation and removal times for metrics.
+func migrateInstallationObservations(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var version int
+	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	if version >= 2 {
+		return nil
+	}
+	var columns int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('installations') WHERE name = 'observed_at'`).Scan(&columns); err != nil {
+		return err
+	}
+	if columns == 0 {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE installations ADD COLUMN observed_at TIMESTAMP NOT NULL DEFAULT '0001-01-01 00:00:00 +0000 UTC'`); err != nil {
+			return err
+		}
+		// Earlier schemas retained only these event times. Preserve the
+		// newest known one when seeding the observation guard.
+		if _, err := tx.ExecContext(ctx, `UPDATE installations SET observed_at = COALESCE(removed_at, added_at)`); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `PRAGMA user_version = 2`); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

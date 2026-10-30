@@ -455,6 +455,9 @@ func evaluate(repo *github.Repo, pr *github.PullRequest, p config.Policy, viewer
 	case "BEHIND":
 		// Without Dependabot commands no request is made, so none is
 		// waited on: the PR is left to a human below.
+		if p.DependabotCommands && pushedAt(pr).IsZero() {
+			return wait(false, "head commit timestamp not reported; cannot determine whether a rebase was already requested")
+		}
 		if at, seen, ok := rebaseRequested(pr, viewer); ok && p.DependabotCommands {
 			requested := "rebase requested"
 			if !seen {
@@ -566,6 +569,9 @@ func rebaseRequested(pr *github.PullRequest, viewer string) (at time.Time, seen,
 		return time.Time{}, false, false
 	}
 	last := pushedAt(pr)
+	if last.IsZero() {
+		return time.Time{}, false, false
+	}
 	for _, c := range pr.Comments {
 		if viewer != "" && strings.EqualFold(c.Author, viewer) && !c.CreatedAt.Before(last) && strings.TrimSpace(c.Body) == RebaseCommand {
 			return c.CreatedAt, true, true

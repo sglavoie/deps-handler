@@ -139,28 +139,27 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("store %s: %w", path, err)
 	}
+	if err := migrateInstallationObservations(ctx, db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store %s: %w", path, err)
+	}
 	return &Store{db: db}, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
 
 // InstallationAdded records an installation as active, keeping when it
-// was first added. An observation older than a removal cannot reactivate it:
-// a sweep may have fetched its list just before an uninstall webhook.
+// was first added. Older observations cannot undo newer installation state,
+// including observations recorded by another process.
 func (s *Store) InstallationAdded(ctx context.Context, id int64, account string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO installations (id, account, added_at) VALUES (?, ?, ?)
-ON CONFLICT (id) DO UPDATE SET account = excluded.account, removed_at = NULL
-WHERE installations.removed_at IS NULL OR installations.removed_at < excluded.added_at`, id, account, at.UTC())
+	_, err := s.ObserveInstallation(ctx, id, account, false, at)
 	return err
 }
 
 // InstallationRemoved records an installation as gone (uninstalled or
 // suspended).
 func (s *Store) InstallationRemoved(ctx context.Context, id int64, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO installations (id, account, added_at, removed_at) VALUES (?, '', ?, ?)
-ON CONFLICT (id) DO UPDATE SET removed_at = COALESCE(installations.removed_at, excluded.removed_at)`, id, at.UTC(), at.UTC())
+	_, err := s.ObserveInstallation(ctx, id, "", true, at)
 	return err
 }
 
@@ -168,11 +167,31 @@ ON CONFLICT (id) DO UPDATE SET removed_at = COALESCE(installations.removed_at, e
 // including one whose installation webhook was missed. Keep its first
 // added_at and, when already inactive, the time it first became inactive.
 func (s *Store) InstallationSuspended(ctx context.Context, id int64, account string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO installations (id, account, added_at, removed_at) VALUES (?, ?, ?, ?)
-ON CONFLICT (id) DO UPDATE SET account = excluded.account,
-	removed_at = COALESCE(installations.removed_at, excluded.removed_at)`, id, account, at.UTC(), at.UTC())
+	_, err := s.ObserveInstallation(ctx, id, account, true, at)
 	return err
+}
+
+// ObserveInstallation applies state only when at is newer than the stored
+// observation, returning whether it applied. An empty account preserves the
+// recorded name, as on removal. Repeated inactive observations keep when the
+// installation first became inactive while advancing the observation time.
+func (s *Store) ObserveInstallation(ctx context.Context, id int64, account string, inactive bool, at time.Time) (bool, error) {
+	var removed any
+	if inactive {
+		removed = at.UTC()
+	}
+	result, err := s.db.ExecContext(ctx, `
+INSERT INTO installations (id, account, added_at, removed_at, observed_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET
+	account = CASE WHEN excluded.account = '' THEN installations.account ELSE excluded.account END,
+	removed_at = CASE WHEN excluded.removed_at IS NULL THEN NULL ELSE COALESCE(installations.removed_at, excluded.removed_at) END,
+	observed_at = excluded.observed_at
+WHERE installations.observed_at < excluded.observed_at`, id, account, at.UTC(), removed, at.UTC())
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	return changed > 0, err
 }
 
 // InstallationInactive reports whether a known installation was suspended
@@ -469,11 +488,38 @@ ON CONFLICT (repo) DO UPDATE SET installation_id = excluded.installation_id, mod
 // installation itself is kept, with when it came and went, which is all
 // the test's retention numbers need.
 func (s *Store) ForgetInstallation(ctx context.Context, installation int64) error {
+	_, err := s.forgetInstallation(ctx, installation, nil)
+	return err
+}
+
+// ForgetInstallationBefore deletes records only if the installation is
+// inactive and has no observation newer than at. The check and deletion
+// share a write transaction so a reactivation in another process cannot
+// slip between them. It returns whether cleanup was permitted.
+func (s *Store) ForgetInstallationBefore(ctx context.Context, installation int64, at time.Time) (bool, error) {
+	return s.forgetInstallation(ctx, installation, &at)
+}
+
+func (s *Store) forgetInstallation(ctx context.Context, installation int64, before *time.Time) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
+	if before != nil {
+		// Acquire SQLite's write lock while checking eligibility, before
+		// reading or deleting any records. A newer observation must either
+		// precede this check or wait until cleanup commits.
+		result, err := tx.ExecContext(ctx, `UPDATE installations SET observed_at = observed_at
+WHERE id = ? AND removed_at IS NOT NULL AND observed_at <= ?`, installation, before.UTC())
+		if err != nil {
+			return false, err
+		}
+		changed, err := result.RowsAffected()
+		if err != nil || changed == 0 {
+			return false, err
+		}
+	}
 	for _, q := range []string{
 		`DELETE FROM issues WHERE repo IN (SELECT repo FROM runs WHERE installation_id = ?1 UNION SELECT repo FROM repos WHERE installation_id = ?1)
 			AND repo NOT IN (SELECT repo FROM runs WHERE installation_id <> ?1
@@ -490,10 +536,13 @@ func (s *Store) ForgetInstallation(ctx context.Context, installation int64) erro
 		`DELETE FROM queued_jobs WHERE installation_id = ?1`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, installation); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Review is one agent review: the PR it judged, its verdict (approve,

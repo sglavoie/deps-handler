@@ -195,16 +195,9 @@ func (s *Service) forgetIfInactiveBefore(ctx context.Context, installation int64
 	}
 	defer release()
 	g.write.Lock()
-	if g.lastEvent.After(observedAt) {
-		g.write.Unlock()
-		return nil
-	}
-	inactive, err := s.Store.InstallationInactive(ctx, installation)
-	if err == nil && inactive {
-		err = s.Store.ForgetInstallation(ctx, installation)
-	}
+	forgotten, err := s.Store.ForgetInstallationBefore(ctx, installation, observedAt)
 	g.write.Unlock()
-	if err != nil || !inactive {
+	if err != nil || !forgotten {
 		return err
 	}
 	return s.forgetReviewFiles(installation)

@@ -23,7 +23,7 @@ type Workspace struct {
 	// Token authenticates fetches from github.com; it is passed to git
 	// through the environment, never on the command line. On Linux, a
 	// process of the user's, such as Codex reading what its sandbox
-	// allows, can read it there while git runs.
+	// allows, can read it there while a network command runs.
 	Token string
 	// TokenSource, when set, supplies a current token for each network
 	// command instead of Token, so later checkouts can refresh credentials.
@@ -213,11 +213,16 @@ func (w *Workspace) git(ctx context.Context, dir string, args ...string) error {
 }
 
 // output runs git in the checkout in dir and returns what it printed.
-// The checkout holds untrusted code and git has the token, so the user's
-// hooks and fsmonitor do not run there, and git is told which repository
-// to work on rather than read it from an inherited GIT_DIR.
+// Local commands ignore system and global config so attributes in the
+// checkout cannot invoke the user's file filters. Only network commands
+// receive credentials and retain network configuration such as URL rewrites
+// and credential helpers. Hooks and fsmonitor are disabled for every command.
 func (w *Workspace) output(ctx context.Context, dir string, args ...string) (string, error) {
+	network := args[0] == "fetch" || args[0] == "ls-remote"
 	opts := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}
+	if !network {
+		opts = append(opts, "-c", "core.attributesFile="+os.DevNull)
+	}
 	if args[0] != "init" {
 		// git init would record the work tree in the config.
 		opts = append(opts, "--git-dir=.git", "--work-tree=.")
@@ -227,6 +232,9 @@ func (w *Workspace) output(ctx context.Context, dir string, args ...string) (str
 	// Git LFS would download every large file at checkout, for an agent
 	// that reads code; the pointer files say what changed.
 	cmd.Env = append(agentEnv(), "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1")
+	if !network {
+		cmd.Env = append(cmd.Env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_SYSTEM="+os.DevNull, "GIT_CONFIG_GLOBAL="+os.DevNull)
+	}
 	// A remote the user's config rewrites to SSH must not wait on a
 	// question no one can answer. An ssh command of the user's own is
 	// kept; noTerminal stops it asking all the same.
@@ -234,15 +242,18 @@ func (w *Workspace) output(ctx context.Context, dir string, args ...string) (str
 		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
 	}
 	noTerminal(cmd)
-	token := w.Token
-	if w.TokenSource != nil && (args[0] == "fetch" || args[0] == "ls-remote") {
-		var err error
-		token, err = w.TokenSource(ctx)
-		if err != nil {
-			return "", fmt.Errorf("git %s authentication: %w", args[0], err)
-		}
-		if token == "" {
-			return "", fmt.Errorf("git %s authentication: empty token", args[0])
+	token := ""
+	if network {
+		token = w.Token
+		if w.TokenSource != nil {
+			var err error
+			token, err = w.TokenSource(ctx)
+			if err != nil {
+				return "", fmt.Errorf("git %s authentication: %w", args[0], err)
+			}
+			if token == "" {
+				return "", fmt.Errorf("git %s authentication: empty token", args[0])
+			}
 		}
 	}
 	if token != "" {

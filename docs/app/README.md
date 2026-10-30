@@ -121,6 +121,10 @@ after the active run finishes. Uninstall cleanup takes that same lock;
 it retries on a later sweep if another process is using the files.
 Cleanup also removes recovered verdict caches and works after reviews
 have been disabled in the server configuration.
+Installation observation times are stored in SQLite, so stale sweeps or
+webhook reads cannot undo newer state recorded by another server or `-once`
+process. Cleanup checks that observation time in the same transaction that
+deletes records, preserving newer active or suspended installations.
 The recipe clears inherited server settings before loading `DMC_ENV`, so
 an allowlist or merge setting exported for another App cannot carry over.
 

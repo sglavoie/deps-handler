@@ -63,6 +63,9 @@ have separate queues. A rebase request Dependabot has not acted on within a
 day stops holding the queue: that PR is left for a human and the next one is
 rebased. A request with the same timestamp as the head commit counts as
 pending too: the timestamp cannot establish that it preceded the commit.
+When the head timestamp is missing, the PR waits without requesting another
+rebase or treating historical requests as stalled. It does not hold the
+rebase queue while waiting for that timestamp.
 Only a PR's latest 50 comments are read: when even the oldest of
 them is at least as recent as its head commit, a request may hide among the rest, so
 the PR is not asked again but waits as if one were pending, and is left for
@@ -232,13 +235,17 @@ pointers.
 The checkout's git works on the checkout alone, and runs none of your
 hooks: it is made without your `init.templateDir` template, and git runs
 there with `core.hooksPath=/dev/null` and `core.fsmonitor=false`.
+Local Git commands also ignore system and global configuration, including
+file filters that `.gitattributes` could otherwise invoke. Network commands
+retain settings for URL rewrites, proxies and credential helpers.
 `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other variables that
 would point git at another repository (such as `$HOME` under a dotfiles
 setup) or add settings from outside your config files
 (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`) are removed from its
 environment and the agent's, and the GitHub token variables from both;
-git only gets the token deps-merger fetches with. It runs without a
-terminal and, unless you set `GIT_SSH_COMMAND` or `GIT_SSH`, with
+only `fetch` and `ls-remote` receive the token deps-merger fetches with.
+It runs without a terminal and, unless you set `GIT_SSH_COMMAND` or
+`GIT_SSH`, with
 `GIT_SSH_COMMAND="ssh -o BatchMode=yes"`, which takes precedence over a
 `core.sshCommand`: a remote your config rewrites to SSH fails at once
 rather than wait on a host key or passphrase prompt until the review

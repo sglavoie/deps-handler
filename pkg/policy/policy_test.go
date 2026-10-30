@@ -169,6 +169,42 @@ func TestMissingHeadAgeDoesNotBlockTestedOrChecksOptionalPR(t *testing.T) {
 	}
 }
 
+func TestRebaseRequiresKnownHeadTime(t *testing.T) {
+	for _, history := range []string{"none", "old request", "truncated"} {
+		t.Run(history, func(t *testing.T) {
+			pr := testutil.PR(1)
+			pr.MergeState = "BEHIND"
+			pr.Commits[0].CommittedDate = time.Time{}
+			switch history {
+			case "old request":
+				pr.Comments = []github.Comment{{Author: "me", Body: RebaseCommand, CreatedAt: testutil.T0.Add(-48 * time.Hour)}}
+			case "truncated":
+				pr.Comments = chatter(testutil.T0.Add(-48 * time.Hour))
+				pr.CommentCount = len(pr.Comments) + 1
+			}
+			d := one(t, testutil.Repo(pr), defaultPolicy)
+			if d.Action != ActionWait || !strings.Contains(d.Reason, "timestamp") || d.stalledRebase || d.inFlight {
+				t.Fatalf("unknown head time must wait without claiming an old request applies: %+v", d)
+			}
+			if _, _, requested := rebaseRequested(&pr, "me"); requested {
+				t.Fatal("an unknown head time cannot establish a pending rebase request")
+			}
+			// Once the head timestamp arrives, the older request no longer
+			// blocks a fresh request for this head.
+			pr.Commits[0].CommittedDate = testutil.T0
+			if d := one(t, testutil.Repo(pr), defaultPolicy); d.Action != ActionRebase {
+				t.Fatalf("known head time should allow a new request: %+v", d)
+			}
+			p := defaultPolicy
+			p.DependabotCommands = false
+			pr.Commits[0].CommittedDate = time.Time{}
+			if d := one(t, testutil.Repo(pr), p); d.Action != ActionSkip || !d.behind {
+				t.Fatalf("disabled commands should still leave the rebase to a human: %+v", d)
+			}
+		})
+	}
+}
+
 func TestUnknownCheckStateCannotMerge(t *testing.T) {
 	for _, state := range []github.CheckState{"", "unknown"} {
 		for _, require := range []bool{true, false} {

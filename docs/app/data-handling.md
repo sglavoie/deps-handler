@@ -137,7 +137,9 @@ notice is missed. Cleanup includes recovered verdict cache files and
 still runs when agent reviews have been disabled on the server. If another
 server process holds the review files, cleanup retries on a later sweep
 after that run finishes. What is kept is the installation's ID, account name, and
-when it was added and removed, for installation activity metrics.
+when it was added and removed, for installation activity metrics, together
+with its latest observation time to prevent stale reads from restoring or
+deleting newer state across server processes.
 
 The "Dependency health" issues stay in your repositories, as GitHub
 content you own. Delete them if you like.

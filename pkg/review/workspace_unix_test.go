@@ -39,6 +39,112 @@ func TestWorkspaceUsesCurrentTokenForNetworkCommands(t *testing.T) {
 	if _, err := w.output(context.Background(), bin, "fetch"); err == nil {
 		t.Fatal("empty refreshed token accepted")
 	}
+	// Local commands need neither a token nor a working token source.
+	sourceErr = errors.New("network credentials unavailable")
+	for _, local := range []*Workspace{w, {Token: "static-token"}} {
+		for _, command := range []string{"init", "remote", "rev-parse", "checkout", "clean"} {
+			out, err := local.output(context.Background(), bin, command)
+			if err != nil || out != "" {
+				t.Errorf("local %s received credentials or fetched a token: %q, %v", command, out, err)
+			}
+		}
+	}
+}
+
+func TestWorkspaceDoesNotRunConfiguredFilters(t *testing.T) {
+	origin, _ := gitOrigin(t)
+	if err := os.WriteFile(filepath.Join(origin, ".gitattributes"), []byte("go.mod filter=audit\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git := func(t *testing.T, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", origin, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git(t, "add", ".gitattributes")
+	git(t, "commit", "-qm", "add filter attribute")
+	head := git(t, "rev-parse", "HEAD")
+	git(t, "update-ref", "refs/pull/7/head", head)
+	for _, source := range []string{"global", "system"} {
+		for _, driver := range []string{"smudge", "process"} {
+			t.Run(source+"/"+driver, func(t *testing.T) {
+				dir := t.TempDir()
+				marker, script := filepath.Join(dir, "filter-ran"), filepath.Join(dir, "filter")
+				filter := "cat"
+				if driver == "smudge" {
+					filter = "sed 's/module x/module filtered/'"
+				}
+				if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s' \"$GIT_CONFIG_VALUE_0\" > '"+marker+"'\n"+filter+"\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				cfg := filepath.Join(dir, "gitconfig")
+				git(t, "config", "--file", cfg, "filter.audit."+driver, "'"+script+"'")
+				git(t, "config", "--file", cfg, "filter.audit.clean", "cat")
+				git(t, "config", "--file", cfg, "filter.audit.required", "true")
+				if source == "global" {
+					t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+				} else {
+					t.Setenv("GIT_CONFIG_SYSTEM", cfg)
+					t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
+				}
+				w := &Workspace{Root: t.TempDir(), Token: "audit-token", URL: func(string, string) string { return origin }}
+				checkout, err := w.Checkout(context.Background(), "o", "r", 7, head)
+				if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+					t.Fatalf("%s filter ran outside the reviewer sandbox: %v", source, statErr)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := read(t, filepath.Join(checkout, "go.mod")); got != "module x\n" {
+					t.Fatalf("review checkout content was transformed: %q", got)
+				}
+				if driver == "smudge" {
+					// Simulate the cached checkout an earlier version left
+					// after applying the user's filter to this same head.
+					if err := os.Remove(filepath.Join(checkout, "go.mod")); err != nil {
+						t.Fatal(err)
+					}
+					cmd := exec.Command("git", "-C", checkout, "checkout-index", "--force", "--all", "--index")
+					if out, err := cmd.CombinedOutput(); err != nil {
+						t.Fatalf("seed previously filtered checkout: %v\n%s", err, out)
+					}
+					if got := read(t, filepath.Join(checkout, "go.mod")); got != "module filtered\n" {
+						t.Fatalf("fixture did not apply its filter: %q", got)
+					}
+					if err := os.Remove(marker); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := w.Checkout(context.Background(), "o", "r", 7, head); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := os.Stat(marker); !os.IsNotExist(err) {
+						t.Fatalf("filter ran while reusing checkout: %v", err)
+					}
+					if got := read(t, filepath.Join(checkout, "go.mod")); got != "module x\n" {
+						t.Fatalf("reused checkout retained filtered content: %q", got)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestWorkspaceFetchKeepsUserNetworkConfiguration(t *testing.T) {
+	origin, head := gitOrigin(t)
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	cmd := exec.Command("git", "config", "--file", global, "url."+origin+".insteadOf", "https://github.com/o/r.git")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("configure URL rewrite: %v\n%s", err, out)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	w := &Workspace{Root: t.TempDir()}
+	if _, err := w.Checkout(context.Background(), "o", "r", 7, head); err != nil {
+		t.Fatalf("fetch did not retain the user's network configuration: %v", err)
+	}
 }
 
 func TestWorkspaceCheckoutIsPrivate(t *testing.T) {

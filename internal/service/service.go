@@ -69,11 +69,8 @@ type installationGate struct {
 	write sync.Mutex
 	// The cooldown survives individual repository runs and covers both
 	// engine writes and the issue client's requests.
-	rateMu  sync.Mutex
-	retryAt time.Time
-	// lastEvent is the latest installation-state observation applied by
-	// this server. A slower API read must not undo it.
-	lastEvent    time.Time // guarded by write
+	rateMu       sync.Mutex
+	retryAt      time.Time
 	activeMu     sync.Mutex
 	activeRepo   string
 	activeCancel context.CancelFunc
@@ -122,15 +119,7 @@ func (s *Service) gate(id int64) *installationGate {
 }
 
 func (s *Service) InstallationAdded(ctx context.Context, id int64, account string) error {
-	g := s.gate(id)
-	g.write.Lock()
-	defer g.write.Unlock()
-	at := time.Now()
-	if err := s.Store.InstallationAdded(ctx, id, account, at); err != nil {
-		return err
-	}
-	g.lastEvent = at
-	return nil
+	return s.installationAddedAt(ctx, id, account, time.Now())
 }
 
 // SyncInstallationWebhook applies GitHub's current installation state
@@ -157,32 +146,24 @@ func (s *Service) SyncInstallationWebhook(ctx context.Context, id int64) error {
 }
 
 func (s *Service) installationAddedAt(ctx context.Context, id int64, account string, observedAt time.Time) error {
-	g := s.gate(id)
-	g.write.Lock()
-	defer g.write.Unlock()
-	if g.lastEvent.After(observedAt) {
-		return nil
-	}
-	if err := s.Store.InstallationAdded(ctx, id, account, observedAt); err != nil {
-		return err
-	}
-	g.lastEvent = observedAt
-	return nil
+	_, err := s.observeInstallation(ctx, id, account, false, observedAt)
+	return err
 }
 
 func (s *Service) installationSuspendedAt(ctx context.Context, id int64, account string, observedAt time.Time) error {
+	_, err := s.observeInstallation(ctx, id, account, true, observedAt)
+	return err
+}
+
+func (s *Service) observeInstallation(ctx context.Context, id int64, account string, inactive bool, observedAt time.Time) (bool, error) {
 	g := s.gate(id)
 	g.write.Lock()
 	defer g.write.Unlock()
-	if g.lastEvent.After(observedAt) {
-		return nil
+	applied, err := s.Store.ObserveInstallation(ctx, id, account, inactive, observedAt)
+	if err == nil && applied && inactive {
+		g.stop()
 	}
-	if err := s.Store.InstallationSuspended(ctx, id, account, observedAt); err != nil {
-		return err
-	}
-	g.lastEvent = observedAt
-	g.stop()
-	return nil
+	return applied, err
 }
 
 // InstallationRemoved stops future writes and, for an uninstall, waits for
@@ -192,19 +173,8 @@ func (s *Service) InstallationRemoved(ctx context.Context, id int64, deleted boo
 }
 
 func (s *Service) installationRemovedAt(ctx context.Context, id int64, deleted bool, observedAt time.Time) error {
-	g := s.gate(id)
-	g.write.Lock()
-	if g.lastEvent.After(observedAt) {
-		g.write.Unlock()
-		return nil
-	}
-	err := s.Store.InstallationRemoved(ctx, id, observedAt)
-	if err == nil {
-		g.lastEvent = observedAt
-		g.stop()
-	}
-	g.write.Unlock()
-	if err != nil || !deleted {
+	applied, err := s.observeInstallation(ctx, id, "", true, observedAt)
+	if err != nil || !applied || !deleted {
 		return err
 	}
 	return s.forgetIfInactiveBefore(context.WithoutCancel(ctx), id, observedAt)
@@ -343,23 +313,8 @@ func (s *Service) SyncInstallations(ctx context.Context) ([]int64, error) {
 	}
 	for _, k := range known {
 		listed := slices.ContainsFunc(ins, func(in app.Installation) bool { return in.ID == k.ID })
-		g := s.gate(k.ID)
-		g.write.Lock()
-		stale := g.lastEvent.After(observedAt)
-		remove := !stale && k.RemovedAt == nil && !listed
-		if remove {
-			err = s.Store.InstallationRemoved(ctx, k.ID, observedAt)
-			if err == nil {
-				g.lastEvent = observedAt
-				g.stop()
-			}
-		}
-		g.write.Unlock()
-		if err != nil {
-			return nil, err
-		}
-		if !listed && !stale {
-			if err := s.forgetIfInactiveBefore(ctx, k.ID, observedAt); err != nil {
+		if !listed {
+			if err := s.installationRemovedAt(ctx, k.ID, true, observedAt); err != nil {
 				return nil, err
 			}
 		}
