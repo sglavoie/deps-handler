@@ -1,4 +1,4 @@
-module github.com/sglavoie/deps-merger
+module github.com/sglavoie/deps-handler
 
 go 1.27.1
 

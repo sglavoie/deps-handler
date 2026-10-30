@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/app"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/internal/app"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 func TestReviewCannotReplaceAnotherServicesCheckout(t *testing.T) {

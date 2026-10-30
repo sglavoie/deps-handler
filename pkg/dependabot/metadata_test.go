@@ -3,7 +3,7 @@ package dependabot
 import (
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/config"
 )
 
 func TestParseCommitMessageRejectsUnnamedDependency(t *testing.T) {

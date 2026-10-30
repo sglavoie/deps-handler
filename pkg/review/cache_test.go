@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/dependabot"
-	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/dependabot"
+	"github.com/sglavoie/deps-handler/pkg/policy"
 )
 
 func TestForgetExactUpdatePreservesOtherUpdates(t *testing.T) {

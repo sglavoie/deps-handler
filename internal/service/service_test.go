@@ -15,12 +15,12 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/internal/app"
-	"github.com/sglavoie/deps-merger/internal/ghfake"
-	"github.com/sglavoie/deps-merger/internal/jobs"
-	"github.com/sglavoie/deps-merger/internal/store"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/internal/app"
+	"github.com/sglavoie/deps-handler/internal/ghfake"
+	"github.com/sglavoie/deps-handler/internal/jobs"
+	"github.com/sglavoie/deps-handler/internal/store"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 const login = "dmc[bot]"
@@ -28,7 +28,7 @@ const login = "dmc[bot]"
 var t0 = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
 // pr is a clean, green Dependabot PR updating lib by a patch, as
-// deps-merger's own fixtures build it.
+// deps-handler's own fixtures build it.
 func pr(n int) github.PullRequest {
 	msg := "bump lib\n\n---\nupdated-dependencies:\n- dependency-name: lib\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>"
 	return github.PullRequest{
@@ -44,7 +44,7 @@ func pr(n int) github.PullRequest {
 	}
 }
 
-// engine is GitHub as deps-merger's engine reads and writes it, for o/r.
+// engine is GitHub as deps-handler's engine reads and writes it, for o/r.
 type engine struct {
 	mu       sync.Mutex
 	prs      []github.PullRequest
@@ -186,7 +186,7 @@ func setup(t *testing.T, allowMerge bool, repoFile string, prs ...github.PullReq
 	issues := &ghfake.Issues{Repo: "o/r", Login: login}
 	e := &engine{prs: prs, files: map[string]string{}}
 	if repoFile != "" {
-		e.files["o/r:.github/deps-merger.yml"] = repoFile
+		e.files["o/r:.github/deps-handler.yml"] = repoFile
 	}
 	p := &platform{dbPath: dbPath, engine: e, issues: issues, rest: issues.Client(t)}
 	s := &Service{

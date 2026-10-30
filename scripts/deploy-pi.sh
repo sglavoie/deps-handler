@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the server and admin for the Pi and installs them there with
 # systemd (deploy/pi). Asks for the Pi's sudo password. The first time,
-# /etc/deps-merger-cloud also needs prod.env, prod.pem, tunnel.json and
+# /etc/deps-handler-cloud also needs prod.env, prod.pem, tunnel.json and
 # cloudflared.yml: see docs/app/README.md.
 #
 #   scripts/deploy-pi.sh [host]    # default host: pi

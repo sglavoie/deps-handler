@@ -20,7 +20,7 @@ import (
 // API reviews through an OpenAI-compatible chat completions endpoint: a
 // local model served by llama.cpp's llama-server, Ollama, LM Studio or
 // vLLM, or a hosted provider. Unlike the CLI agents, it runs no program:
-// the model reads the checkout only through three tools deps-merger
+// the model reads the checkout only through three tools deps-handler
 // implements, which cannot reach outside it, and sees nothing else of the
 // machine.
 type API struct {

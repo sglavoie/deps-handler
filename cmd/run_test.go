@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/testutil"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/internal/testutil"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // fakeClient serves fixed repos by name; a name missing from repos fails.
@@ -202,7 +202,7 @@ func TestRunReviewSkipsSetupWithoutAgentReview(t *testing.T) {
 	if code != 0 || !strings.Contains(stderr, "every selected repo sets agent_review: false") || !strings.Contains(out, "would merge") {
 		t.Fatalf("code %d, stderr %q:\n%s", code, stderr, out)
 	}
-	if _, err := os.Stat(filepath.Join(state, "deps-merger")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(state, "deps-handler")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("review setup ran anyway: %v", err)
 	}
 	if code, _, stderr := run("run", "-c", cfg, "--agent", "gemini"); code != 2 || !strings.Contains(stderr, `unknown agent "gemini"`) {
@@ -222,7 +222,7 @@ func TestRunFailedRepoExitsOne(t *testing.T) {
 func TestVerdictsFilterAndJSON(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
-	cache, err := review.OpenCache(verdictsPath(filepath.Join(state, "deps-merger")))
+	cache, err := review.OpenCache(verdictsPath(filepath.Join(state, "deps-handler")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestVerdictsFilterAndJSON(t *testing.T) {
 func TestVerdictsForgetCarriesOn(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
-	cache, _ := review.OpenCache(verdictsPath(filepath.Join(state, "deps-merger")))
+	cache, _ := review.OpenCache(verdictsPath(filepath.Join(state, "deps-handler")))
 	if err := cache.Put("o/a#1 lib@2.0.0", "sha", "claude", policy.Verdict{}); err != nil {
 		t.Fatal(err)
 	}

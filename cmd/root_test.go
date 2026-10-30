@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 func TestExitCode(t *testing.T) {
@@ -24,8 +24,8 @@ func TestExitCode(t *testing.T) {
 	}{
 		{nil, 0, ""},
 		{exitError{code: 1}, 1, ""},
-		{fmt.Errorf("run: %w", errInterrupted), 130, "deps-merger: interrupted\n"},
-		{fmt.Errorf("boom"), 1, "deps-merger: boom\n"},
+		{fmt.Errorf("run: %w", errInterrupted), 130, "deps-handler: interrupted\n"},
+		{fmt.Errorf("boom"), 1, "deps-handler: boom\n"},
 	} {
 		var stderr bytes.Buffer
 		if got := exitCode(c.err, &stderr); got != c.want || stderr.String() != c.stderr {
@@ -219,7 +219,7 @@ func TestVerdicts(t *testing.T) {
 	if code, out, _ := run("verdicts"); code != 0 || out != "no cached verdicts\n" {
 		t.Fatalf("empty: code %d, %q", code, out)
 	}
-	cache, err := review.OpenCache(verdictsPath(filepath.Join(state, "deps-merger")))
+	cache, err := review.OpenCache(verdictsPath(filepath.Join(state, "deps-handler")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestInitWritesExampleOnce(t *testing.T) {
 	t.Cleanup(func() { ExampleConfig = old })
 	ExampleConfig = []byte("repos:\n  - o/a\n")
 	path := filepath.Join(t.TempDir(), "sub", "config.yaml")
-	if code, out, stderr := run("init", "-c", path); code != 0 || !strings.Contains(out, "wrote "+path) || !strings.Contains(out, "`deps-merger repos -c "+path+"`") {
+	if code, out, stderr := run("init", "-c", path); code != 0 || !strings.Contains(out, "wrote "+path) || !strings.Contains(out, "`deps-handler repos -c "+path+"`") {
 		t.Fatalf("init: code %d, %q, %q", code, out, stderr)
 	}
 	if code, out, _ := run("repos", "-c", path); code != 0 || !strings.Contains(out, "o/a") {
@@ -341,7 +341,7 @@ func TestInitWritesExampleOnce(t *testing.T) {
 	if err := os.WriteFile(path, []byte("repos: [o/mine]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, stderr := run("init", "-c", path); code != 1 || !strings.Contains(stderr, "already exists") || !strings.Contains(stderr, "`deps-merger init --force -c "+path+"`") {
+	if code, _, stderr := run("init", "-c", path); code != 1 || !strings.Contains(stderr, "already exists") || !strings.Contains(stderr, "`deps-handler init --force -c "+path+"`") {
 		t.Fatalf("second init: code %d, %q", code, stderr)
 	}
 	if data, _ := os.ReadFile(path); string(data) != "repos: [o/mine]\n" {
@@ -351,10 +351,10 @@ func TestInitWritesExampleOnce(t *testing.T) {
 
 func TestShellQuote(t *testing.T) {
 	for in, want := range map[string]string{
-		"/home/me/.config/deps-merger/config.yaml": "/home/me/.config/deps-merger/config.yaml",
-		"/home/me/my configs/c.yaml":               "'/home/me/my configs/c.yaml'",
-		"it's.yaml":                                `'it'\''s.yaml'`,
-		"$HOME/c.yaml":                             "'$HOME/c.yaml'",
+		"/home/me/.config/deps-handler/config.yaml": "/home/me/.config/deps-handler/config.yaml",
+		"/home/me/my configs/c.yaml":                "'/home/me/my configs/c.yaml'",
+		"it's.yaml":                                 `'it'\''s.yaml'`,
+		"$HOME/c.yaml":                              "'$HOME/c.yaml'",
 	} {
 		if got := shellQuote(in); got != want {
 			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
@@ -437,7 +437,7 @@ func TestInitDiscoverFillsRepos(t *testing.T) {
 		t.Fatalf("repos: code %d:\n%s", code, out)
 	}
 	// The advice to replace it must discover again, not write the example.
-	if code, _, stderr := run("init", "-c", path, "--discover", "--owner", " o "); code != 1 || !strings.Contains(stderr, "`deps-merger init --force --discover --owner o -c "+path+"`") {
+	if code, _, stderr := run("init", "-c", path, "--discover", "--owner", " o "); code != 1 || !strings.Contains(stderr, "`deps-handler init --force --discover --owner o -c "+path+"`") {
 		t.Fatalf("again: code %d, stderr %q", code, stderr)
 	}
 
@@ -462,14 +462,14 @@ func TestInitFlagMistakes(t *testing.T) {
 
 func TestMissingConfigSuggestsInit(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope.yaml")
-	if _, _, stderr := run("repos", "-c", missing); !strings.Contains(stderr, "create one with `deps-merger init -c "+missing+"`") {
+	if _, _, stderr := run("repos", "-c", missing); !strings.Contains(stderr, "create one with `deps-handler init -c "+missing+"`") {
 		t.Fatalf("stderr = %q", stderr)
 	}
 }
 
 func TestEmptyConfigSaysWhereToListRepos(t *testing.T) {
 	cfg := writeConfig(t, "defaults:\n  max_update_type: patch\nrepos:\n  # - o/a\n")
-	if code, _, stderr := run("run", "-c", cfg); code != 1 || !strings.Contains(stderr, cfg+" lists no repos yet; list yours under repos:, or fill them in with `deps-merger init -c "+cfg+" --discover --force`") {
+	if code, _, stderr := run("run", "-c", cfg); code != 1 || !strings.Contains(stderr, cfg+" lists no repos yet; list yours under repos:, or fill them in with `deps-handler init -c "+cfg+" --discover --force`") {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
 }
@@ -485,7 +485,7 @@ func TestCompletesRepoAndOwner(t *testing.T) {
 }
 
 func TestCompletionWritesToOutput(t *testing.T) {
-	if code, out, stderr := run("completion", "bash"); code != 0 || !strings.Contains(out, "bash completion V2 for deps-merger") {
+	if code, out, stderr := run("completion", "bash"); code != 0 || !strings.Contains(out, "bash completion V2 for deps-handler") {
 		t.Fatalf("code %d, stderr %q, output starts %.60q", code, stderr, out)
 	}
 }

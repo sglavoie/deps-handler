@@ -59,7 +59,7 @@ func NewLocalWorkspace(ctx context.Context, directory, token string) (*LocalWork
 	if err != nil {
 		return nil, err
 	}
-	release, err := Lock(filepath.Join(gitDir, "deps-merger-pr.lock"))
+	release, err := Lock(filepath.Join(gitDir, "deps-handler-pr.lock"))
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (w *LocalWorkspace) Checkout(ctx context.Context, owner, repo string, numbe
 		// Fetch into a private ref to obtain a missing PR commit or shallow history.
 		// The working tree, local branches and origin tracking refs are untouched.
 		source := fmt.Sprintf("refs/pull/%d/head", number)
-		reference := "refs/worktree/deps-merger/pr-head"
+		reference := "refs/worktree/deps-handler/pr-head"
 		if err := w.git.fetchRef(ctx, w.Directory, w.git.url(owner, repo), source, reference); err != nil {
 			return "", fmt.Errorf("fetch selected PR head to compare local history: %w", err)
 		}
@@ -140,7 +140,7 @@ func (w *LocalWorkspace) ValidateBaseBranch(ctx context.Context, base string) er
 
 // BaseReference is separate from the user's origin tracking refs, including
 // when origin points at a fork and the PR targets its upstream repository.
-func (*LocalWorkspace) BaseReference(string) string { return "refs/worktree/deps-merger/base" }
+func (*LocalWorkspace) BaseReference(string) string { return "refs/worktree/deps-handler/base" }
 
 func (w *LocalWorkspace) FetchBase(ctx context.Context, dir, base string) error {
 	if dir != w.Directory {

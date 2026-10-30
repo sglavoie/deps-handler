@@ -1,20 +1,20 @@
 # The App's server, on the Pi. Settings and keys in
-# /etc/deps-merger-cloud/prod.env; its database and checkouts in
-# /var/lib/deps-merger-cloud. Installed by scripts/deploy-pi.sh.
+# /etc/deps-handler-cloud/prod.env; its database and checkouts in
+# /var/lib/deps-handler-cloud. Installed by scripts/deploy-pi.sh.
 [Unit]
-Description=deps-merger GitHub App
+Description=deps-handler GitHub App
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 User=dmc
 Group=dmc
-EnvironmentFile=/etc/deps-merger-cloud/prod.env
-Environment=HOME=/var/lib/deps-merger-cloud
-ExecStart=/opt/deps-merger-cloud/server
+EnvironmentFile=/etc/deps-handler-cloud/prod.env
+Environment=HOME=/var/lib/deps-handler-cloud
+ExecStart=/opt/deps-handler-cloud/server
 Restart=on-failure
 RestartSec=5
-StateDirectory=deps-merger-cloud
+StateDirectory=deps-handler-cloud
 StateDirectoryMode=0700
 MemoryMax=768M
 NoNewPrivileges=yes

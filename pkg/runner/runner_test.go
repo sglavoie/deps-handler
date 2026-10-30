@@ -18,12 +18,12 @@ import (
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
-	"github.com/sglavoie/deps-merger/internal/testutil"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/dependabot"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/internal/testutil"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/dependabot"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // fakeClient serves a mutable repo; merging removes the PR and, like
@@ -1534,8 +1534,8 @@ func TestRepoFilesSetThePolicy(t *testing.T) {
 	fc := &fakeClient{
 		repo: testutil.Repo(testutil.PR(1), behind),
 		files: map[string]string{
-			"o/.github:deps-merger.yml":   "dependabot_commands: false\n",
-			"o/r:.github/deps-merger.yml": "mode: report\n",
+			"o/.github:deps-handler.yml":   "dependabot_commands: false\n",
+			"o/r:.github/deps-handler.yml": "mode: report\n",
 		},
 	}
 	res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
@@ -1549,7 +1549,7 @@ func TestRepoFilesSetThePolicy(t *testing.T) {
 	if res.Policy.Mode != config.ModeReport || res.Policy.DependabotCommands {
 		t.Errorf("policy = %+v", res.Policy)
 	}
-	if want := []string{"o/.github:deps-merger.yml", ".github/deps-merger.yml"}; !slices.Equal(res.ConfigFiles, want) {
+	if want := []string{"o/.github:deps-handler.yml", ".github/deps-handler.yml"}; !slices.Equal(res.ConfigFiles, want) {
 		t.Errorf("config files = %v, want %v", res.ConfigFiles, want)
 	}
 	if res.Decisions[0].Action != policy.ActionMerge {
@@ -1559,7 +1559,7 @@ func TestRepoFilesSetThePolicy(t *testing.T) {
 
 func TestBadOrUnreadableRepoFileFailsTheRepo(t *testing.T) {
 	for name, fc := range map[string]*fakeClient{
-		"invalid":    {files: map[string]string{"o/r:.github/deps-merger.yml": "max_update_type: huge\n"}},
+		"invalid":    {files: map[string]string{"o/r:.github/deps-handler.yml": "max_update_type: huge\n"}},
 		"unreadable": {fileErr: errors.New("boom")},
 	} {
 		fc.repo = testutil.Repo(testutil.PR(1))
@@ -1596,7 +1596,7 @@ func TestRunReloadsOwnerPolicy(t *testing.T) {
 		t.Fatalf("first run: %+v", first)
 	}
 	// An owner switches to report mode between runs of a long-lived client.
-	fc.files["o/.github:deps-merger.yml"] = "mode: report\n"
+	fc.files["o/.github:deps-handler.yml"] = "mode: report\n"
 	r.Apply = true
 	second := r.Run(context.Background(), []config.Repo{repoCfg}, nil)
 	if second[0].Failed() || second[0].Policy.Mode != config.ModeReport || len(fc.merges) != 0 {

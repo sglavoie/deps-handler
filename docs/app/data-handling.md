@@ -1,6 +1,6 @@
-# deps-merger App: what it reads, stores and writes
+# deps-handler App: what it reads, stores and writes
 
-This note describes what the free deps-merger GitHub App does today. If
+This note describes what the free deps-handler GitHub App does today. If
 that changes, this note changes first and installed organizations are told.
 
 ## What it reads
@@ -14,8 +14,8 @@ Only the repositories you install it on, and only:
   - their commits' authors and signatures;
   - their check results;
   - their latest 50 comments;
-- its policy files: `.github/deps-merger.yml` on the default branch, and
-  `deps-merger.yml` in your organization's `.github` repository if the App
+- its policy files: `.github/deps-handler.yml` on the default branch, and
+  `deps-handler.yml` in your organization's `.github` repository if the App
   is installed there.
 
 Unless you turn on agent review (below), it does **not** clone your
@@ -24,7 +24,7 @@ reads is sent to an AI model or any third party service.
 
 ## Agent review, if you turn it on
 
-Off unless a repository's `.github/deps-merger.yml` says
+Off unless a repository's `.github/deps-handler.yml` says
 `agent_review: true`. Then, for an update the policy alone would not
 merge (a major, say, or one Dependabot records no size for), an AI model
 judges whether it is safe:
@@ -79,7 +79,7 @@ settings; GitHub may ask installations to accept the added event.
   repository has room, edited only when its content changes, and closed
   when there is nothing left to report.
 - **Merges, only where you turn them on** with `mode: merge` in
-  `.github/deps-merger.yml`. Without that line the App only reports. A
+  `.github/deps-handler.yml`. Without that line the App only reports. A
   merge happens only when Dependabot alone wrote the pull request, its
   checks are green and the update is within your policy (patch and minor
   by default). The App merges one pull request at a time, pinned to the
@@ -98,7 +98,7 @@ pull request reviews, or changes settings.
 ## What it stores, and where
 
 The service currently runs on a single machine operated by the
-maintainer of deps-merger, with its database on that machine; only agent
+maintainer of deps-handler, with its database on that machine; only agent
 review, when you turn it on, also uses the model's machine (above). GitHub's
 webhook deliveries reach it through a Cloudflare tunnel, which means they
 pass through Cloudflare's network on the way.

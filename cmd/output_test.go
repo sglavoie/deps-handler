@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/policy"
 )
 
 func TestCommandsReportOutputFailure(t *testing.T) {

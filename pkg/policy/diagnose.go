@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 // FindingKind classifies something in the repository worth fixing.
@@ -38,11 +38,11 @@ const (
 	// fetch returns, so some were not evaluated.
 	FindingTruncated FindingKind = "truncated"
 	// FindingReviewRequired means branch protection wants an approving
-	// review, which deps-merger never gives.
+	// review, which deps-handler never gives.
 	FindingReviewRequired FindingKind = "review-required"
 	// FindingStalledRebase is a rebase request Dependabot has not acted on.
 	FindingStalledRebase FindingKind = "stalled-rebase"
-	// FindingBehind is PRs that need a rebase deps-merger may not ask
+	// FindingBehind is PRs that need a rebase deps-handler may not ask
 	// for: dependabot_commands is off.
 	FindingBehind FindingKind = "behind"
 	// FindingAgentRejected is an update the AI agent judged unsafe.
@@ -104,7 +104,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	if !repo.CanWrite() {
 		out = append(out, Finding{
 			Kind:    FindingReadOnly,
-			Summary: lacksWrite(repo) + "; deps-merger can only report here",
+			Summary: lacksWrite(repo) + "; deps-handler can only report here",
 		})
 	}
 
@@ -210,7 +210,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	if len(needsReview) > 0 {
 		out = append(out, Finding{
 			Kind:        FindingReviewRequired,
-			Summary:     "branch protection requires an approving review, which deps-merger never gives",
+			Summary:     "branch protection requires an approving review, which deps-handler never gives",
 			PRs:         needsReview,
 			Suggestions: []string{"approve these PRs, or let Dependabot PRs merge without review"},
 		})
@@ -218,7 +218,7 @@ func Diagnose(repo *github.Repo, p config.Policy, decisions []Decision) []Findin
 	if len(behind) > 0 {
 		out = append(out, Finding{
 			Kind:        FindingBehind,
-			Summary:     "behind the base branch, which must be up to date to merge, and deps-merger posts no Dependabot commands here (dependabot_commands: false)",
+			Summary:     "behind the base branch, which must be up to date to merge, and deps-handler posts no Dependabot commands here (dependabot_commands: false)",
 			PRs:         behind,
 			Suggestions: []string{fmt.Sprintf("comment %s on one at a time: each merge puts the others behind again", RebaseCommand)},
 		})

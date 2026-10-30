@@ -1,8 +1,8 @@
 // Command hook points the App's webhook at a URL, with the secret the
 // server checks deliveries against:
 //
-//	set -a; . ~/.config/deps-merger-cloud/dev.env; set +a
-//	go run ./cmd/hook https://deps-merger.example.com/webhook
+//	set -a; . ~/.config/deps-handler-cloud/dev.env; set +a
+//	go run ./cmd/hook https://deps-handler.example.com/webhook
 //	go run ./cmd/hook deliveries   # the latest deliveries and their status
 //
 // It reads DMC_APP_ID, DMC_PRIVATE_KEY or DMC_PRIVATE_KEY_FILE, and
@@ -18,7 +18,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/sglavoie/deps-merger/internal/app"
+	"github.com/sglavoie/deps-handler/internal/app"
 )
 
 func main() {

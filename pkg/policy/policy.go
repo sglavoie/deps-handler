@@ -1,4 +1,4 @@
-// Package policy decides, without side effects, what deps-merger should do
+// Package policy decides, without side effects, what deps-handler should do
 // with each Dependabot pull request and what the repository needs fixing.
 package policy
 
@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/dependabot"
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/dependabot"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
-// Action is what deps-merger does with a pull request.
+// Action is what deps-handler does with a pull request.
 type Action string
 
 const (

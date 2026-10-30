@@ -2,4 +2,4 @@
 # cmd/admin against the Pi's database, as the service's user:
 #   sudo dmc-admin metrics
 set -eu
-exec setpriv --reuid=dmc --regid=dmc --init-groups --reset-env sh -c 'set -a; . /etc/deps-merger-cloud/prod.env; set +a; exec /opt/deps-merger-cloud/admin "$@"' dmc-admin "$@"
+exec setpriv --reuid=dmc --regid=dmc --init-groups --reset-env sh -c 'set -a; . /etc/deps-handler-cloud/prod.env; set +a; exec /opt/deps-handler-cloud/admin "$@"' dmc-admin "$@"

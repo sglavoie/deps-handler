@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 type testClient struct {
@@ -401,14 +401,14 @@ func TestRepairReportsSpecificConcurrentChanges(t *testing.T) {
 
 type customBaseWorkspace struct{ testWorkspace }
 
-func (*customBaseWorkspace) BaseReference(string) string { return "refs/deps-merger/base" }
+func (*customBaseWorkspace) BaseReference(string) string { return "refs/deps-handler/base" }
 func TestRepairAgentUsesSelectedWorkspaceBaseReference(t *testing.T) {
 	p := snapshot(github.CheckFailed)
 	s, _, agent, _ := service(p)
 	s.Workspace = &customBaseWorkspace{}
 	agent.err = errors.New("stop after checking prompt")
 	_, _ = s.Fix(context.Background(), p.Target, "")
-	if !strings.Contains(agent.prompt, "base branch is available as refs/deps-merger/base") {
+	if !strings.Contains(agent.prompt, "base branch is available as refs/deps-handler/base") {
 		t.Fatal(agent.prompt)
 	}
 }

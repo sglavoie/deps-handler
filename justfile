@@ -1,12 +1,12 @@
-# deps-merger - merge safe Dependabot PRs
+# deps-handler - merge safe Dependabot PRs
 
-binary_name := "deps-merger"
+binary_name := "deps-handler"
 install_dir := env("HOME") / ".local/bin"
 
 version := env("VERSION", "dev")
 git_commit := `git rev-parse --short HEAD 2>/dev/null || echo "unknown"`
 build_time := `date -u '+%Y-%m-%dT%H:%M:%SZ'`
-ldflags := "-ldflags \"-X github.com/sglavoie/deps-merger/cmd.Version=" + version + " -X github.com/sglavoie/deps-merger/cmd.GitCommit=" + git_commit + " -X github.com/sglavoie/deps-merger/cmd.BuildTime=" + build_time + "\""
+ldflags := "-ldflags \"-X github.com/sglavoie/deps-handler/cmd.Version=" + version + " -X github.com/sglavoie/deps-handler/cmd.GitCommit=" + git_commit + " -X github.com/sglavoie/deps-handler/cmd.BuildTime=" + build_time + "\""
 
 # Show available recipes
 help:
@@ -61,7 +61,7 @@ release bump:
         exit 1
     fi
     echo "Pushed $tag. GitHub Actions will run CI and publish the release:"
-    echo "https://github.com/sglavoie/deps-merger/actions/workflows/release.yml"
+    echo "https://github.com/sglavoie/deps-handler/actions/workflows/release.yml"
 
 # Run tests
 test:

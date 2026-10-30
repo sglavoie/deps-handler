@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/jobs"
+	"github.com/sglavoie/deps-handler/internal/jobs"
 )
 
 // AppendJob commits an event before its webhook is acknowledged.

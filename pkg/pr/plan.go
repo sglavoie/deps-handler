@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 // MaxPlanBytes bounds a saved handoff passed to the agent.

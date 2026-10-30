@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/testutil"
-	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-handler/internal/testutil"
+	"github.com/sglavoie/deps-handler/pkg/config"
 )
 
 func TestRepoSetupUsesResolvedPolicyOnce(t *testing.T) {
 	c := &fakeClient{repo: testutil.Repo(testutil.PR(1), testutil.PR(2)), files: map[string]string{
-		"o/.github:deps-merger.yml":   "agent_review: true\n",
-		"o/r:.github/deps-merger.yml": "agent_review: false\n",
+		"o/.github:deps-handler.yml":   "agent_review: true\n",
+		"o/r:.github/deps-handler.yml": "agent_review: false\n",
 	}}
 	calls := 0
 	res := newRunner(c, true).RunRepoWithSetup(context.Background(), config.NewRepo("o", "r", config.Builtin), func(rc config.Repo) error {

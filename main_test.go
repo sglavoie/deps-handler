@@ -7,11 +7,11 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/config"
 )
 
 // The example init writes lists no repos, so that no run reaches the
-// example's, and is a config deps-merger accepts once they are filled in.
+// example's, and is a config deps-handler accepts once they are filled in.
 func TestExampleConfigParses(t *testing.T) {
 	if _, err := config.Parse(exampleConfig); !errors.Is(err, config.ErrNoRepos) {
 		t.Fatalf("example as written: err = %v, want ErrNoRepos", err)

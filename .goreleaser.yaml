@@ -1,15 +1,17 @@
 # Builds release binaries when a v* tag is pushed (.github/workflows/release.yml).
 # Check locally with `goreleaser check` and `goreleaser release --snapshot --clean`.
 version: 2
+project_name: deps-handler
 
 before:
   hooks:
     - go mod tidy -diff
     # Shell completions, shipped in the archives and installed by the cask.
-    - sh -c 'rm -rf completions && mkdir completions && for sh in bash zsh fish; do go run . completion "$sh" > "completions/deps-merger.$sh"; done'
+    - sh -c 'rm -rf completions && mkdir completions && for sh in bash zsh fish; do go run . completion "$sh" > "completions/deps-handler.$sh"; done'
 
 builds:
-  - env:
+  - binary: deps-handler
+    env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
@@ -17,9 +19,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/sglavoie/deps-merger/cmd.Version={{ .Version }}
-      - -X github.com/sglavoie/deps-merger/cmd.GitCommit={{ .ShortCommit }}
-      - -X github.com/sglavoie/deps-merger/cmd.BuildTime={{ .Date }}
+      - -X github.com/sglavoie/deps-handler/cmd.Version={{ .Version }}
+      - -X github.com/sglavoie/deps-handler/cmd.GitCommit={{ .ShortCommit }}
+      - -X github.com/sglavoie/deps-handler/cmd.BuildTime={{ .Date }}
 
 archives:
   - formats: [tar.gz]
@@ -45,20 +47,21 @@ changelog:
       - "^chore(\\(.*\\))?:"
 
 homebrew_casks:
-  - repository:
+  - name: deps-handler
+    repository:
       owner: sglavoie
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Casks
-    homepage: https://github.com/sglavoie/deps-merger
+    homepage: https://github.com/sglavoie/deps-handler
     description: Merge safe Dependabot pull requests across your repositories
     license: MIT
     dependencies:
       - formula: gh
     completions:
-      bash: completions/deps-merger.bash
-      zsh: completions/deps-merger.zsh
-      fish: completions/deps-merger.fish
+      bash: completions/deps-handler.bash
+      zsh: completions/deps-handler.zsh
+      fish: completions/deps-handler.fish
     hooks:
       post:
         # The binaries are not notarized: let macOS run them.
@@ -66,5 +69,5 @@ homebrew_casks:
         # deprecated postflight, which warns on every install.
         install_steps: |
           on_macos do
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/deps-merger"]
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/deps-handler"]
           end

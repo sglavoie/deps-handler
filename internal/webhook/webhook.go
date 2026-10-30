@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/internal/jobs"
+	"github.com/sglavoie/deps-handler/internal/jobs"
 )
 
 // maxBody is the largest payload GitHub sends.

@@ -1,4 +1,4 @@
-// Package config loads the list of repositories deps-merger handles and the
+// Package config loads the list of repositories deps-handler handles and the
 // merge policy that applies to each of them.
 package config
 
@@ -72,7 +72,7 @@ type Policy struct {
 	// not merge (over max_update_type, or of unknown size) when a run asks
 	// for agent reviews.
 	AgentReview bool `json:"agent_review"`
-	// DependabotCommands lets deps-merger comment @dependabot rebase on a
+	// DependabotCommands lets deps-handler comment @dependabot rebase on a
 	// PR that is behind. Dependabot takes commands only from users with
 	// push access, not from a GitHub App or GITHUB_TOKEN: without it, such
 	// a PR is left for a human to rebase.
@@ -370,45 +370,45 @@ var Builtin = Policy{MergeMethod: "squash", MaxUpdateType: UpdateMinor, RequireC
 
 // exampleURL is the annotated example config, which a `go install` leaves
 // no copy of.
-const exampleURL = "https://github.com/sglavoie/deps-merger/blob/main/config.example.yaml"
+const exampleURL = "https://github.com/sglavoie/deps-handler/blob/main/config.example.yaml"
 
-// DefaultPath returns $XDG_CONFIG_HOME/deps-merger/config.yaml, falling back
-// to ~/.config/deps-merger/config.yaml.
+// DefaultPath returns $XDG_CONFIG_HOME/deps-handler/config.yaml, falling back
+// to ~/.config/deps-handler/config.yaml.
 func DefaultPath() (string, error) {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "deps-merger", "config.yaml"), nil
+		return filepath.Join(dir, "deps-handler", "config.yaml"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "deps-merger", "config.yaml"), nil
+	return filepath.Join(home, ".config", "deps-handler", "config.yaml"), nil
 }
 
-// StateDir returns $XDG_STATE_HOME/deps-merger, falling back to
-// ~/.local/state/deps-merger.
+// StateDir returns $XDG_STATE_HOME/deps-handler, falling back to
+// ~/.local/state/deps-handler.
 func StateDir() (string, error) {
 	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
-		return filepath.Join(dir, "deps-merger"), nil
+		return filepath.Join(dir, "deps-handler"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "deps-merger"), nil
+	return filepath.Join(home, ".local", "state", "deps-handler"), nil
 }
 
-// CacheDir returns $XDG_CACHE_HOME/deps-merger, falling back to
-// ~/.cache/deps-merger.
+// CacheDir returns $XDG_CACHE_HOME/deps-handler, falling back to
+// ~/.cache/deps-handler.
 func CacheDir() (string, error) {
 	if dir := os.Getenv("XDG_CACHE_HOME"); dir != "" {
-		return filepath.Join(dir, "deps-merger"), nil
+		return filepath.Join(dir, "deps-handler"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".cache", "deps-merger"), nil
+	return filepath.Join(home, ".cache", "deps-handler"), nil
 }
 
 // ErrNoRepos is a config that lists no repository, as the example init
@@ -657,7 +657,7 @@ func checkAPI(a API, used bool) error {
 
 // expandHome replaces a leading ~ with the home directory, as a shell
 // would for a path written in the config. Any other path must be absolute:
-// a relative one would depend on where deps-merger runs from, which under
+// a relative one would depend on where deps-handler runs from, which under
 // cron is rarely where the config is.
 func expandHome(field, path string) (string, error) {
 	if path == "" {
@@ -742,9 +742,9 @@ func (c *Config) Filter(only, owners []string, includeSkipped bool) ([]Repo, err
 // branch. OrgFile, in the owner's .github repository (OrgRepo), holds
 // policy for every repository of the owner.
 const (
-	RepoFile = ".github/deps-merger.yml"
+	RepoFile = ".github/deps-handler.yml"
 	OrgRepo  = ".github"
-	OrgFile  = "deps-merger.yml"
+	OrgFile  = "deps-handler.yml"
 )
 
 // WithFiles returns r with the policy fields set in its owner's OrgFile

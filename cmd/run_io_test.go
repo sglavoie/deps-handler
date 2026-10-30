@@ -7,7 +7,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 type cancellingClient struct {

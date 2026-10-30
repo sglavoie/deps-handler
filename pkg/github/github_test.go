@@ -1005,7 +1005,7 @@ func TestNewWithToken(t *testing.T) {
 	}
 	// An explicit github.com token is independent of gh's selected host.
 	t.Setenv("GH_HOST", "github.example.com")
-	rec := &authRecorder{canned: canned(`{"data": {"viewer": {"login": "deps-merger[bot]"}}}`)}
+	rec := &authRecorder{canned: canned(`{"data": {"viewer": {"login": "deps-handler[bot]"}}}`)}
 	orig := http.DefaultTransport
 	http.DefaultTransport = rec
 	defer func() { http.DefaultTransport = orig }()
@@ -1017,8 +1017,8 @@ func TestNewWithToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if login != "deps-merger[bot]" {
-		t.Errorf("Viewer = %q, want deps-merger[bot]", login)
+	if login != "deps-handler[bot]" {
+		t.Errorf("Viewer = %q, want deps-handler[bot]", login)
 	}
 	if got := rec.header.Get("Authorization"); got != "token ghs_install" {
 		t.Errorf("Authorization = %q, want token ghs_install", got)
@@ -1211,7 +1211,7 @@ func TestFileText(t *testing.T) {
 		{name: "directory", body: `{"data": {"repository": {"object": {"__typename": "Tree"}}}}`, err: "not a file"},
 		{name: "binary", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": null, "isBinary": true}}}}`, err: "not a text file"},
 		{name: "truncated", body: `{"data": {"repository": {"object": {"__typename": "Blob", "text": "x", "isTruncated": true}}}}`, err: "too large"},
-		{name: "other error", body: `{"data": null, "errors": [{"type": "FORBIDDEN", "message": "no"}]}`, err: "o/r:.github/deps-merger.yml"},
+		{name: "other error", body: `{"data": null, "errors": [{"type": "FORBIDDEN", "message": "no"}]}`, err: "o/r:.github/deps-handler.yml"},
 		{name: "missing nested object", body: `{"data": {"repository": {"object": null}}, "errors": [{"type": "NOT_FOUND", "path": ["repository", "object"], "message": "object unavailable"}]}`, err: "object unavailable"},
 		{name: "missing repository with another error", body: `{"data": null, "errors": [{"type": "NOT_FOUND", "path": ["repository"], "message": "missing repository"}, {"type": "RATE_LIMITED", "message": "rate limit"}]}`, err: "rate limit"},
 	} {
@@ -1219,7 +1219,7 @@ func TestFileText(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := (&client{gql: gql}).FileText(context.Background(), "o", "r", ".github/deps-merger.yml")
+		got, err := (&client{gql: gql}).FileText(context.Background(), "o", "r", ".github/deps-handler.yml")
 		switch {
 		case c.err != "":
 			if err == nil || !strings.Contains(err.Error(), c.err) {

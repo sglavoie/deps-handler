@@ -34,7 +34,7 @@ func listingApp(t *testing.T, path string, pages []string, links []int) *App {
 		var body string
 		switch r.URL.Path {
 		case "/app":
-			body = `{"slug":"deps-merger"}`
+			body = `{"slug":"deps-handler"}`
 		case "/app/installations/7/access_tokens":
 			body = fmt.Sprintf(`{"token":"test","expires_at":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339))
 		case path:
@@ -205,7 +205,7 @@ func TestEngineRefreshesInstallationToken(t *testing.T) {
 		var body string
 		switch r.URL.Path {
 		case "/app":
-			body = `{"slug":"deps-merger","events":["pull_request"]}`
+			body = `{"slug":"deps-handler","events":["pull_request"]}`
 		case "/app/installations/7/access_tokens":
 			minted++
 			token, expiry := "near-expiry", time.Now().Add(30*time.Second)
@@ -222,7 +222,7 @@ func TestEngineRefreshesInstallationToken(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "token fresh" {
 				t.Errorf("engine kept an expiring token: Authorization = %q", got)
 			}
-			body = `{"data":{"viewer":{"login":"deps-merger[bot]"}}}`
+			body = `{"data":{"viewer":{"login":"deps-handler[bot]"}}}`
 		default:
 			return nil, fmt.Errorf("unexpected request: %s", r.URL)
 		}

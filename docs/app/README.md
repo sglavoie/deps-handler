@@ -1,9 +1,9 @@
 # GitHub App
 
-The free deps-merger GitHub App uses the same policy and runner as the CLI
+The free deps-handler GitHub App uses the same policy and runner as the CLI
 in this repository. It opens a Dependency health issue for each installed
 repository. Merging is off by default. A repository opts in with
-`.github/deps-merger.yml` on its default branch:
+`.github/deps-handler.yml` on its default branch:
 
 ```yaml
 mode: merge
@@ -34,7 +34,7 @@ agent reviews, whose checkouts run inside the container.
 
 Register a public App with `go run ./cmd/register -public -name <name>`.
 The command saves its App ID and private key under
-`~/.config/deps-merger-cloud/`. Keep those files private. For a private
+`~/.config/deps-handler-cloud/`. Keep those files private. For a private
 development App, run `go run ./cmd/register`. See
 [onboarding](onboarding.md) for repository installation instructions and
 [data handling](data-handling.md) for permissions and retention.
@@ -75,9 +75,9 @@ or `just app-local codex`. Those modes run `claude -p` or `codex exec`
 for reviews and do not need a model endpoint or API key. The repository
 still needs `agent_review: true` to request reviews. The recipe calls
 `./scripts/run-local.sh`, which loads
-`~/.config/deps-merger-cloud/dev.env`, starts the server, and starts
+`~/.config/deps-handler-cloud/dev.env`, starts the server, and starts
 `cloudflared` using
-`~/.config/deps-merger-cloud/cloudflared.yml`. Set `DMC_ENV` and
+`~/.config/deps-handler-cloud/cloudflared.yml`. Set `DMC_ENV` and
 `DMC_TUNNEL_CONFIG` to use other files. Press Ctrl-C to stop both
 processes. The server sweeps installed
 repositories at startup and every four hours by default.
@@ -143,7 +143,7 @@ repository in another organization requires an App installed there. Use
 that App's environment file. For example:
 
 ```sh
-DMC_ENV="$HOME/.config/deps-merger-cloud/prod.env" just app-local codex
+DMC_ENV="$HOME/.config/deps-handler-cloud/prod.env" just app-local codex
 ```
 
 Use a separate webhook hostname and tunnel for the dev App. If the dev and
@@ -174,7 +174,7 @@ Cloudflare tunnel. `./scripts/deploy-pi.sh [host]` builds the server and
 admin for Linux arm64, copies them to the host (default `pi`), and
 restarts the services. It expects `prod.env`, `prod.pem`,
 `tunnel.json`, and `cloudflared.yml` already in
-`/etc/deps-merger-cloud/`. It does not create those secrets.
+`/etc/deps-handler-cloud/`. It does not create those secrets.
 `./scripts/serve-model.sh` is the optional local model setup used with
 that deployment. Run only one tunnel connector for the App's hostname at
 a time.

@@ -14,13 +14,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
-// EventKind is a write deps-merger performed (or tried to).
+// EventKind is a write deps-handler performed (or tried to).
 type EventKind string
 
 const (
@@ -45,7 +45,7 @@ type RepoResult struct {
 	Policy config.Policy `json:"policy"`
 	// ConfigFiles are the policy files the repository's policy was read
 	// from, besides the config: config.OrgFile in its owner's
-	// config.OrgRepo, as owner/.github:deps-merger.yml, then its own
+	// config.OrgRepo, as owner/.github:deps-handler.yml, then its own
 	// config.RepoFile.
 	ConfigFiles []string `json:"config_files"`
 	Permission  string   `json:"permission"`

@@ -21,7 +21,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/store"
+	"github.com/sglavoie/deps-handler/internal/store"
 )
 
 func main() {

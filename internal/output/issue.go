@@ -11,17 +11,20 @@ import (
 	"strings"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/report"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/report"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 // Title is the issue's title; Marker, hidden in its body, is what finds
 // it again, together with its author being the App.
 const (
 	Title  = "Dependency health"
-	Marker = "<!-- deps-merger:dependency-health -->"
+	Marker = "<!-- deps-handler:dependency-health -->"
 )
+
+// Recognize reports created before the rename so upgrades reuse their issues.
+const legacyMarker = "<!-- deps-merger:dependency-health -->"
 
 // Keep reports comfortably within GitHub's issue body limit, including
 // escaped text and the notice. A byte cap also bounds Unicode characters.
@@ -37,14 +40,14 @@ const truncatedNotice = "\n\n**Report truncated.** More results did not fit in t
 func Body(res runner.RepoResult, merging bool) string {
 	var b bytes.Buffer
 	b.WriteString(Marker + "\n")
-	b.WriteString("deps-merger reports here on this repository's Dependabot PRs. ")
+	b.WriteString("deps-handler reports here on this repository's Dependabot PRs. ")
 	switch {
 	case res.Policy.Mode != config.ModeMerge:
-		b.WriteString("It is in report mode: it changes nothing but this issue. To let it merge the PRs it finds safe, add `mode: merge` to `.github/deps-merger.yml`, where its other policy fields go too.")
+		b.WriteString("It is in report mode: it changes nothing but this issue. To let it merge the PRs it finds safe, add `mode: merge` to `.github/deps-handler.yml`, where its other policy fields go too.")
 	case merging:
-		b.WriteString("It merges the Dependabot PRs it finds safe (`mode: merge`), one at a time, and lists the rest here. Policy fields go in `.github/deps-merger.yml`.")
+		b.WriteString("It merges the Dependabot PRs it finds safe (`mode: merge`), one at a time, and lists the rest here. Policy fields go in `.github/deps-handler.yml`.")
 	default:
-		b.WriteString("`mode: merge` is set, but merging is paused or not enabled for this installation: it only reports. Policy fields go in `.github/deps-merger.yml`.")
+		b.WriteString("`mode: merge` is set, but merging is paused or not enabled for this installation: it only reports. Policy fields go in `.github/deps-handler.yml`.")
 	}
 	b.WriteString("\n\n")
 	report.Markdown(&b, merging, res)
@@ -214,7 +217,8 @@ func validateIssue(issue *gh.Issue) error {
 }
 
 func ours(issue *gh.Issue, login string) bool {
-	return !issue.IsPullRequest() && strings.EqualFold(issue.GetUser().GetLogin(), login) && strings.Contains(issue.GetBody(), Marker)
+	return !issue.IsPullRequest() && strings.EqualFold(issue.GetUser().GetLogin(), login) &&
+		(strings.Contains(issue.GetBody(), Marker) || strings.Contains(issue.GetBody(), legacyMarker))
 }
 
 func pin(ctx context.Context, c *gh.Client, nodeID string) error {

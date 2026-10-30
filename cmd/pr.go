@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/auth"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/pr"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/pr"
+	"github.com/sglavoie/deps-handler/pkg/review"
 	"github.com/spf13/cobra"
 )
 
@@ -151,7 +151,7 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 				}
 				defer release()
 			} else {
-				root, err = os.MkdirTemp("", "deps-merger-pr-")
+				root, err = os.MkdirTemp("", "deps-handler-pr-")
 				if err != nil {
 					return err
 				}

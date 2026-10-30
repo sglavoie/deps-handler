@@ -16,7 +16,7 @@ import (
 func Lock(path string) (release func(), err error) {
 	release, err = flock(path, syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
-		return nil, fmt.Errorf("another deps-merger run is reviewing updates (it holds %s)", path)
+		return nil, fmt.Errorf("another deps-handler run is reviewing updates (it holds %s)", path)
 	}
 	return release, err
 }

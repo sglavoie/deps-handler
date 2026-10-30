@@ -1,7 +1,7 @@
-# deps-merger
+# deps-handler
 
-[![CI](https://github.com/sglavoie/deps-merger/actions/workflows/ci.yml/badge.svg)](https://github.com/sglavoie/deps-merger/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sglavoie/deps-merger)](https://github.com/sglavoie/deps-merger/releases)
+[![CI](https://github.com/sglavoie/deps-handler/actions/workflows/ci.yml/badge.svg)](https://github.com/sglavoie/deps-handler/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/sglavoie/deps-handler)](https://github.com/sglavoie/deps-handler/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Merges safe Dependabot pull requests across a list of repositories and
@@ -46,7 +46,7 @@ to judge the bigger updates. Anything it can't merge is reported with the
 fix: a check broken on the base branch, an update to ignore, a review
 branch protection wants.
 
-![deps-merger merging, rebasing and reviewing Dependabot PRs across fictional repositories](docs/demo.gif)
+![deps-handler merging, rebasing and reviewing Dependabot PRs across fictional repositories](docs/demo.gif)
 
 <sub>Recorded with the `demo` build against make-believe repositories: no
 real PR was harmed. See [Try it without your repositories](#try-it-without-your-repositories).</sub>
@@ -54,12 +54,12 @@ real PR was harmed. See [Try it without your repositories](#try-it-without-your-
 ## Install
 
 ```bash
-brew install --cask sglavoie/tap/deps-merger           # macOS, Linux
-go install github.com/sglavoie/deps-merger@latest      # Go 1.27+
+brew install --cask sglavoie/tap/deps-handler           # macOS, Linux
+go install github.com/sglavoie/deps-handler@latest      # Go 1.27+
 ```
 
-Or download a binary from the [releases](https://github.com/sglavoie/deps-merger/releases).
-deps-merger needs [`gh`](https://cli.github.com) logged in (`gh auth login`)
+Or download a binary from the [releases](https://github.com/sglavoie/deps-handler/releases).
+deps-handler needs [`gh`](https://cli.github.com) logged in (`gh auth login`)
 or `GH_TOKEN` set. Agent review also needs
 [Claude Code](https://docs.claude.com/en/docs/claude-code) or
 [Codex](https://github.com/openai/codex) on `PATH`, on Linux or macOS.
@@ -71,25 +71,44 @@ review checkouts and cached verdicts assume github.com. Set
 
 The Homebrew cask installs shell completions for bash, zsh and fish,
 which complete `-r` and `--owner` with your configured repos. Otherwise,
-load `deps-merger completion bash` (or `zsh`, `fish`, `powershell`);
-`deps-merger completion --help` says how.
+load `deps-handler completion bash` (or `zsh`, `fish`, `powershell`);
+`deps-handler completion --help` says how.
+
+### Upgrading from deps-merger
+
+The command is now `deps-handler`. Stop existing runs before switching,
+and update scripts, scheduled jobs and shell completion setup to use it.
+Move the `deps-merger` directories under your XDG config, state and cache
+roots to `deps-handler` (by default `~/.config`, `~/.local/state` and
+`~/.cache`). This preserves your config, cached verdicts and checkouts.
+An explicit `--config` path still works without moving that file.
+Rename repository policy files from `.github/deps-merger.yml` to
+`.github/deps-handler.yml`, and owner policy files from `deps-merger.yml`
+to `deps-handler.yml` in the owner's `.github` repository.
+
+Hosted deployments also use `deps-handler-cloud` directories and systemd
+service names. Stop the old services before moving their config and state,
+and update paths in environment files and tunnel configuration before
+installing and starting the renamed services. The `DMC_*` environment
+variables, database format and `dmc` service account keep their existing
+names. Existing Dependency health issues are recognized and updated.
 
 ## Usage
 
 ```bash
-deps-merger init                  # write an example config, then list your repos in it
-deps-merger init --discover       # or fill it with your repos that use Dependabot
-deps-merger repos                 # effective policy per repo (--json, -r, --owner)
-deps-merger run                   # dry run: report only
-deps-merger run --apply           # merge safe PRs
-deps-merger run --open            # only repos with open Dependabot PRs
-deps-merger run -r Storefront --json  # one repo, machine-readable
-deps-merger run --markdown        # GitHub Markdown, as for an issue body
-deps-merger run --review --apply  # let an AI agent judge bigger updates too
-deps-merger pr diagnose acme/Storefront#123 > repair.md  # AI repair handoff
-deps-merger pr fix acme/Storefront#123 --agent codex    # edit, push and verify CI
-deps-merger verdicts              # the agent's cached verdicts
-deps-merger verdicts acme/Storefront --json  # one repo's, with concerns
+deps-handler init                  # write an example config, then list your repos in it
+deps-handler init --discover       # or fill it with your repos that use Dependabot
+deps-handler repos                 # effective policy per repo (--json, -r, --owner)
+deps-handler run                   # dry run: report only
+deps-handler run --apply           # merge safe PRs
+deps-handler run --open            # only repos with open Dependabot PRs
+deps-handler run -r Storefront --json  # one repo, machine-readable
+deps-handler run --markdown        # GitHub Markdown, as for an issue body
+deps-handler run --review --apply  # let an AI agent judge bigger updates too
+deps-handler pr diagnose acme/Storefront#123 > repair.md  # AI repair handoff
+deps-handler pr fix acme/Storefront#123 --agent codex    # edit, push and verify CI
+deps-handler verdicts              # the agent's cached verdicts
+deps-handler verdicts acme/Storefront --json  # one repo's, with concerns
 ```
 
 ### Diagnose or repair a specific PR
@@ -99,26 +118,26 @@ configured repositories and PRs opened by someone other than Dependabot:
 
 ```bash
 # Get a plan to paste into your next coding session; nothing is pushed.
-deps-merger pr diagnose https://github.com/acme/Storefront/pull/123 \
+deps-handler pr diagnose https://github.com/acme/Storefront/pull/123 \
   --agent codex > repair.md
 
 # Focus on a particular failure, or request structured output.
-deps-merger pr diagnose acme/Storefront#123 --focus 'Linux build failure'
-deps-merger pr diagnose acme/Storefront#123 --json
+deps-handler pr diagnose acme/Storefront#123 --focus 'Linux build failure'
+deps-handler pr diagnose acme/Storefront#123 --json
 
 # Apply a saved report (edit repair.md first if you want to refine its steps).
 # The report identifies the PR, so no PR argument is needed.
-deps-merger pr fix --plan repair.md --agent codex
+deps-handler pr fix --plan repair.md --agent codex
 
 # Or provide the PR explicitly alongside the saved plan.
-deps-merger pr fix acme/Storefront#123 --plan repair.md --agent codex
+deps-handler pr fix acme/Storefront#123 --plan repair.md --agent codex
 
 # Reuse an existing PR checkout and its installed dependencies.
-deps-merger pr fix --plan repair.md --agent codex \
+deps-handler pr fix --plan repair.md --agent codex \
   --working-directory /path/to/Storefront
 
 # Authorize a repair without an existing plan.
-deps-merger pr fix acme/Storefront#123 --agent codex \
+deps-handler pr fix acme/Storefront#123 --agent codex \
   --max-attempts 3 --wait-timeout 15m
 ```
 
@@ -149,7 +168,7 @@ If they already fix the issue, the AI validates them and the command pushes
 them without creating an empty commit. The command never resets, cleans,
 switches branches or deletes this directory; ignored dependencies such as `node_modules` are
 preserved. Successful repairs commit to its current branch (or detached HEAD)
-and push to the selected PR branch. An exclusive lock prevents two deps-merger
+and push to the selected PR branch. An exclusive lock prevents two deps-handler
 repairs from sharing the checkout. Existing remote URLs are left unchanged.
 Directory selection does not change the agent's network permissions or fix
 registry/DNS failures.
@@ -197,7 +216,7 @@ repositories held in memory. It never reaches the network or reads your
 config, token or verdicts, so `--apply` is safe to try:
 
 ```bash
-git clone https://github.com/sglavoie/deps-merger && cd deps-merger
+git clone https://github.com/sglavoie/deps-handler && cd deps-handler
 go run -tags demo . run                    # dry run
 go run -tags demo . run --review --apply   # merge, rebase, agent verdicts
 go run -tags demo . verdicts
@@ -264,7 +283,7 @@ requested, so timestamp ties do not trigger duplicate comments.
 Rebase requests recognize your login regardless of capitalization.
 
 The exact rules, and how each failure, retry, interruption and rate limit
-is reported, are in [How deps-merger behaves](docs/behaviour.md#what-counts-as-safe).
+is reported, are in [How deps-handler behaves](docs/behaviour.md#what-counts-as-safe).
 
 ## Agent review
 
@@ -274,10 +293,10 @@ bump over `max_update_type`, or one Dependabot records no semver size for
 agent judges those:
 
 ```bash
-deps-merger run --review                # dry run: review, merge nothing
-deps-merger run --review --apply
-deps-merger run --agent codex --apply   # another agent; implies --review
-deps-merger run --agent api --review --review-parallel 1   # a local model
+deps-handler run --review                # dry run: review, merge nothing
+deps-handler run --review --apply
+deps-handler run --agent codex --apply   # another agent; implies --review
+deps-handler run --agent api --review --review-parallel 1   # a local model
 ```
 
 The agent reads a shallow checkout of the PR, its release notes and its
@@ -290,7 +309,7 @@ read-only, without your customizations and without a GitHub token:
 - `api`: a model behind an OpenAI-compatible chat completions endpoint,
   such as one served locally by llama.cpp's `llama-server`, Ollama or LM
   Studio, which costs nothing per review. It runs no program: it reads
-  the checkout only through three tools deps-merger implements (list,
+  the checkout only through three tools deps-handler implements (list,
   read and search), which cannot reach outside it. With `api.tools: false`,
   file access is disabled and any tool call fails the review. API verdicts
   must be a single JSON object after any thinking block or code fence;
@@ -320,7 +339,7 @@ model provider (for `api`, wherever `api.url` points).
 [Agent review](docs/behaviour.md#agent-review) says exactly what each
 agent can reach.
 
-With `--apply`, deps-merger posts the reviewer's decision, reasoning and
+With `--apply`, deps-handler posts the reviewer's decision, reasoning and
 concerns as a PR comment before merging or leaving the reviewed PR alone.
 Cached verdicts are posted too; an identical comment by the current GitHub
 user among the PR's latest 50 comments is reused. Review failures get an
@@ -334,11 +353,11 @@ The agent never merges anything: an approved PR goes through every check
 again before it merges. Reviews run after their repository's other
 merges, four at a time (`--review-parallel`), at most 10 per run
 (`--max-reviews`). Verdicts
-are cached for 14 days in `~/.local/state/deps-merger/verdicts.json`, so a
+are cached for 14 days in `~/.local/state/deps-handler/verdicts.json`, so a
 scheduled run does not pay twice for the same update; a new version or a
 change of target branch is always reviewed again, and a rejection lasts
-only until Dependabot rebases the PR. `deps-merger verdicts` lists them and
-`deps-merger verdicts forget acme/Storefront#42` drops them. Set
+only until Dependabot rebases the PR. `deps-handler verdicts` lists them and
+`deps-handler verdicts forget acme/Storefront#42` drops them. Set
 `agent_review: false` on a repo to keep the agent out of it.
 Missing or whitespace-only dependency versions pin the verdict to the
 reviewed commit, so a changed head requires a fresh review.
@@ -377,7 +396,7 @@ Under each repo the report lists, without acting on them:
   wait but for Dependabot not recording a semver bump (a GitHub Action pinned by commit,
   a Docker digest), when no agent reviewed them;
 - **review required**: branch protection wants an approving review, which
-  deps-merger never gives;
+  deps-handler never gives;
 - **behind**: safe PRs behind a base branch that must be up to date, left
   for a human to rebase under `dependabot_commands: false` (for runs as a
   bot, whose `@dependabot` commands Dependabot ignores);
@@ -424,7 +443,7 @@ unread checks may include a passing rerun or the only check that ran.
 
 ## Scripting
 
-A dry run never writes to GitHub, so `deps-merger run` is safe to
+A dry run never writes to GitHub, so `deps-handler run` is safe to
 schedule (with `--review` it still runs the agent, and caches its
 verdicts for a later `--apply`). The exit status is:
 
@@ -457,9 +476,9 @@ color off and `CLICOLOR_FORCE=1` keeps it when piped.
 
 ## Config
 
-The config lives at `~/.config/deps-merger/config.yaml`, or under
+The config lives at `~/.config/deps-handler/config.yaml`, or under
 `$XDG_CONFIG_HOME` when that is set; `-c` names another file, and
-`deps-merger init` writes the commented
+`deps-handler init` writes the commented
 [`config.example.yaml`](config.example.yaml) there. Defaults: squash,
 patch and minor only, checks required, agent review allowed (it only runs
 with `--review`), Claude as the agent. Every policy field under
@@ -476,26 +495,26 @@ repos:
     skip: true              # left out unless named with -r
 ```
 
-`deps-merger run -r Billing` runs one repo and `--owner acme` every repo
+`deps-handler run -r Billing` runs one repo and `--owner acme` every repo
 of an owner. [Config](docs/behaviour.md#config) has every rule.
 A `skip:` field with no value (including `null` or `~`) is an error;
 use `true` or `false`, or omit the field to include the repository.
 
-A repository can also set its own policy in `.github/deps-merger.yml` on
+A repository can also set its own policy in `.github/deps-handler.yml` on
 its default branch, and an owner for all its repositories in
-`deps-merger.yml` in its `.github` repository. They take the policy
+`deps-handler.yml` in its `.github` repository. They take the policy
 fields `defaults` takes, plus `mode: report` to have the repository only
 reported on, even by `run --apply`:
 
 ```yaml
-# .github/deps-merger.yml
+# .github/deps-handler.yml
 max_update_type: patch
 mode: report
 ```
 
 The owner's file overrides your `defaults`, the repository's file
 overrides its owner's, and your entry for the repository overrides both.
-`deps-merger repos` shows your config alone; a run reads the files, and
+`deps-handler repos` shows your config alone; a run reads the files, and
 its report names those it used.
 Errors reading those files stop the repository from being processed;
 only an absent file or an unambiguously missing repository inherits policy

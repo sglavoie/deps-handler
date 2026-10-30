@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/demo"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/internal/demo"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // The demo build talks to the make-believe GitHub of package demo instead
@@ -27,8 +27,8 @@ func init() {
 	}
 	// No real token is read, even to be ignored.
 	os.Setenv("GH_TOKEN", "demo")
-	if err := os.MkdirAll(filepath.Join(dir, "deps-merger"), 0o700); err == nil {
-		_ = os.WriteFile(filepath.Join(dir, "deps-merger", "config.yaml"), []byte(demo.Config), 0o600)
+	if err := os.MkdirAll(filepath.Join(dir, "deps-handler"), 0o700); err == nil {
+		_ = os.WriteFile(filepath.Join(dir, "deps-handler", "config.yaml"), []byte(demo.Config), 0o600)
 	}
 	client := demo.NewClient()
 	newClient = func() (github.Client, error) { return client, nil }
@@ -49,18 +49,18 @@ func init() {
 	}
 }
 
-// demoDir is deps-merger-demo in the user's own cache directory, which no
+// demoDir is deps-handler-demo in the user's own cache directory, which no
 // other user can create first, as they could one in a shared temp dir. A
 // fresh temp dir stands in when there is no cache directory, so the demo
 // still runs, though it then forgets its verdicts between runs.
 func demoDir() string {
 	if cache, err := os.UserCacheDir(); err == nil {
-		dir := filepath.Join(cache, "deps-merger-demo")
+		dir := filepath.Join(cache, "deps-handler-demo")
 		if os.MkdirAll(dir, 0o700) == nil {
 			return dir
 		}
 	}
-	dir, err := os.MkdirTemp("", "deps-merger-demo-")
+	dir, err := os.MkdirTemp("", "deps-handler-demo-")
 	if err != nil {
 		panic("demo: no directory to keep its config in: " + err.Error())
 	}

@@ -1,6 +1,6 @@
-# How deps-merger behaves
+# How deps-handler behaves
 
-The [README](../README.md) says what deps-merger does; this page holds the
+The [README](../README.md) says what deps-handler does; this page holds the
 details: every rule a PR must pass, how failures and rate limits are
 handled, what the agent can and cannot see, the exit status and JSON
 output, and every config rule.
@@ -82,7 +82,7 @@ finishes.
 
 Dependabot takes commands only from users with push access, not from a
 GitHub App or `GITHUB_TOKEN`. With `dependabot_commands: false`,
-deps-merger posts none: a safe PR that is `BEHIND` is skipped, `rebase
+deps-handler posts none: a safe PR that is `BEHIND` is skipped, `rebase
 left to a human`, and listed under a `behind` finding suggesting
 `@dependabot rebase`. Nothing queues behind it, and a major that is behind
 is still reported as held for its size. A PR that conflicts needs no
@@ -146,17 +146,17 @@ Some updates are safe in every way the policy can check but their size:
 a bump over `max_update_type` (a major one, or a minor one under
 `max_update_type: patch`), or an update whose size Dependabot does not
 record as semver (a GitHub Action pinned by commit, a Docker
-digest). With `--review`, deps-merger asks an AI agent about those, once
+digest). With `--review`, deps-handler asks an AI agent about those, once
 everything else about them would let them merge or rebase:
 
 ```bash
-deps-merger run --review                # dry run: review, merge nothing
-deps-merger run --review --apply
-deps-merger run --agent codex --apply   # another agent; implies --review
+deps-handler run --review                # dry run: review, merge nothing
+deps-handler run --review --apply
+deps-handler run --agent codex --apply   # another agent; implies --review
 ```
 
 The agent gets a shallow checkout of the PR's head commit (kept under
-`~/.cache/deps-merger/checkouts`, readable by you alone, and reused), the PR description with
+`~/.cache/deps-handler/checkouts`, readable by you alone, and reused), the PR description with
 Dependabot's release notes and changelog, and the diff. It looks for
 breaking changes upstream and how the repository uses what changed, then
 answers `approve` or `reject` with its reasons. It runs read-only:
@@ -175,7 +175,7 @@ answers `approve` or `reject` with its reasons. It runs read-only:
 - `api`: requests to an OpenAI-compatible chat completions endpoint
   (`api.url`, such as `http://127.0.0.1:8081/v1` for a local
   `llama-server`), with no program run. The model gets the prompt and,
-  unless `api.tools: false`, three tools deps-merger implements:
+  unless `api.tools: false`, three tools deps-handler implements:
   `list_files`, `read_file` (at most 400 lines at a time) and `search` (a
   regular expression, at most 200 matching lines). Every path they take
   is resolved, symlinks included, and refused unless it stays inside the
@@ -211,9 +211,9 @@ checkout, though: Codex's sandbox lets it read any file your user can, such as
 `~/.config/gh/hosts.yml` (where `gh` keeps its token when no keyring
 holds it) or SSH keys, and whatever an agent reads goes to its model
 provider. On Linux that includes the environment of your other processes
-under `/proc`: deps-merger's own, with `GH_TOKEN` or `GITHUB_TOKEN` if
+under `/proc`: deps-handler's own, with `GH_TOKEN` or `GITHUB_TOKEN` if
 you set one, and that of a git fetching another PR's checkout meanwhile
-(reviews run four at a time by default), which holds the token deps-merger fetches
+(reviews run four at a time by default), which holds the token deps-handler fetches
 with. Something that looks like a GitHub token (`ghp_`, `gho_`,
 `ghu_`, `ghs_`, `ghr_`, `github_pat_`) in the agent's summary or
 concerns is replaced by `[redacted token]` before it is cached or
@@ -231,7 +231,7 @@ that a newer run of the same check in the same workflow, for the same
 event, superseded. An agent is killed along
 with every process it started when its review times out or the run is
 interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`; on Linux and FreeBSD the
-kernel also kills the agent should deps-merger die without the chance),
+kernel also kills the agent should deps-handler die without the chance),
 and whatever it left running is killed when it finishes. A fetch that
 fails is tried once more; a checkout that a killed review left broken is
 repaired, or made again from scratch, but not one that only failed to
@@ -249,7 +249,7 @@ would point git at another repository (such as `$HOME` under a dotfiles
 setup) or add settings from outside your config files
 (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`) are removed from its
 environment and the agent's, and the GitHub token variables from both;
-only `fetch` and `ls-remote` receive the token deps-merger fetches with.
+only `fetch` and `ls-remote` receive the token deps-handler fetches with.
 It runs without a terminal and, unless you set `GIT_SSH_COMMAND` or
 `GIT_SSH`, with
 `GIT_SSH_COMMAND="ssh -o BatchMode=yes"`, which takes precedence over a
@@ -281,7 +281,7 @@ token, so they cannot fake their own end. It says the same of files in the
 checkout that come from the dependency, such as vendored code and
 lockfiles.
 
-In apply mode, deps-merger posts the verdict's reviewer, summary and
+In apply mode, deps-handler posts the verdict's reviewer, summary and
 concerns (including breaking changes) on the PR before acting on it.
 Approvals say merging still depends on policy checks; rejections explain
 why the PR is left for a human. A failed review posts its error instead.
@@ -309,7 +309,7 @@ Reviews run after their repository's other merges, four at a time
 (`--review-parallel`), at most `--max-reviews` (default 10) per run. A
 repository reviews its PRs one after another, so more reviews than
 `--parallel` never run at once. Verdicts are kept for 14 days in
-`~/.local/state/deps-merger/verdicts.json`, keyed by the PR (ignoring the
+`~/.local/state/deps-handler/verdicts.json`, keyed by the PR (ignoring the
 case of `owner/name`), the target branch (case-sensitive), and the versions
 it moves to: a new version or a change of target branch is always reviewed
 again. Keys carry a `v3` marker and quote each dependency name and version,
@@ -328,12 +328,12 @@ that cannot be read is moved aside to `verdicts.json.corrupt-TIMESTAMP`
 (with `-2`, `-3`… added should one be found twice in a second),
 with a warning, and the cache starts empty, whether that is found as the
 run starts (the warning then comes with the first repository's result,
-which `--open` does not hide) or when it saves a verdict. `deps-merger verdicts` lists
+which `--open` does not hide) or when it saves a verdict. `deps-handler verdicts` lists
 them, optionally only for some repositories or PRs (exiting 1 when one
 matches nothing), with `--json` for their concerns; its `HEAD` column
 (`head_oid` in `--json`) is the commit a rejection, or an approval of an
 update without versions, holds for, and `any` for other approvals; an
-expired verdict is neither listed nor forgotten. `deps-merger verdicts forget acme/Storefront#42` (or a whole
+expired verdict is neither listed nor forgotten. `deps-handler verdicts forget acme/Storefront#42` (or a whole
 `owner/name`, or one update as `verdicts` lists it) has those updates
 reviewed again on the next run; anything else is a usage error (exit 2).
 An update target matches the full key exactly, including the case of its
@@ -341,8 +341,8 @@ branch, dependencies and versions; only the repository name ignores case.
 Both complete the repositories and PRs that have verdicts. Only one
 `--review` run works at a time: a second one, such as an overlapping cron
 job, fails at once rather than share the checkouts. The checkout lock lives
-beside them at `$XDG_CACHE_HOME/deps-merger/checkouts.lock` (by default
-`~/.cache/deps-merger/checkouts.lock`), so separate state directories cannot
+beside them at `$XDG_CACHE_HOME/deps-handler/checkouts.lock` (by default
+`~/.cache/deps-handler/checkouts.lock`), so separate state directories cannot
 allow concurrent reviews of the same checkout. The state directory's
 `review.lock` is also held for compatibility with earlier versions.
 Each `--review` run
@@ -351,7 +351,7 @@ used for 30 days, so runs with different configs can share them; one it
 cannot remove is reported as a warning, and the run goes on.
 
 Agent review needs Linux or macOS, for file locks and process groups:
-elsewhere `--review` fails before reviewing anything. `deps-merger
+elsewhere `--review` fails before reviewing anything. `deps-handler
 verdicts` works everywhere.
 
 Configure the agent under `agent:` in the config. `claude.config_dir` is
@@ -366,11 +366,11 @@ installed. `--max-reviews` or `--review-parallel` without `--review` or
 
 ## Scripting
 
-A dry run never writes to GitHub, so `deps-merger run` is safe to
+A dry run never writes to GitHub, so `deps-handler run` is safe to
 schedule. With `--review` it still runs the agent, which costs what a
 review costs, and caches its verdicts: a later `--apply` merges what a dry
 run's review approved without asking the agent again. For
-`deps-merger run --apply` from cron or CI, the exit status is:
+`deps-handler run --apply` from cron or CI, the exit status is:
 
 - `0`: every repository was processed and every write succeeded;
 - `1`: a repository could not be processed, a merge or rebase request
@@ -381,7 +381,7 @@ run's review approved without asking the agent again. For
   closed or reset before it answered, or "Something went wrong" is tried
   once more before the repository counts as failed,
   as is one refused for a rate limit that lifts within two minutes (for
-  GitHub's GraphQL limit, deps-merger asks GitHub when it resets, and does
+  GitHub's GraphQL limit, deps-handler asks GitHub when it resets, and does
   not wait when it cannot tell);
 - `2`: the command line is wrong (an unknown command or flag, a missing
   argument, `--json` with `--markdown`, `--max-reviews` or `--review-parallel` without `--review`, a
@@ -392,7 +392,7 @@ run's review approved without asking the agent again. For
   config is read, so
   a mistake there is reported even when the config is missing;
 - `130`: interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`). A second Ctrl-C
-  kills deps-merger at once, should the first not stop it.
+  kills deps-handler at once, should the first not stop it.
 
 `--json` prints `{"apply": bool, "results": [...]}` with one result per
 repository: `repo`, `policy`, `config_files` (the policy files read
@@ -417,13 +417,13 @@ as in the config (`"45m"`, `"0s"`), and give the value in effect: at least
 a line per repository reports progress there while the JSON waits for the
 end.
 
-`deps-merger repos --json` prints `{"repos": [...], "agent": {...}}`: each
+`deps-handler repos --json` prints `{"repos": [...], "agent": {...}}`: each
 repository's `repo`, `policy` (as in `run --json`) and `skip`, and the
 agent's `use`, `timeout`, `claude` (`model`, `config_dir`,
 `max_budget_usd`) and `codex` (`model`, `home`) as configured, with an
 empty `model` for the agent's default.
 
-`deps-merger verdicts --json` prints `{"verdicts": [...]}`: each verdict's
+`deps-handler verdicts --json` prints `{"verdicts": [...]}`: each verdict's
 `update` (its cache key), `verdict` (`approved` or `rejected`),
 `approved`, `agent`, `head_oid` (the commit a rejection, or an
 approval of an update without versions, holds for, or `any`), `reviewed_at`, `expires`, `summary` and `concerns`.
@@ -447,9 +447,9 @@ asks.
 
 ## Config
 
-The config lives at `~/.config/deps-merger/config.yaml`, or under
+The config lives at `~/.config/deps-handler/config.yaml`, or under
 `$XDG_CONFIG_HOME` when that is set; `-c` names another file.
-`deps-merger init` writes the commented example there (or to the file
+`deps-handler init` writes the commented example there (or to the file
 `-c` names) and never overwrites one that exists, unless `--force` moves
 it aside first, to a `.bak` file named after the time. Its repos are
 commented out, so no command runs until you list yours: until then each
@@ -474,9 +474,9 @@ allows (squash, merge, rebase) is used and the report header says so.
 
 A run reads two more files for each repo, both on the default branch:
 
-- `deps-merger.yml` in the owner's `.github` repository (`acme/.github`),
+- `deps-handler.yml` in the owner's `.github` repository (`acme/.github`),
   for every repo of that owner, read once per owner per run;
-- `.github/deps-merger.yml` in the repo itself.
+- `.github/deps-handler.yml` in the repo itself.
 
 Each holds policy fields only, the ones `defaults` takes, and is checked
 as strictly as the config. They are layered, each overriding the one
@@ -488,7 +488,7 @@ document, a recursive merge alias, a directory, a binary or a file too
 large), or that cannot be read, fails that repo: nothing in it is judged
 or written. The report
 names the files used under the repo's header (`policy from ...`), and
-`run --json` lists them in `config_files`. `deps-merger repos` reads
+`run --json` lists them in `config_files`. `deps-handler repos` reads
 nothing from GitHub and shows the policy from your config alone.
 
 To leave a repo out without deleting it, give its entry `skip: true`:
@@ -502,8 +502,8 @@ repos:
 An empty `skip:` value, `null` or `~` is rejected rather than treated as
 `false`. Use an explicit boolean or omit the field to include the repository.
 
-`deps-merger run -r Mirror` still runs a skipped repo when you ask for it
-by name, and `deps-merger run --include-skipped` runs every repo, skipped
+`deps-handler run -r Mirror` still runs a skipped repo when you ask for it
+by name, and `deps-handler run --include-skipped` runs every repo, skipped
 or not (with `--owner`, every repo of those owners). A bare name that more than one owner's repo shares (`-r docs` with
 both `acme/docs` and `other/docs` listed) is an error; give `owner/name`.
 So is an empty name (`-r ""`, `-r "Billing,"`), which a script's unset
@@ -511,7 +511,7 @@ variable would otherwise turn into a run of every repo; spaces around a
 name are ignored. A run that would select no repos at all fails instead
 of reporting nothing.
 
-`deps-merger run --owner acme` runs every configured repo of `acme` (the
+`deps-handler run --owner acme` runs every configured repo of `acme` (the
 owner is matched regardless of case; repeat the flag or separate owners
 with commas for more). It leaves out the owner's repos set to `skip: true`,
 as a run without filters does; add `-r Mirror` to run one of them too,
@@ -520,10 +520,10 @@ or `--include-skipped` to run them all.
 owner no configured repo has is an error, as is an empty one or one
 written `owner/name`.
 
-`deps-merger repos` takes `-r` and `--owner` as `run` does, and lists the
+`deps-handler repos` takes `-r` and `--owner` as `run` does, and lists the
 repos they select, skipped ones included (its `SKIP` column says which).
 Both flags complete the configured names in a shell that loads
-`deps-merger completion` (bash, zsh, fish or PowerShell).
+`deps-handler completion` (bash, zsh, fish or PowerShell).
 
 Repos are written `owner/name`, as GitHub allows them: letters, digits and
 hyphens in the owner; letters, digits, `-`, `_` and `.` in the name, with no
@@ -536,7 +536,7 @@ the config. The config must be a single YAML document, an empty entry
 under `repos` is an error rather than skipped, and
 `claude.max_budget_usd` must be a finite number. `claude.config_dir` and
 `codex.home` must be absolute or start with `~/`: a relative path would
-depend on the directory deps-merger runs from, which under cron is rarely
+depend on the directory deps-handler runs from, which under cron is rarely
 the config's. A repo entry can borrow another's settings with a YAML merge
 key, and the merged fields are checked like any other. Recursive merge
 aliases are rejected:

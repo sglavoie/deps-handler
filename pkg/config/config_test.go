@@ -515,9 +515,9 @@ func TestWithFilesRejectsBadFiles(t *testing.T) {
 		org, repo []byte
 		want      string
 	}{
-		"unknown field":     {repo: []byte("repos: [a/b]\n"), want: "acme/app:.github/deps-merger.yml"},
+		"unknown field":     {repo: []byte("repos: [a/b]\n"), want: "acme/app:.github/deps-handler.yml"},
 		"bad mode":          {repo: []byte("mode: yolo\n"), want: "invalid mode"},
-		"bad org value":     {org: []byte("max_update_type: huge\n"), want: "acme/.github:deps-merger.yml"},
+		"bad org value":     {org: []byte("max_update_type: huge\n"), want: "acme/.github:deps-handler.yml"},
 		"two documents":     {repo: []byte("mode: report\n---\nmode: merge\n"), want: "more than one YAML document"},
 		"no-op wait in org": {org: []byte("require_checks: false\nmerge_without_checks_after: 1h\n"), want: "has no effect"},
 	} {

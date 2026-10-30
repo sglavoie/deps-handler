@@ -6,7 +6,7 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ With --repo and --owner, only the named repositories and the repositories
 of the named owners are listed, as run selects them.
 
 The policy shown is the config's alone: run also reads each repository's
-.github/deps-merger.yml and deps-merger.yml in its owner's .github
+.github/deps-handler.yml and deps-handler.yml in its owner's .github
 repository, which can override it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

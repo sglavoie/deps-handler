@@ -9,9 +9,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/report"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/report"
+	"github.com/sglavoie/deps-handler/pkg/review"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +53,7 @@ A target narrows the list to a repository (owner/name) or a pull request
 			if len(targets) > 0 {
 				for _, t := range targets {
 					if !slices.ContainsFunc(entries, func(e review.Entry) bool { return review.Matches(e.Key, t) }) {
-						fmt.Fprintf(cmd.ErrOrStderr(), "deps-merger: no cached verdict matches %q\n", t)
+						fmt.Fprintf(cmd.ErrOrStderr(), "deps-handler: no cached verdict matches %q\n", t)
 						unmatched++
 					}
 				}
@@ -102,7 +102,7 @@ update as "verdicts" lists it. Exits 1 if a target matched nothing.`,
 					return err
 				}
 				if n == 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "deps-merger: no cached verdict matches %q\n", t)
+					fmt.Fprintf(cmd.ErrOrStderr(), "deps-handler: no cached verdict matches %q\n", t)
 					unmatched++
 					continue
 				}
@@ -240,7 +240,7 @@ func openVerdicts(cmd *cobra.Command) (*review.Cache, error) {
 		return nil, err
 	}
 	if msg := cache.TakeRecovered(); msg != "" {
-		fmt.Fprintln(cmd.ErrOrStderr(), "deps-merger: warning:", msg)
+		fmt.Fprintln(cmd.ErrOrStderr(), "deps-handler: warning:", msg)
 	}
 	return cache, nil
 }

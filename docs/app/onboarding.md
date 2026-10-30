@@ -5,11 +5,11 @@ follow up. Replace `<app-slug>` and the contact details with real ones.
 
 ## The invitation
 
-> **Subject: Trying deps-merger on your Dependabot PRs**
+> **Subject: Trying deps-handler on your Dependabot PRs**
 >
 > Hi <name>,
 >
-> Thanks for using deps-merger. It's a free GitHub App that reads
+> Thanks for using deps-handler. It's a free GitHub App that reads
 > your Dependabot pull requests and, once you let it, merges the safe ones
 > for you. A PR is safe when Dependabot alone wrote it, its checks are
 > green, and it is a patch or minor update. It also tells you what is
@@ -24,7 +24,7 @@ follow up. Replace `<app-slug>` and the contact details with real ones.
 >    health** issue. Until you say otherwise, that's all it does. It
 >    changes nothing else.
 > 3. When the report looks right to you, let it merge in a repository by
->    adding `.github/deps-merger.yml` on the default branch:
+>    adding `.github/deps-handler.yml` on the default branch:
 >
 >    ```yaml
 >    mode: merge

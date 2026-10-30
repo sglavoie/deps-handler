@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/pr"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/pr"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 type commandPRClient struct{ snapshot github.PRSnapshot }

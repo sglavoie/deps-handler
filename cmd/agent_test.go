@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // The demo build replaces newAgent, so this only holds without it.

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // verdictsState points the state directory at a new one and returns the
@@ -17,7 +17,7 @@ func verdictsState(t *testing.T) (*review.Cache, string) {
 	t.Helper()
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
-	path := verdictsPath(filepath.Join(state, "deps-merger"))
+	path := verdictsPath(filepath.Join(state, "deps-handler"))
 	cache, err := review.OpenCache(path)
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func TestVerdictsWarnOnCorruptCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, stderr := run("verdicts")
-	if code != 0 || out != "no cached verdicts\n" || !strings.Contains(stderr, "deps-merger: warning: verdict cache") || !strings.Contains(stderr, ".corrupt-") {
+	if code != 0 || out != "no cached verdicts\n" || !strings.Contains(stderr, "deps-handler: warning: verdict cache") || !strings.Contains(stderr, ".corrupt-") {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
 	}
 }

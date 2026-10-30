@@ -14,10 +14,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/dependabot"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/dependabot"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/policy"
 )
 
 func request() Request {
@@ -439,7 +439,7 @@ func TestAgentEnvLacksGitHubTokens(t *testing.T) {
 	t.Setenv("DMC_WEBHOOK_SECRET", "secret")
 	t.Setenv("DMC_REVIEW_KEY_ENV", "MODEL_API_KEY")
 	t.Setenv("MODEL_API_KEY", "secret")
-	t.Setenv("DEPS_MERGER_KEEP", "kept")
+	t.Setenv("DEPS_HANDLER_KEEP", "kept")
 	// Codex's git must read the checkout, not the repository these name.
 	for _, k := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_PARAMETERS"} {
 		t.Setenv(k, "secret")
@@ -467,7 +467,7 @@ while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && out=$2; shift; done
 		if strings.Contains(env, "secret") {
 			t.Errorf("%s got a GitHub token:\n%s", agent.Name(), env)
 		}
-		if !strings.Contains(env, "DEPS_MERGER_KEEP=kept\n") || !strings.Contains(env, "=/cfg/"+agent.Name()+"\n") {
+		if !strings.Contains(env, "DEPS_HANDLER_KEEP=kept\n") || !strings.Contains(env, "=/cfg/"+agent.Name()+"\n") {
 			t.Errorf("%s lost its environment:\n%s", agent.Name(), env)
 		}
 	}

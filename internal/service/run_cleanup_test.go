@@ -9,8 +9,8 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/internal/store"
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/internal/store"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 type snapshotEngine struct {

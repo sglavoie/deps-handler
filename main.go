@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"os"
 
-	"github.com/sglavoie/deps-merger/cmd"
+	"github.com/sglavoie/deps-handler/cmd"
 )
 
 //go:embed config.example.yaml

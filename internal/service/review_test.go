@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // remote is a git repository holding the heads of PRs 1 to n as
@@ -397,7 +397,7 @@ func TestCachedApprovalStillMergesAtTheDailyAllowance(t *testing.T) {
 	}
 	// The daily allowance is exhausted, but the approved PR can still
 	// merge after this repository opts in. The other PR awaits a review.
-	p.engine.files["o/r:.github/deps-merger.yml"] = "mode: merge\nagent_review: true\n"
+	p.engine.files["o/r:.github/deps-handler.yml"] = "mode: merge\nagent_review: true\n"
 	if err := s.RunRepo(ctx, 1, "o/r", "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +430,7 @@ func TestDisabledReviewSkipsSetupAndPublishesHealthIssue(t *testing.T) {
 			for _, failure := range []string{"cache", "token", "availability"} {
 				t.Run(failure, func(t *testing.T) {
 					s, p := setup(t, true, tc.repo, pr(1), major(2, "sha2"))
-					p.engine.files["o/.github:deps-merger.yml"] = tc.owner
+					p.engine.files["o/.github:deps-handler.yml"] = tc.owner
 					s.Review = &Review{Dir: t.TempDir(), PerDay: 10, Model: "unused"}
 					s.Review.Available = func(context.Context) error {
 						t.Error("review-disabled repository contacted the model")
@@ -464,7 +464,7 @@ func TestDisabledReviewSkipsSetupAndPublishesHealthIssue(t *testing.T) {
 func TestReviewCanOptInThroughOwnerPolicy(t *testing.T) {
 	repo, heads := remote(t, 1)
 	s, p := setup(t, true, "mode: merge\n", major(1, heads[0]))
-	p.engine.files["o/.github:deps-merger.yml"] = "agent_review: true\n"
+	p.engine.files["o/.github:deps-handler.yml"] = "agent_review: true\n"
 	a := &agent{decision: "approve"}
 	withReview(t, s, a, repo, 10)
 	if err := s.RunRepo(context.Background(), 1, "o/r", "test"); err != nil {

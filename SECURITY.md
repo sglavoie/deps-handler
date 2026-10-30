@@ -1,6 +1,6 @@
 # Security
 
-deps-merger merges pull requests with your GitHub credentials and can hand
+deps-handler merges pull requests with your GitHub credentials and can hand
 untrusted PR content to an AI agent, so a flaw in it can matter. Examples
 worth reporting:
 
@@ -26,8 +26,8 @@ merging or bypassing branch protection.
 ## Reporting
 
 Please report vulnerabilities privately through
-[GitHub's private vulnerability reporting](https://github.com/sglavoie/deps-merger/security/advisories/new),
-not in a public issue. Include the version (`deps-merger --version`), what
+[GitHub's private vulnerability reporting](https://github.com/sglavoie/deps-handler/security/advisories/new),
+not in a public issue. Include the version (`deps-handler --version`), what
 you ran, and what happened. You can expect an answer within a week.
 
 Only the latest release is supported with fixes.

@@ -1,5 +1,5 @@
-// Command server is the hosted deps-merger GitHub App: it takes webhook
-// deliveries and a schedule, runs deps-merger's engine on each repository
+// Command server is the hosted deps-handler GitHub App: it takes webhook
+// deliveries and a schedule, runs deps-handler's engine on each repository
 // the App is installed on, and keeps a "Dependency health" issue in each.
 // It merges only with DMC_ALLOW_MERGE, in repositories whose policy says
 // mode: merge, for installations not paused (cmd/admin pause); it never
@@ -57,12 +57,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/app"
-	"github.com/sglavoie/deps-merger/internal/jobs"
-	"github.com/sglavoie/deps-merger/internal/service"
-	"github.com/sglavoie/deps-merger/internal/store"
-	"github.com/sglavoie/deps-merger/internal/webhook"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/internal/app"
+	"github.com/sglavoie/deps-handler/internal/jobs"
+	"github.com/sglavoie/deps-handler/internal/service"
+	"github.com/sglavoie/deps-handler/internal/store"
+	"github.com/sglavoie/deps-handler/internal/webhook"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 func main() {

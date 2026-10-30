@@ -4,7 +4,7 @@
 # and, while dogfooding, DMC_REPOS=owner/name,... to bound what it runs.
 # Merging stays off until DMC_ALLOW_MERGE=true is set, and then happens
 # only where a repository's policy says mode: merge.
-app = "deps-merger-cloud"
+app = "deps-handler-cloud"
 primary_region = "yul"
 
 [build]

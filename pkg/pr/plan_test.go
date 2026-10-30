@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 func TestPlanRoundTripsDiagnosisMarkdown(t *testing.T) {

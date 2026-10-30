@@ -15,11 +15,11 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/cli/go-gh/v2/pkg/term"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/report"
-	"github.com/sglavoie/deps-merger/pkg/review"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/report"
+	"github.com/sglavoie/deps-handler/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -139,7 +139,7 @@ no repository of; and 130 when interrupted.`,
 				}
 			}
 			// SIGHUP too: an agent runs in a process group of its own, so
-			// the hangup of the terminal would kill deps-merger and leave
+			// the hangup of the terminal would kill deps-handler and leave
 			// the agent running rather than kill it.
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()

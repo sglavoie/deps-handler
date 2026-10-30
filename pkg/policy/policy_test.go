@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/testutil"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/internal/testutil"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 var defaultPolicy = config.Builtin

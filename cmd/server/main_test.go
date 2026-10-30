@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/jobs"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/internal/jobs"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 func TestListenerFailureStopsQueuedWorkers(t *testing.T) {

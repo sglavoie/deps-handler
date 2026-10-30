@@ -182,7 +182,7 @@ func (c Codex) Task(ctx context.Context, dir, prompt, schemaText string, writabl
 	if err != nil {
 		return nil, err
 	}
-	tmp, err := os.MkdirTemp("", "deps-merger-codex-")
+	tmp, err := os.MkdirTemp("", "deps-handler-codex-")
 	if err != nil {
 		return nil, err
 	}

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/jobs"
-	"github.com/sglavoie/deps-merger/internal/store"
+	"github.com/sglavoie/deps-handler/internal/jobs"
+	"github.com/sglavoie/deps-handler/internal/store"
 )
 
 func journal(t *testing.T) *store.Store {

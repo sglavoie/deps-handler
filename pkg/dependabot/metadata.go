@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 

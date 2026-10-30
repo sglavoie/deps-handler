@@ -17,8 +17,8 @@ CI also builds the Docker image and runs a checkout test inside it. To
 check the runtime's Git dependencies locally:
 
 ```bash
-docker build -t deps-merger:test .
-sh scripts/test-container.sh deps-merger:test
+docker build -t deps-handler:test .
+sh scripts/test-container.sh deps-handler:test
 ```
 
 ## Trying changes without touching real repositories
@@ -26,7 +26,7 @@ sh scripts/test-container.sh deps-merger:test
 The `demo` build tag swaps GitHub and the AI agent for a make-believe
 version with fictional `acme` repositories ([`internal/demo`](internal/demo/demo.go)).
 It never reaches the network, and keeps its config, verdicts and checkouts
-in a directory of its own, `deps-merger-demo` in your user cache directory
+in a directory of its own, `deps-handler-demo` in your user cache directory
 (`~/Library/Caches` on macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux):
 
 ```bash
@@ -64,7 +64,7 @@ kept and the command prints the exact push to retry.
 
 ## Guidelines
 
-- deps-merger errs on the side of not merging. A change that lets more
+- deps-handler errs on the side of not merging. A change that lets more
   PRs merge needs a test showing why each newly merged case is safe.
 - Behaviour users can see is documented in the README: update it in the
   same pull request.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 // Repository discovery uses the same installation token as the engine

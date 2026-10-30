@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 func decision(n int, a policy.Action, reason string) policy.Decision {
@@ -381,14 +381,14 @@ func TestRepoInReportModeDuringApply(t *testing.T) {
 	res := runner.RepoResult{
 		Repo:        "o/r",
 		Policy:      p,
-		ConfigFiles: []string{".github/deps-merger.yml"},
+		ConfigFiles: []string{".github/deps-handler.yml"},
 		Permission:  "WRITE",
 		Decisions:   []policy.Decision{decision(1, policy.ActionMerge, "checks green, within policy")},
 	}
 	var b bytes.Buffer
 	Repo(&b, true, res)
 	want := `o/r  (squash, up to minor, checks required, no Dependabot commands, report only, write access)
-  policy from .github/deps-merger.yml
+  policy from .github/deps-handler.yml
   #1  patch  would merge  checks green, within policy  bump lib
 
 `
@@ -408,7 +408,7 @@ func TestMarkdown(t *testing.T) {
 	res := runner.RepoResult{
 		Repo:        "o/r",
 		Policy:      p,
-		ConfigFiles: []string{"o/.github:deps-merger.yml"},
+		ConfigFiles: []string{"o/.github:deps-handler.yml"},
 		Permission:  "WRITE",
 		Decisions: []policy.Decision{
 			{Number: 2, Title: "bump a|b for @octocat <b>now</b>", URL: "https://github.com/o/r/pull/2", Grade: config.UpdateMinor, Action: policy.ActionMerge, Reason: "checks green, within policy"},
@@ -424,7 +424,7 @@ func TestMarkdown(t *testing.T) {
 	Markdown(&b, true, res)
 	want := "## o/r\n\n" +
 		"Squash, up to minor, checks required, no Dependabot commands, write access\n" +
-		"Policy from `o/.github:deps-merger.yml`.\n\n" +
+		"Policy from `o/.github:deps-handler.yml`.\n\n" +
 		"| PR | Update | Status | Reason |\n| --- | --- | --- | --- |\n" +
 		"| [#1 bump lib](https://github.com/o/r/pull/1) | patch | merged | squash |\n" +
 		"| [#2 bump a\\|b for @\u200boctocat &lt;b&gt;now&lt;/b&gt;](https://github.com/o/r/pull/2) | minor | merge | checks green, within policy |\n" +

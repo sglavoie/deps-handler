@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/store"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/internal/store"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 // Review configures agent review. It runs only in repositories whose

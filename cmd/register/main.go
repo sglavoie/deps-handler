@@ -2,11 +2,11 @@
 // it takes two clicks on GitHub instead of a form:
 //
 //	go run ./cmd/register                              # the private dev App
-//	go run ./cmd/register -public -name deps-merger    # the production App
+//	go run ./cmd/register -public -name deps-handler    # the production App
 //
 // It serves a page on localhost that posts the manifest to GitHub. Once
 // the App is created, it saves the private key and writes
-// ~/.config/deps-merger-cloud/<profile>.env with DMC_APP_ID and
+// ~/.config/deps-handler-cloud/<profile>.env with DMC_APP_ID and
 // DMC_PRIVATE_KEY_FILE, then sends you to install the App. When you have
 // installed it, it adds DMC_INSTALLATION_ID and exits. The profile is dev,
 // or prod with -public, and an existing one is never overwritten.
@@ -29,15 +29,15 @@ import (
 
 var page = template.Must(template.New("").Parse(`<!doctype html>
 <meta charset="utf-8">
-<title>Register deps-merger dev App</title>
+<title>Register deps-handler dev App</title>
 <form action="https://github.com/settings/apps/new" method="post">
 <input type="hidden" name="manifest" value="{{.}}">
-<p>This creates a deps-merger GitHub App. Choose its visibility with the command flags.</p>
+<p>This creates a deps-handler GitHub App. Choose its visibility with the command flags.</p>
 <button type="submit">Create the App on GitHub</button>
 </form>`))
 
 func main() {
-	name := flag.String("name", "deps-merger-dev-sglavoie", "App name (unique across GitHub)")
+	name := flag.String("name", "deps-handler-dev-sglavoie", "App name (unique across GitHub)")
 	public := flag.Bool("public", false, "let any account install it, as the production App must; the dev App stays private")
 	profile := flag.String("profile", "", "name of the settings and key files written (default dev, or prod with -public)")
 	webhook := flag.String("webhook", "", "deliver webhooks to this https URL from the start, with a secret GitHub makes; without it the webhook is off")
@@ -46,7 +46,7 @@ func main() {
 	if *profile == "" {
 		*profile = map[bool]string{false: "dev", true: "prod"}[*public]
 	}
-	if *public && *name == "deps-merger-dev-sglavoie" {
+	if *public && *name == "deps-handler-dev-sglavoie" {
 		fmt.Fprintln(os.Stderr, "register: name the production App with -name")
 		os.Exit(2)
 	}
@@ -65,7 +65,7 @@ func run(name string, port int, public bool, profile, webhook string) error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(home, ".config", "deps-merger-cloud")
+	dir := filepath.Join(home, ".config", "deps-handler-cloud")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func run(name string, port int, public bool, profile, webhook string) error {
 	base := fmt.Sprintf("http://localhost:%d", port)
 	manifest, err := json.Marshal(map[string]any{
 		"name":         name,
-		"url":          "https://github.com/sglavoie/deps-merger",
+		"url":          "https://github.com/sglavoie/deps-handler",
 		"redirect_url": base + "/created",
 		"setup_url":    base + "/installed",
 		"public":       public,
@@ -114,7 +114,7 @@ func run(name string, port int, public bool, profile, webhook string) error {
 	mux.HandleFunc("GET /created", func(w http.ResponseWriter, r *http.Request) {
 		app, err := convert(r.Context(), r.URL.Query().Get("code"))
 		if err == nil {
-			err = save(envFile, keyFile, filepath.Join(home, ".local", "state", "deps-merger-cloud", profile+".db"), app)
+			err = save(envFile, keyFile, filepath.Join(home, ".local", "state", "deps-handler-cloud", profile+".db"), app)
 		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
@@ -177,7 +177,7 @@ type createdApp struct {
 // placeholder URL, which GitHub requires all the same.
 func hook(url string) map[string]any {
 	if url == "" {
-		return map[string]any{"url": "https://example.com/deps-merger", "active": false}
+		return map[string]any{"url": "https://example.com/deps-handler", "active": false}
 	}
 	return map[string]any{"url": url, "active": true}
 }

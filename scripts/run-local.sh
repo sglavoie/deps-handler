@@ -1,8 +1,8 @@
 #!/bin/sh
 # Runs the server on this machine behind a Cloudflare named tunnel, until
 # either stops or Ctrl-C. Settings come from DMC_ENV (default
-# ~/.config/deps-merger-cloud/dev.env), the tunnel from DMC_TUNNEL_CONFIG
-# (default ~/.config/deps-merger-cloud/cloudflared.yml). See
+# ~/.config/deps-handler-cloud/dev.env), the tunnel from DMC_TUNNEL_CONFIG
+# (default ~/.config/deps-handler-cloud/cloudflared.yml). See
 # docs/app/README.md.
 set -eu
 cd "$(dirname "$0")/.."
@@ -10,12 +10,12 @@ if [ "$#" -gt 1 ]; then
 	echo 'usage: run-local.sh [api|claude|codex]' >&2
 	exit 2
 fi
-if [ -z "${DMC_ENV:-}" ] && [ -f "$HOME/.config/deps-merger-cloud/prod.env" ]; then
+if [ -z "${DMC_ENV:-}" ] && [ -f "$HOME/.config/deps-handler-cloud/prod.env" ]; then
 	echo 'Choose the App explicitly with DMC_ENV: dev.env or prod.env. Both Apps can deliver to the same tunnel, but this server verifies only the selected App.' >&2
 	exit 2
 fi
-env_file=${DMC_ENV:-$HOME/.config/deps-merger-cloud/dev.env}
-tunnel_config=${DMC_TUNNEL_CONFIG:-$HOME/.config/deps-merger-cloud/cloudflared.yml}
+env_file=${DMC_ENV:-$HOME/.config/deps-handler-cloud/dev.env}
+tunnel_config=${DMC_TUNNEL_CONFIG:-$HOME/.config/deps-handler-cloud/cloudflared.yml}
 
 # A variable exported for another App remains set when this profile omits it.
 # Keep the server's profile settings isolated while retaining unrelated
@@ -38,7 +38,7 @@ esac
 export DMC_REVIEW_AGENT=$review_agent
 echo "Starting App ${DMC_APP_ID:-unknown} from $env_file with $review_agent review" >&2
 
-state=$HOME/.local/state/deps-merger-cloud
+state=$HOME/.local/state/deps-handler-cloud
 mkdir -p "$state"
 
 go build -o "$state/server" ./cmd/server

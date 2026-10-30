@@ -1,4 +1,4 @@
-// Package cmd holds the deps-merger command line.
+// Package cmd holds the deps-handler command line.
 package cmd
 
 import (
@@ -9,7 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -24,9 +24,9 @@ var configPath string
 
 func newRoot() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "deps-merger",
+		Use:   "deps-handler",
 		Short: "Merge safe Dependabot pull requests across your repositories",
-		Long: `deps-merger finds open Dependabot PRs in the repositories listed in its
+		Long: `deps-handler finds open Dependabot PRs in the repositories listed in its
 config, merges those that are green and within policy, and reports what
 needs fixing in each repository. PRs not opened by Dependabot, or touched
 by anyone else, are never changed by run. Use pr diagnose for a repair
@@ -43,7 +43,7 @@ handoff or pr fix to explicitly edit and push fixes to a selected PR.`,
 		}
 		return nil
 	}
-	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-merger/config.yaml, or ~/.config/deps-merger/config.yaml when XDG_CONFIG_HOME is unset)")
+	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-handler/config.yaml, or ~/.config/deps-handler/config.yaml when XDG_CONFIG_HOME is unset)")
 	root.AddCommand(newInitCmd(), newRunCmd(), newReposCmd(), newVerdictsCmd(), newPRCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	// Cobra's help prints the usage for an unknown topic and succeeds:
@@ -114,14 +114,14 @@ func exitCode(err error, stderr io.Writer) int {
 	case errors.As(err, &ee):
 		return ee.code
 	case errors.Is(err, errInterrupted):
-		fmt.Fprintln(stderr, "deps-merger: interrupted")
+		fmt.Fprintln(stderr, "deps-handler: interrupted")
 		return 130
 	case errors.As(err, new(usageError)) || strings.HasPrefix(err.Error(), "unknown command "):
 		// Cobra reports an unknown subcommand before any hook can see it.
-		fmt.Fprintln(stderr, "deps-merger:", err)
+		fmt.Fprintln(stderr, "deps-handler:", err)
 		return 2
 	}
-	fmt.Fprintln(stderr, "deps-merger:", err)
+	fmt.Fprintln(stderr, "deps-handler:", err)
 	return 1
 }
 
@@ -210,13 +210,13 @@ func loadConfig() (*config.Config, error) {
 	return cfg, err
 }
 
-// command is the deps-merger command line to suggest for sub, naming the
+// command is the deps-handler command line to suggest for sub, naming the
 // config given with -c, as following the advice must not act on another.
 func command(sub string) string {
 	if configPath == "" {
-		return "deps-merger " + sub
+		return "deps-handler " + sub
 	}
-	return "deps-merger " + sub + " -c " + shellQuote(configPath)
+	return "deps-handler " + sub + " -c " + shellQuote(configPath)
 }
 
 // shellQuote quotes s for a POSIX shell when it holds anything but the

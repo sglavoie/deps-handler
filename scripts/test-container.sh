@@ -3,7 +3,7 @@
 # refs. No GitHub token, account, or network request is needed by the test.
 set -eu
 cd "$(dirname "$0")/.."
-image=${1:-deps-merger:test}
+image=${1:-deps-handler:test}
 arch=$(docker image inspect --format '{{.Architecture}}' "$image")
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT

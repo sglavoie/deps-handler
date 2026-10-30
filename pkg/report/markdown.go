@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 // Markdown writes one repository's section as GitHub Markdown, such as the
@@ -105,7 +105,7 @@ func mdPRList(repo string, prs []int) string {
 // mdLeadRef is the PR a finding or a warning starts by naming.
 var mdLeadRef = regexp.MustCompile(`^#[0-9]+`)
 
-// mdLead is mdText for a line deps-merger starts with the PR it is about,
+// mdLead is mdText for a line deps-handler starts with the PR it is about,
 // named so that GitHub links it to that PR of repo.
 func mdLead(repo, text string) string {
 	ref := mdLeadRef.FindString(text)

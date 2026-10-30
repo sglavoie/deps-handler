@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/spf13/cobra"
 )
 
@@ -227,7 +227,7 @@ func withRepos(example []byte, repos []string) ([]byte, error) {
 	var b bytes.Buffer
 	b.Write(head)
 	b.Write(reposKey)
-	b.WriteString("  # Found by `deps-merger init --discover`: the repositories you can\n  # write to that hold a Dependabot config.\n")
+	b.WriteString("  # Found by `deps-handler init --discover`: the repositories you can\n  # write to that hold a Dependabot config.\n")
 	for _, r := range repos {
 		fmt.Fprintf(&b, "  - %s\n", r)
 	}

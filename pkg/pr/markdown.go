@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // Markdown writes a standalone handoff with the precise PR and commit.

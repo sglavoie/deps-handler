@@ -1,6 +1,6 @@
-# deps-merger config. `deps-merger init` writes this file to
-# ~/.config/deps-merger/config.yaml ($XDG_CONFIG_HOME/deps-merger/config.yaml
-# when that is set); `deps-merger repos` then shows the policy each repo gets.
+# deps-handler config. `deps-handler init` writes this file to
+# ~/.config/deps-handler/config.yaml ($XDG_CONFIG_HOME/deps-handler/config.yaml
+# when that is set); `deps-handler repos` then shows the policy each repo gets.
 
 # defaults apply to every repo; any repo entry can override any of them.
 defaults:
@@ -35,12 +35,12 @@ defaults:
   # with --apply.
   # mode: merge
 
-# A repo can also set these fields in its own .github/deps-merger.yml, and
-# an owner for all its repos in deps-merger.yml in its .github repo: the
+# A repo can also set these fields in its own .github/deps-handler.yml, and
+# an owner for all its repos in deps-handler.yml in its .github repo: the
 # owner's file overrides these defaults, the repo's overrides the owner's,
 # and the repo's entry below overrides both.
 
-# The AI agent `deps-merger run --review` uses to judge updates over
+# The AI agent `deps-handler run --review` uses to judge updates over
 # max_update_type and of unknown size. --agent claude|codex|api overrides `use`.
 agent:
   use: claude
@@ -71,7 +71,7 @@ agent:
 # --include-skipped still runs it, while --owner alone leaves it out.
 repos:
   # Nothing runs until you list your own repos here, as the commented
-  # examples below show (`deps-merger init --discover` can list them).
+  # examples below show (`deps-handler init --discover` can list them).
   # - acme/Storefront
   # - acme/Billing
   # - repo: acme/Mirror

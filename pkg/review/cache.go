@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/policy"
 )
 
 // CacheTTL is how long a verdict is reused. Dependabot reopens an update

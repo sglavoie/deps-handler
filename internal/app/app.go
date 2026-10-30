@@ -12,7 +12,7 @@ import (
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/github"
 )
 
 // App is the GitHub App, holding a transport per installation so their
@@ -172,7 +172,7 @@ func (a *App) Token(ctx context.Context, id int64) (string, error) {
 	return a.transport(id).Token(ctx)
 }
 
-// Engine is a deps-merger client acting as installation id. GitHub
+// Engine is a deps-handler client acting as installation id. GitHub
 // reports no viewerPermission to an installation, so what it was granted
 // stands in: write when it may write contents and pull requests.
 func (a *App) Engine(ctx context.Context, id int64) (github.Client, error) {

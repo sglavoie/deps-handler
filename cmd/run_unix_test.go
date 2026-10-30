@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/review"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 // reviewEnv gives a --review run its own state and cache directories and
@@ -26,7 +26,7 @@ func reviewEnv(t *testing.T) (state, cache string) {
 	t.Setenv("XDG_CACHE_HOME", cache)
 	t.Setenv("GH_CONFIG_DIR", t.TempDir())
 	t.Setenv("PATH", bin)
-	return filepath.Join(state, "deps-merger"), filepath.Join(cache, "deps-merger")
+	return filepath.Join(state, "deps-handler"), filepath.Join(cache, "deps-handler")
 }
 
 func TestRunReviewFailsWhileAnotherHoldsTheLock(t *testing.T) {
@@ -38,7 +38,7 @@ func TestRunReviewFailsWhileAnotherHoldsTheLock(t *testing.T) {
 	}
 	defer release()
 	code, out, stderr := run("run", "-c", cfg, "--review")
-	if code != 1 || out != "" || !strings.Contains(stderr, "another deps-merger run is reviewing updates") {
+	if code != 1 || out != "" || !strings.Contains(stderr, "another deps-handler run is reviewing updates") {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
 	}
 }
@@ -60,7 +60,7 @@ func TestReviewsCannotShareCheckoutsWithDifferentStateDirectories(t *testing.T) 
 		secondRelease()
 		t.Fatal("two review runs acquired the same checkouts with different state directories")
 	}
-	if !strings.Contains(err.Error(), "another deps-merger run is reviewing updates") {
+	if !strings.Contains(err.Error(), "another deps-handler run is reviewing updates") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// A failed acquisition must release the second state's lock, and
@@ -88,7 +88,7 @@ func TestReviewSetupReleasesLocksWhenCacheCannotOpen(t *testing.T) {
 	if release, err := setup(); err == nil {
 		release()
 		t.Fatal("expected an unreadable verdict cache error")
-	} else if strings.Contains(err.Error(), "another deps-merger run") {
+	} else if strings.Contains(err.Error(), "another deps-handler run") {
 		t.Fatalf("setup tried to acquire its own lock twice: %v", err)
 	}
 	if err := os.Remove(path); err != nil {

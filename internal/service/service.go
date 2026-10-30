@@ -1,4 +1,4 @@
-// Package service runs deps-merger's engine for the App's installations:
+// Package service runs deps-handler's engine for the App's installations:
 // one repository at a time, with every write it makes to GitHub guarded
 // and recorded.
 package service
@@ -15,14 +15,14 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/internal/app"
-	"github.com/sglavoie/deps-merger/internal/jobs"
-	"github.com/sglavoie/deps-merger/internal/output"
-	"github.com/sglavoie/deps-merger/internal/store"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/internal/app"
+	"github.com/sglavoie/deps-handler/internal/jobs"
+	"github.com/sglavoie/deps-handler/internal/output"
+	"github.com/sglavoie/deps-handler/internal/store"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 // Platform is GitHub as the App sees it; *app.App is the real one.
@@ -30,7 +30,7 @@ type Platform interface {
 	Login() string
 	Installations(ctx context.Context) ([]app.Installation, error)
 	Repos(ctx context.Context, installation int64) ([]string, error)
-	// Engine is a deps-merger client acting as installation.
+	// Engine is a deps-handler client acting as installation.
 	Engine(ctx context.Context, installation int64) (github.Client, error)
 	// REST is a go-github client acting as installation, for its issues.
 	REST(installation int64) (*gh.Client, error)

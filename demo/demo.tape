@@ -13,26 +13,26 @@ Set Theme "Catppuccin Mocha"
 Set TypingSpeed 45ms
 
 Hide
-Type "export PATH=$PWD/.demo/bin:$PATH PS1='$ ' && rm -rf $HOME/Library/Caches/deps-merger-demo ${XDG_CACHE_HOME:-$HOME/.cache}/deps-merger-demo && clear"
+Type "export PATH=$PWD/.demo/bin:$PATH PS1='$ ' && rm -rf $HOME/Library/Caches/deps-handler-demo ${XDG_CACHE_HOME:-$HOME/.cache}/deps-handler-demo && clear"
 Enter
 Show
 
-Type "deps-merger repos"
+Type "deps-handler repos"
 Sleep 400ms
 Enter
 Sleep 3s
 
-Type "clear && deps-merger run --open        # dry run: report only"
+Type "clear && deps-handler run --open        # dry run: report only"
 Sleep 400ms
 Enter
 Sleep 7s
 
-Type "clear && deps-merger run --open --review --apply"
+Type "clear && deps-handler run --open --review --apply"
 Sleep 400ms
 Enter
 Sleep 9s
 
-Type "clear && deps-merger verdicts"
+Type "clear && deps-handler verdicts"
 Sleep 400ms
 Enter
 Sleep 6s

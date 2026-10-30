@@ -75,7 +75,7 @@ func TestLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Lock(path); err == nil || !strings.Contains(err.Error(), "another deps-merger run") {
+	if _, err := Lock(path); err == nil || !strings.Contains(err.Error(), "another deps-handler run") {
 		t.Fatalf("second lock: %v", err)
 	}
 	release()

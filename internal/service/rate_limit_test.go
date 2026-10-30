@@ -13,9 +13,9 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/internal/jobs"
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/internal/jobs"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 type limitedEngine struct {
@@ -121,7 +121,7 @@ func TestMergeRateLimitCoversIssuesAndOtherRepositories(t *testing.T) {
 		t.Run(fmt.Sprintf("once=%t", once), func(t *testing.T) {
 			s, p := setup(t, true, "mode: merge\n", pr(1))
 			p.repos = []string{"o/r", "o/second"}
-			p.engine.files["o/second:.github/deps-merger.yml"] = "mode: merge\n"
+			p.engine.files["o/second:.github/deps-handler.yml"] = "mode: merge\n"
 			e := &limitedEngine{Client: p.engine, mergeErr: &api.HTTPError{
 				StatusCode: 429, Headers: http.Header{"Retry-After": {"600"}},
 			}}
@@ -190,7 +190,7 @@ func TestIssueRateLimitsCarryOverToEngine(t *testing.T) {
 		t.Run(stage, func(t *testing.T) {
 			s, p := setup(t, false, "", pr(1))
 			if stage == "edit" {
-				p.issues.Add(login, "Dependency health", "<!-- deps-merger:dependency-health -->\nold", "open")
+				p.issues.Add(login, "Dependency health", "<!-- deps-handler:dependency-health -->\nold", "open")
 			}
 			var requests atomic.Int32
 			var limited atomic.Bool
@@ -238,7 +238,7 @@ func TestIssueRateLimitsCarryOverToEngine(t *testing.T) {
 			}
 			before := requests.Load()
 			s.AllowMerge = true
-			p.engine.files["o/r:.github/deps-merger.yml"] = "mode: merge\n"
+			p.engine.files["o/r:.github/deps-handler.yml"] = "mode: merge\n"
 			if err := s.RunRepo(context.Background(), 1, "o/r", "retry"); err == nil {
 				t.Fatal("engine ignored issue client's cooldown")
 			}

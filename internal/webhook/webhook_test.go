@@ -14,7 +14,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/sglavoie/deps-merger/internal/jobs"
+	"github.com/sglavoie/deps-handler/internal/jobs"
 )
 
 var secret = []byte("s3cret")

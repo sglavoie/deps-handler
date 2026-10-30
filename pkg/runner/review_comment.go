@@ -7,14 +7,14 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // ReviewCommentPrefix identifies explanations the runner posts on reviewed
 // PRs, allowing the App to distinguish them from Dependabot commands.
-const ReviewCommentPrefix = "<!-- deps-merger-review:"
+const ReviewCommentPrefix = "<!-- deps-handler-review:"
 
 // reviewComment explains the verdict without claiming that a merge has
 // already happened. Its identity follows the verdict's cache lifetime:
@@ -26,7 +26,7 @@ func (r *Runner) reviewComment(rc config.Repo, d policy.Decision) string {
 		key += "\n" + d.PR.HeadOID
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s%x -->\n\n## deps-merger agent review\n\n", ReviewCommentPrefix, sha256.Sum256([]byte(key)))
+	fmt.Fprintf(&b, "%s%x -->\n\n## deps-handler agent review\n\n", ReviewCommentPrefix, sha256.Sum256([]byte(key)))
 	switch {
 	case v.Error != "":
 		b.WriteString("**Review failed — leaving this PR unmerged.**\n\n")

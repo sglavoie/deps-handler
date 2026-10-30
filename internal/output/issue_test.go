@@ -11,10 +11,10 @@ import (
 	"unicode/utf8"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/sglavoie/deps-merger/internal/ghfake"
-	"github.com/sglavoie/deps-merger/pkg/config"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/runner"
+	"github.com/sglavoie/deps-handler/internal/ghfake"
+	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 )
 
 const login = "dmc[bot]"
@@ -83,6 +83,24 @@ func TestSyncLeavesOtherIssuesAlone(t *testing.T) {
 	}
 	if f.Get(1).Body != Marker+"\nfake" || f.Get(2).Body != "something else" {
 		t.Fatal("another issue was edited")
+	}
+}
+
+func TestSyncReusesIssuesFromBeforeRename(t *testing.T) {
+	for _, known := range []int{0, 2} {
+		t.Run(fmt.Sprintf("known=%d", known), func(t *testing.T) {
+			f := fake()
+			f.Add("mallory", Title, legacyMarker+"\nfake", "open")
+			f.Add(login, Title, legacyMarker+"\nold report", "open")
+			body := Body(result(1), false)
+			n, change, err := Sync(context.Background(), f.Client(t), login, "o", "r", known, body, true, true)
+			if err != nil || n != 2 || change != Updated || f.Len() != 2 {
+				t.Fatalf("got %d %q %v, %d issues", n, change, err, f.Len())
+			}
+			if f.Get(2).Body != body || f.Get(1).Body != legacyMarker+"\nfake" {
+				t.Fatal("legacy report was not migrated or another author's issue was edited")
+			}
+		})
 	}
 }
 

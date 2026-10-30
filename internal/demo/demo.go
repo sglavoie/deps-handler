@@ -1,5 +1,5 @@
 // Package demo is a make-believe GitHub for recording and trying out
-// deps-merger: a few fictional acme repositories with Dependabot PRs in
+// deps-handler: a few fictional acme repositories with Dependabot PRs in
 // every state the policy tells apart, and an agent with canned verdicts.
 // Nothing here reaches the network. Only the binary built with
 // `-tags demo` uses it.
@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sglavoie/deps-merger/pkg/github"
-	"github.com/sglavoie/deps-merger/pkg/policy"
-	"github.com/sglavoie/deps-merger/pkg/review"
+	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/policy"
+	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // Config is the config file the demo runs with.

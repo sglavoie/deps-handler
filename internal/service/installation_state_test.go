@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sglavoie/deps-merger/internal/app"
-	"github.com/sglavoie/deps-merger/internal/store"
+	"github.com/sglavoie/deps-handler/internal/app"
+	"github.com/sglavoie/deps-handler/internal/store"
 )
 
 func TestInstallationSnapshotsRespectOtherProcesses(t *testing.T) {

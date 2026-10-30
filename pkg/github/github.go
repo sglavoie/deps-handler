@@ -1,5 +1,5 @@
 // Package github fetches repository and Dependabot pull request state and
-// performs the few writes deps-merger makes (merges and comments). It reuses
+// performs the few writes deps-handler makes (merges and comments). It reuses
 // the gh CLI's authentication.
 package github
 
@@ -181,7 +181,7 @@ func (r *Repo) CanWrite() bool {
 	return false
 }
 
-// Client is the subset of GitHub operations deps-merger needs.
+// Client is the subset of GitHub operations deps-handler needs.
 type Client interface {
 	Viewer(ctx context.Context) (string, error)
 	FetchRepo(ctx context.Context, owner, name string) (*Repo, error)
@@ -258,7 +258,7 @@ func New() (Client, error) {
 func githubComOptions() (api.ClientOptions, error) {
 	host, source := auth.DefaultHost()
 	if !strings.EqualFold(host, "github.com") {
-		return api.ClientOptions{}, fmt.Errorf("unsupported GitHub host %q from %s: deps-merger supports only github.com; set GH_HOST=github.com to use it", host, source)
+		return api.ClientOptions{}, fmt.Errorf("unsupported GitHub host %q from %s: deps-handler supports only github.com; set GH_HOST=github.com to use it", host, source)
 	}
 	return api.ClientOptions{Host: "github.com", Timeout: RequestTimeout}, nil
 }
