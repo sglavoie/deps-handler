@@ -227,7 +227,8 @@ type client struct {
 	gql  *api.GraphQLClient
 	rest *api.RESTClient
 	// diff is a REST client asking for diffs rather than JSON.
-	diff *api.RESTClient
+	diff             *api.RESTClient
+	artifactDownload *http.Client
 }
 
 // RequestTimeout bounds each request to GitHub, reading the response
@@ -326,12 +327,20 @@ func newClient(opts api.ClientOptions) (*client, error) {
 	if err != nil {
 		return nil, err
 	}
+	downloadOpts := opts
+	downloadOpts.CheckRedirect = artifactRedirect
+	downloadOpts.LogIgnoreEnv = true
+	downloadOpts.Log = nil
+	download, err := api.NewHTTPClient(downloadOpts)
+	if err != nil {
+		return nil, err
+	}
 	opts.Headers = map[string]string{"Accept": "application/vnd.github.diff"}
 	diff, err := api.NewRESTClient(opts)
 	if err != nil {
 		return nil, err
 	}
-	return &client{gql: gql, rest: rest, diff: diff}, nil
+	return &client{gql: gql, rest: rest, diff: diff, artifactDownload: download}, nil
 }
 
 func (c *client) Viewer(ctx context.Context) (string, error) {

@@ -38,6 +38,8 @@ type ActionsRun struct {
 	Event      string `json:"event"`
 	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`
+	StartedAt  string `json:"run_started_at"`
+	UpdatedAt  string `json:"updated_at"`
 	Repository struct {
 		FullName string `json:"full_name"`
 	} `json:"repository"`

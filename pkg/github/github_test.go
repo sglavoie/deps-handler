@@ -473,7 +473,11 @@ func restClient(t *testing.T, rt http.RoundTripper) *client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &client{rest: rest, diff: diff}
+	download, err := api.NewHTTPClient(api.ClientOptions{Host: "github.com", AuthToken: "x", Transport: rt, CheckRedirect: artifactRedirect})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &client{rest: rest, diff: diff, artifactDownload: download}
 }
 
 func TestMergePinsHeadAndMethod(t *testing.T) {

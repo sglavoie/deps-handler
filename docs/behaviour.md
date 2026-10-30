@@ -571,6 +571,43 @@ logs, Actions read access. External check URLs are references only; they
 are never fetched with GitHub credentials. Head or base movement during
 analysis rejects the handoff as stale.
 
+Verified failed Actions jobs also supply workflow artifacts to diagnosis and
+fresh repair assessments. Collection runs once per workflow run, after matching
+the check, job, run, repository and PR head. The attempt endpoint supplies its
+time window: an artifact must identify that run and commit and have creation
+and update timestamps within the completed attempt. Earlier or ambiguous
+artifacts are excluded. The run is checked again after collection; changed or
+unverifiable attempts discard their artifact excerpts. Artifacts belong to a
+workflow run; GitHub's listing does not identify which job uploaded them.
+
+Supported text is UTF-8 Playwright `error-context.md`, `.xml` and `.json` files
+whose path or artifact name identifies tests/reports/results/JUnit/Playwright,
+and `.log`/`.txt` files. Images (`png`, `jpg`, `jpeg`, `webp`) and trace ZIPs are
+listed for manual inspection with a download command selecting the artifact
+by ID. Their contents are not interpreted. No artifact is extracted to disk,
+executed, or fetched by the agent. The authenticated API download follows only
+HTTPS redirects to GitHub or Azure artifact storage, without credentials.
+Signed storage URLs are omitted from reports and download errors.
+
+Per evidence collection, limits are five workflow runs, twenty listed artifacts
+per run, 24 MiB downloaded, 32 MiB declared expanded size, 200 inventoried files,
+and 240,000 bytes of text excerpts. Each archive is limited to 8 MiB compressed,
+16 MiB declared expanded size and 200 entries; each text excerpt to 80,000
+bytes. Metadata responses are limited to 1 MiB, names to 256 bytes and entry
+paths to 1,024 bytes. Unsafe paths, symlinks, duplicate entries and malformed
+archives are rejected. Truncation, exhausted budgets, expired or inaccessible
+artifacts and unsupported contents remain evidence gaps; they never establish
+that a failing check passed or authorize a code repair.
+
+Markdown's "Artifact evidence" and JSON's `artifact_evidence` retain run ID,
+attempt, head SHA, artifact ID/name/URL/size/expiry, download command, file paths,
+text excerpts and collection errors. Missing collections are empty arrays.
+Artifact gaps are also added to remaining work independently of the agent's
+answer. Artifact text is treated as untrusted input and uses the same token
+redaction and control-character filtering as agent output. A matching saved
+repair plan reuses the Markdown excerpts without another artifact download;
+stale plans and later repair attempts refresh them with other failure evidence.
+
 Each failure gets a recommendation under `analysis.recommendations` in JSON
 and "Recommended actions" in Markdown. Entries contain `subject` (the check
 name or other problem), `action`, `reason` (supporting evidence) and `next_step`.

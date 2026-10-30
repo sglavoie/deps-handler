@@ -85,9 +85,10 @@ type BaseChecks struct {
 
 // PREvidence groups bounded head and base evidence from one snapshot.
 type PREvidence struct {
-	Details *PullRequestDetails
-	Checks  []PRCheck
-	Base    BaseChecks
+	Details   *PullRequestDetails
+	Checks    []PRCheck
+	Base      BaseChecks
+	Artifacts []RunArtifacts
 }
 
 // PRSnapshot is a head-pinned view of an explicitly selected PR, regardless
@@ -303,6 +304,9 @@ func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (PREvidence, erro
 	}
 	checks := append([]PRCheck{}, s.Checks...)
 	c.failureEvidence(ctx, s.Target, checks)
+	artifacts := []RunArtifacts{}
+	seenRuns := make(map[int64]bool)
+	budget := newArtifactBudget()
 	for i := range checks {
 		check := &checks[i]
 		if _, _, ok := ActionsJobIDs(s.Target, *check); !ok || (check.State != CheckFailed && check.State != CheckStale) {
@@ -314,10 +318,14 @@ func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (PREvidence, erro
 			continue
 		}
 		check.JobID, check.RunID, check.RunAttempt = job.ID, run.ID, run.Attempt
+		if !seenRuns[run.ID] {
+			seenRuns[run.ID] = true
+			artifacts = append(artifacts, c.runArtifacts(ctx, s.Target, run, budget))
+		}
 	}
 	base := c.baseChecks(ctx, s)
 	c.failureEvidence(ctx, s.Target, base.Checks)
-	return PREvidence{Details: d, Checks: checks, Base: base}, nil
+	return PREvidence{Details: d, Checks: checks, Base: base, Artifacts: artifacts}, nil
 }
 
 func (c *prClient) failureEvidence(ctx context.Context, target PRTarget, checks []PRCheck) {

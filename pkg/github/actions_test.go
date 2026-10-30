@@ -151,6 +151,8 @@ func TestEvidenceRetainsVerifiedRunAttemptAndExposesIdentityGaps(t *testing.T) {
 				if !available {
 					status, body = 403, `{"message":"forbidden"}`
 				}
+			case "/repos/o/r/actions/runs/20/attempts/1":
+				status, body = 404, `{"message":"attempt unavailable"}`
 			default:
 				t.Fatalf("unexpected request %s", req.URL)
 			}

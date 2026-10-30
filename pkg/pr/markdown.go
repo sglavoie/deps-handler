@@ -42,6 +42,7 @@ func Markdown(w io.Writer, r Result) error {
 	if r.BaseComparison != nil {
 		text += comparisonMarkdown(r.BaseComparison)
 	}
+	text += artifactsMarkdown(r.Artifacts)
 	sections := []struct {
 		title string
 		items []string

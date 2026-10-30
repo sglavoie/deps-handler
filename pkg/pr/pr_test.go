@@ -19,6 +19,7 @@ type testClient struct {
 	evidenceReads int
 	base          github.BaseChecks
 	checks        []github.PRCheck
+	artifacts     []github.RunArtifacts
 }
 
 func (c *testClient) Snapshot(ctx context.Context, _ github.PRTarget) (github.PRSnapshot, error) {
@@ -35,7 +36,7 @@ func (c *testClient) Evidence(context.Context, github.PRSnapshot) (github.PREvid
 	if checks == nil {
 		checks = []github.PRCheck{{Log: "compiler: missing symbol"}}
 	}
-	return github.PREvidence{Details: &github.PullRequestDetails{Body: "release notes", Diff: "-old\n+new"}, Checks: checks, Base: c.base}, c.evidenceErr
+	return github.PREvidence{Details: &github.PullRequestDetails{Body: "release notes", Diff: "-old\n+new"}, Checks: checks, Base: c.base, Artifacts: c.artifacts}, c.evidenceErr
 }
 
 type testAgent struct {

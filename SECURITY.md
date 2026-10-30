@@ -27,6 +27,13 @@ under a repair lock; its HEAD and clean state are validated before editing,
 and the directory is never reset, cleaned or deleted. Repair never authorizes
 merging or bypassing branch protection.
 
+PR diagnosis and fresh repair assessments read bounded GitHub Actions artifact
+text as untrusted evidence. Archives remain in memory and are never extracted
+or executed. Unsafe paths and symlinks are rejected; download, expanded-size,
+file-count and text limits bound collection. Signed storage redirects receive
+no GitHub credentials, and their URLs are omitted from reports. Screenshots
+and traces are references for manual inspection, not interpreted evidence.
+
 ## Reporting
 
 Please report vulnerabilities privately through

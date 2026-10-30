@@ -162,6 +162,17 @@ and validation commands, and lists remaining work and evidence gaps. It also
 works when checks pass, are pending, are missing, or only some fail. External
 CI, expired logs and access failures are reported as evidence gaps.
 
+For verified failed GitHub Actions jobs, diagnosis also collects bounded
+workflow artifacts: Playwright `error-context.md`, JUnit XML and JSON test
+reports, and text logs. The agent receives these excerpts even when job logs
+are unavailable. Markdown and JSON (`artifact_evidence`) preserve the run,
+attempt, commit, artifact ID and file path. Screenshots and trace archives are
+listed with a download command for manual inspection; their contents are not
+interpreted. Expired artifacts, missing permissions, earlier attempts and
+collection limits remain explicit evidence gaps. Artifacts are read in memory
+and never extracted or executed. Fresh repair attempts use the same evidence;
+a matching saved plan reuses the excerpts already in its Markdown.
+
 The base CI comparison matches jobs by app, workflow and name, preferring the
 same event. It labels observed outcomes such as `both-failed` and
 `base-passed-pr-failed`. A `push` baseline can be compared with a
