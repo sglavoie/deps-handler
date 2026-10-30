@@ -54,6 +54,7 @@ type Result struct {
 	PlanSource      string            `json:"plan_source,omitempty"`
 	StartingHeadOID string            `json:"starting_head_oid,omitempty"`
 	RepairCommand   string            `json:"repair_command,omitempty"`
+	RerunCommands   []string          `json:"rerun_commands,omitempty"`
 	BaseComparison  *BaseComparison   `json:"base_comparison,omitempty"`
 }
 
@@ -192,6 +193,16 @@ func (s *Service) Diagnose(ctx context.Context, target github.PRTarget, focus st
 		return result, fmt.Errorf("PR changed during diagnosis: %s; run again for current evidence", changedFields(p, current))
 	}
 	passing, _ := CheckState(current)
+	result.RerunCommands = rerunSuggestions(current, evidence.Checks, a)
+	for i := range result.Snapshot.Checks {
+		for _, check := range evidence.Checks {
+			if check.ID > 0 && check.ID == result.Snapshot.Checks[i].ID && check.URL == result.Snapshot.Checks[i].URL {
+				result.Snapshot.Checks[i].JobID = check.JobID
+				result.Snapshot.Checks[i].RunID = check.RunID
+				result.Snapshot.Checks[i].RunAttempt = check.RunAttempt
+			}
+		}
+	}
 	if writable(current) == nil && a.supportsCodeRepair() && (!passing || needsBaseRepair(current)) {
 		name := s.Agent.Name()
 		if name != "claude" && name != "codex" {

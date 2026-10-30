@@ -48,8 +48,8 @@ var newTaskAgent = func(cfg config.Agent, name string) (review.TaskAgent, error)
 }
 
 func newPRCmd() *cobra.Command {
-	c := &cobra.Command{Use: "pr", Short: "Diagnose or repair one explicitly selected pull request", Args: cobra.NoArgs}
-	c.AddCommand(newPRTaskCmd(false), newPRTaskCmd(true))
+	c := &cobra.Command{Use: "pr", Short: "Diagnose, repair or rerun CI for one explicitly selected pull request", Args: cobra.NoArgs}
+	c.AddCommand(newPRTaskCmd(false), newPRTaskCmd(true), newPRRerunCmd())
 	return c
 }
 

@@ -33,6 +33,9 @@ func Markdown(w io.Writer, r Result) error {
 		if c.URL != "" {
 			text += " (" + c.URL + ")"
 		}
+		if c.RunID > 0 && c.JobID > 0 && c.RunAttempt > 0 {
+			text += fmt.Sprintf(" — run %d, attempt %d, job %d", c.RunID, c.RunAttempt, c.JobID)
+		}
 		text += "\n"
 	}
 	text += "\n"
@@ -64,6 +67,12 @@ func Markdown(w io.Writer, r Result) error {
 			text += fmt.Sprintf("%d. %s\n", i+1, item)
 		}
 		text += "\n"
+	}
+	if len(r.RerunCommands) > 0 {
+		text += "## Suggested CI reruns\n\nPreview the identified jobs using the commands below. Add `--apply` to request one rerun and watch its new attempt, including dependent jobs. A successful rerun does not prove a flaky root cause.\n\n"
+		for _, command := range r.RerunCommands {
+			text += "```sh\n" + command + "\n```\n\n"
+		}
 	}
 	if r.RepairCommand != "" {
 		text += "## Next step\n\nSave this Markdown report as `repair.md` and review or edit its repair steps and validation commands. Then run:\n\n```sh\n" + r.RepairCommand + "\n```\n\n"

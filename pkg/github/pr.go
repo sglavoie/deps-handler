@@ -51,6 +51,9 @@ func ParsePRTarget(value string) (PRTarget, error) {
 type PRCheck struct {
 	Check
 	ID            int64  `json:"id,omitempty"`
+	JobID         int64  `json:"job_id,omitempty"`
+	RunID         int64  `json:"run_id,omitempty"`
+	RunAttempt    int    `json:"run_attempt,omitempty"`
 	URL           string `json:"url,omitempty"`
 	Description   string `json:"description,omitempty"`
 	Log           string `json:"log,omitempty"`
@@ -300,6 +303,18 @@ func (c *prClient) Evidence(ctx context.Context, s PRSnapshot) (PREvidence, erro
 	}
 	checks := append([]PRCheck{}, s.Checks...)
 	c.failureEvidence(ctx, s.Target, checks)
+	for i := range checks {
+		check := &checks[i]
+		if _, _, ok := ActionsJobIDs(s.Target, *check); !ok || (check.State != CheckFailed && check.State != CheckStale) {
+			continue
+		}
+		job, run, err := VerifyPRJob(ctx, c, s, *check)
+		if err != nil {
+			check.EvidenceError += " rerun identity: " + err.Error()
+			continue
+		}
+		check.JobID, check.RunID, check.RunAttempt = job.ID, run.ID, run.Attempt
+	}
 	base := c.baseChecks(ctx, s)
 	c.failureEvidence(ctx, s.Target, base.Checks)
 	return PREvidence{Details: d, Checks: checks, Base: base}, nil

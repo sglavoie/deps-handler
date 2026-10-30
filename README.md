@@ -96,7 +96,7 @@ names. Existing Dependency health issues are recognized and updated.
 ## Usage
 
 Use `dependabot` for Dependabot PRs across configured repositories, or
-`pr diagnose` and `pr fix` for any explicitly selected PR. Update scripts
+`pr diagnose`, `pr fix` and `pr rerun` for any explicitly selected PR. Update scripts
 and scheduled jobs that used `run` to use `dependabot` with the same flags.
 
 ```bash
@@ -110,6 +110,8 @@ deps-handler dependabot -r Storefront --json  # one repo, machine-readable
 deps-handler dependabot --markdown        # GitHub Markdown, as for an issue body
 deps-handler dependabot --review --apply  # let an AI agent judge bigger updates too
 deps-handler pr diagnose acme/Storefront#123 > repair.md  # AI repair handoff
+deps-handler pr rerun acme/Storefront#123           # preview failed Actions jobs
+deps-handler pr rerun acme/Storefront#123 --apply   # rerun once and watch new attempts
 deps-handler pr fix acme/Storefront#123 --agent codex    # edit and commit locally for review
 deps-handler pr fix acme/Storefront#123 --agent codex --push  # publish and verify CI
 deps-handler verdicts              # the agent's cached verdicts
@@ -185,6 +187,12 @@ Reruns and external changes are suggestions only and are never performed
 automatically. Mixed failures keep separate actions for code and external blockers.
 JSON exposes these under `analysis.recommendations`, with `subject`, `action`,
 `reason` and `next_step` on each entry.
+
+For a `rerun_candidate` with a uniquely named, verified GitHub Actions job,
+diagnosis also prints an exact `pr rerun` preview command. JSON exposes these
+as `rerun_commands`; identified checks include `job_id`, `run_id` and
+`run_attempt`. Duplicate check names keep their recommendations but get no
+automatic command, since a name alone cannot identify which job to rerun.
 
 For a PR that meets the repair prerequisites, diagnosis includes a
 `pr fix --plan repair.md` command only when at least one code repair is supported
@@ -275,6 +283,43 @@ Publishing a repair adds commits that Dependabot did not author. The `dependabot
 command therefore leaves that PR alone under its authorship policy; review
 and merge the repaired PR yourself after its checks and remaining gates pass.
 These commands are CLI-only and unavailable in the demo build.
+
+### Rerun CI for a specific PR
+
+Use this after reviewing a suspected transient failure or resolving an external
+blocker such as an Actions billing limit:
+
+```bash
+deps-handler pr rerun acme/Storefront#123               # preview only
+deps-handler pr rerun acme/Storefront#123 --apply       # rerun failed jobs and watch
+deps-handler pr rerun acme/Storefront#123 --job 987654 --apply  # one Actions job
+```
+
+Without `--job`, the command reruns all failed jobs in each eligible workflow
+run once. With `--job`, it selects that Actions job ID, which can differ from
+the check ID. GitHub also reruns dependent jobs. The preview lists the verified
+run, attempt, job and check IDs, with a command to select each job precisely.
+This works without an AI agent or a config file and does not decide whether
+the failure was transient. Diagnosis and repair never trigger reruns themselves.
+
+Before each request, the command rechecks the PR head and the completed workflow
+attempt. Commands suggested by diagnosis include `--head` and `--attempt` to
+reject stale evidence. Missing identities, incomplete check lists and active or
+superseded attempts stop the operation; external checks are reported without
+being rerun. Applying requires repository write permission and Actions write
+access. Requests are never retried automatically, including after an ambiguous
+response: inspect Actions before trying again.
+
+With `--apply`, each workflow has a bounded wait (`--wait-timeout 15m` by
+default) for exactly the next attempt. The old attempt cannot count as success.
+A final bounded wait lets the PR check list catch up with completed reruns.
+A failed, unconfirmed or superseded attempt exits 1, as do remaining PR checks
+that are not confirmed passing. Exit 0 confirms the observed CI, while reviews
+and other merge gates remain separate. A preview exits 0 when it completes,
+including when no eligible jobs exist. `--json` includes the selected jobs,
+request outcomes, observed attempts, warnings and errors. Invalid arguments
+exit 2 and interruption exits 130. Runs are processed serially; if one stops,
+later runs are left untouched and earlier requests remain in GitHub.
 
 ### Try it without your repositories
 

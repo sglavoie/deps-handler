@@ -584,6 +584,15 @@ agent interpretations, not proof of cause or permission to run their suggested
 commands. CI reruns, account changes and other external actions are never
 performed automatically.
 
+Failed Actions checks are also matched through GitHub's job and workflow-run
+APIs. Verified metadata appears as `job_id`, `run_id` and `run_attempt` on the
+diagnosis snapshot's checks and in the agent's evidence. A job ID is not assumed
+to equal its check run ID. Missing metadata remains an evidence gap and does
+not prevent other diagnosis. A uniquely named `rerun_candidate` with verified
+metadata gets a preview command under `rerun_commands` and "Suggested CI
+reruns" in Markdown. Commands include `--job`, `--head` and `--attempt`.
+Duplicate names, changed checks and unidentified jobs get no automatic command.
+
 A completed diagnosis includes an optional `repair_command` in JSON and a
 "Next step" section in Markdown when `pr fix` can attempt a repair: the PR
 must have at least one supported code repair, meet its write prerequisites
@@ -733,3 +742,56 @@ arguments and 130 for interruption. The `dependabot` command keeps its authorshi
 a PR with published repair commits fails its Dependabot-only authorship gate
 and must be merged manually. Neither the GitHub App nor the
 demo build runs repairs.
+
+## Explicit CI reruns
+
+`pr rerun owner/repo#123` previews failed GitHub Actions jobs on an open PR's
+current head. It needs no AI agent, checkout or config file. An explicit
+`--apply` requests one rerun per selected workflow run, serially, and watches
+its new attempt. The default selects all failed jobs in each eligible run;
+`--job ID` selects one Actions job instead. GitHub reruns dependent jobs too.
+The command does not assess whether rerunning is appropriate or resolve human
+blockers. Neither `pr diagnose` nor `pr fix` invokes it automatically.
+
+Job URLs must identify github.com and the selected repository. The API must
+confirm the job ID, check ID, name, head SHA, run ID, current attempt, completed
+failure and workflow/suite/event identities. A complete check list is required.
+External checks are reported without rerunning; an identified Actions job
+that cannot be verified stops selection before any writes. `--job` must identify
+a current failed job. An active run or a job from an older attempt is rejected.
+Previewing permits read-only repository access; applying requires repository
+write permission and Actions write access.
+
+Immediately before every request, the PR and selected jobs are read again.
+Head/branch changes, revoked access or changed attempts stop the operation.
+`--head SHA` rejects a command from a diagnosis of another head. `--attempt N`
+requires `--job` and rejects a job whose workflow has since been retried. GitHub
+has no conditional rerun endpoint, so these checks cannot eliminate a change
+between the final read and the request. POSTs are sent once and never retried
+automatically; an unconfirmed response may already have scheduled CI and calls
+for inspection in Actions before retrying.
+
+Observation waits for exactly the previous attempt plus one, retaining its
+number, status and conclusion. Old completed attempts never establish success;
+a later unexpected attempt stops observation rather than attributing somebody
+else's rerun to this request. Head movement, read errors, failed conclusions
+and a per-workflow `--wait-timeout` (15 minutes by default) stop observation.
+A new attempt must complete successfully, and a fresh complete PR snapshot must
+also confirm passing checks. A final wait, also bounded by `--wait-timeout`,
+allows pending checks and the selected jobs' old failures to propagate into
+the PR check rollup. Completed reruns are checked again during this wait;
+a different attempt cannot borrow the earlier attempt's green result.
+Remaining merge gates are reported independently.
+Reruns never merge, edit code or push commits, and passing a rerun does not
+prove that the original failure was flaky.
+
+Markdown and `--json` distinguish previews, attempted requests, confirmed
+requests and observed attempts. JSON contains `snapshot`, `apply`, `runs`,
+`warnings`, `blockers`, `checks_passing` and optional `error`. Each run records
+its `run_id`, optional selected `job_id`, verified `jobs`, `previous_attempt`,
+`observed_attempt`, `request_attempted`, `requested`, status/conclusion and any
+error. Preview success exits 0 even with no eligible jobs; applying with no
+eligible jobs exits 1. Apply success exits 0 only after verification; failures
+exit 1, invalid arguments exit 2 and interruption exits 130. A failure preserves
+the report of earlier requests and leaves later runs untouched. The demo build
+rejects this command before creating a GitHub client.
