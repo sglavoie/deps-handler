@@ -59,6 +59,13 @@ go install github.com/sglavoie/deps-handler@latest      # Go 1.27+
 ```
 
 Or download a binary from the [releases](https://github.com/sglavoie/deps-handler/releases).
+
+Homebrew and `just install` also install `dh` as a short alias for
+`deps-handler`, with the same commands and flags (for example,
+`dh dependabot --apply` or `dh pr diagnose acme/Storefront#123`).
+For Go or manual installs, add `alias dh=deps-handler` to your shell's
+startup file (`~/.zshrc` or `~/.bashrc`; fish: `alias --save dh deps-handler`).
+
 deps-handler needs [`gh`](https://cli.github.com) logged in (`gh auth login`)
 or `GH_TOKEN` set. Agent review also needs
 [Claude Code](https://docs.claude.com/en/docs/claude-code) or

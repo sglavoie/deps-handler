@@ -16,11 +16,12 @@ help:
 build:
     go build {{ ldflags }} -o {{ binary_name }} .
 
-# Install the binary to ~/.local/bin
+# Install the binary and dh alias to ~/.local/bin
 install: build
     @mkdir -p {{ install_dir }}
     rm -f {{ install_dir }}/{{ binary_name }}
     cp {{ binary_name }} {{ install_dir }}/{{ binary_name }}
+    ln -sfn {{ binary_name }} {{ install_dir }}/dh
 
 # Bump patch, minor, or major and trigger the GitHub release workflow
 release bump:

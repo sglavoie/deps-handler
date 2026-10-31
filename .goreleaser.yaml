@@ -58,6 +58,9 @@ homebrew_casks:
     license: MIT
     dependencies:
       - formula: gh
+    custom_block: |
+      # Short command alias for deps-handler.
+      binary "deps-handler", target: "dh"
     completions:
       bash: completions/deps-handler.bash
       zsh: completions/deps-handler.zsh
