@@ -78,7 +78,11 @@ func (w *Workspace) commitRepair(ctx context.Context, dir, localHead, remoteHead
 	if err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(status) == "" {
+	// A base merge can need a commit even when its resulting tree matches
+	// HEAD, for example after an empty base commit or a cherry-picked fix.
+	// Without the merge commit the branch remains behind its base.
+	merging := w.git(ctx, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD") == nil
+	if strings.TrimSpace(status) == "" && !merging {
 		if localHead == remoteHead {
 			return "", fmt.Errorf("agent made no file changes; nothing to commit or push")
 		}

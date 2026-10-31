@@ -174,6 +174,49 @@ func TestRepairCanPublishResolvedMergeConflicts(t *testing.T) {
 	}
 }
 
+func TestRepairCommitsMergeWithUnchangedTree(t *testing.T) {
+	for _, localAhead := range []bool{false, true} {
+		t.Run(map[bool]string{false: "PR head", true: "existing local commits"}[localAhead], func(t *testing.T) {
+			origin, head := gitOrigin(t)
+			base := gitAt(t, origin, "symbolic-ref", "--short", "HEAD")
+			gitAt(t, origin, "update-ref", "refs/heads/repair", head)
+			gitAt(t, origin, "commit", "--allow-empty", "-qm", "advance base without changing files")
+			baseOID := gitAt(t, origin, "rev-parse", "HEAD")
+			ctx := context.Background()
+			w := &Workspace{Root: t.TempDir(), URL: func(string, string) string { return origin }}
+			dir, err := w.Checkout(ctx, "o", "r", 7, head)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := w.FetchBase(ctx, dir, base); err != nil {
+				t.Fatal(err)
+			}
+			localHead := head
+			if localAhead {
+				gitAt(t, dir, "commit", "--allow-empty", "-qm", "existing local repair")
+				localHead = gitAt(t, dir, "rev-parse", "HEAD")
+			}
+			gitAt(t, dir, "merge", "--no-commit", "--no-ff", "refs/remotes/origin/"+base)
+			if status := gitAt(t, dir, "status", "--porcelain"); status != "" {
+				t.Fatalf("expected a merge with no file changes, got %s", status)
+			}
+			oid, err := w.commitAndPush(ctx, dir, "o", "r", "repair", localHead, head)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parents := gitAt(t, dir, "show", "-s", "--format=%P", oid); parents != localHead+" "+baseOID {
+				t.Fatalf("base merge was not committed: parents %s", parents)
+			}
+			if got := gitAt(t, origin, "rev-parse", "refs/heads/repair"); got != oid {
+				t.Fatalf("remote head %s, want %s", got, oid)
+			}
+			if tree := gitAt(t, dir, "rev-parse", oid+"^{tree}"); tree != gitAt(t, dir, "rev-parse", localHead+"^{tree}") {
+				t.Fatal("merge changed file contents")
+			}
+		})
+	}
+}
+
 func TestRepairCommitDoesNotPublish(t *testing.T) {
 	origin, head := gitOrigin(t)
 	gitAt(t, origin, "update-ref", "refs/heads/repair", head)

@@ -261,7 +261,9 @@ an editing task, committing or pushing on that attempt. Mixed cases address
 supported code repairs and retain the other recommendations. Each attempt shares
 its collected evidence between assessment and editing; logs are not downloaded
 twice. It runs a writable Claude Code or Codex task and commits the resulting
-file changes once. It retains the checkout for inspection and prints its path,
+file changes once. A pending base merge is also committed when it changes only
+history, so the PR can become up to date even when no file contents change.
+It retains the checkout for inspection and prints its path,
 a diff summary, local validation results and a continuation command using
 `--push --working-directory`. Nothing is pushed, and local preparation does
 not confirm passing GitHub CI. The continuation assesses the local code again
