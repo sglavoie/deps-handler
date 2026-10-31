@@ -1,0 +1,348 @@
+.github:41: Process completed with exit code 1.
+2026-10-26T17:43:15.8389810Z Current runner version: '2.338.0'
+2026-10-26T17:43:15.8416766Z ##[group]Runner Image Provisioner
+2026-10-26T17:43:15.8418200Z Hosted Compute Agent
+2026-10-26T17:43:15.8418841Z Version: 20261021.618
+2026-10-26T17:43:15.8419656Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-26T17:43:15.8420573Z Build Date: 2026-10-21T00:45:21Z
+2026-10-26T17:43:15.8421317Z Worker ID: {f60581f2-7f9a-43e9-b013-81cb24a3d646}
+2026-10-26T17:43:15.8422077Z Region: northcentralus
+2026-10-26T17:43:15.8422682Z Cloud: Azure
+2026-10-26T17:43:15.8423381Z ##[endgroup]
+2026-10-26T17:43:15.8424858Z ##[group]Operating System
+2026-10-26T17:43:15.8425579Z Ubuntu
+2026-10-26T17:43:15.8426160Z 24.04.5
+2026-10-26T17:43:15.8426717Z LTS
+2026-10-26T17:43:15.8427384Z ##[endgroup]
+2026-10-26T17:43:15.8427985Z ##[group]Runner Image
+2026-10-26T17:43:15.8428611Z Image: ubuntu-24.04
+2026-10-26T17:43:15.8429291Z Version: 20261012.334.1
+2026-10-26T17:43:15.8430951Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-26T17:43:15.8432667Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-26T17:43:15.8433658Z ##[endgroup]
+2026-10-26T17:43:15.8434915Z ##[group]GITHUB_TOKEN Permissions
+2026-10-26T17:43:15.8437262Z Contents: read
+2026-10-26T17:43:15.8438067Z Metadata: read
+2026-10-26T17:43:15.8438705Z ##[endgroup]
+2026-10-26T17:43:15.8442075Z Secret source: Dependabot
+2026-10-26T17:43:15.8443263Z Cache mode: write
+2026-10-26T17:43:15.8444464Z Prepare workflow directory
+2026-10-26T17:43:15.8801691Z Prepare all required actions
+2026-10-26T17:43:15.8853007Z Getting action download info
+2026-10-26T17:43:16.1829007Z Download action repository 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803' (SHA:d23441a48e516b6c34aea4fa41551a30e30af803)
+2026-10-26T17:43:16.3405239Z Download action repository 'actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0' (SHA:6d4fd22b20465ccc0f7354476588e8df7c9ca0e0)
+2026-10-26T17:43:16.7647691Z Download action repository 'extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3' (SHA:53165ef7e734c5c07cb06b3c8e7b647c5aa16db3)
+2026-10-26T17:43:16.9203949Z Download action repository 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9' (SHA:cf430e030ddbb5b0abf93d22962f4752f3646cd9)
+2026-10-26T17:43:17.3768033Z Getting action download info
+2026-10-26T17:43:17.4812803Z Download action repository 'extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d' (SHA:0551596312d4008a6dfbc4d3c38fa20eaef46d2d)
+2026-10-26T17:43:17.6974877Z Complete job name: Linux (portable, Python 3.15)
+2026-10-26T17:43:17.7937356Z ##[group]Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+2026-10-26T17:43:17.7939146Z with:
+2026-10-26T17:43:17.7940098Z   persist-credentials: false
+2026-10-26T17:43:17.7941506Z   repository: sglavoie/agent-session-loop
+2026-10-26T17:43:17.7951214Z   token: ***
+2026-10-26T17:43:17.7952031Z   ssh-strict: true
+2026-10-26T17:43:17.7952893Z   ssh-user: git
+2026-10-26T17:43:17.7953816Z   clean: true
+2026-10-26T17:43:17.7954689Z   sparse-checkout-cone-mode: true
+2026-10-26T17:43:17.7955811Z   fetch-depth: 1
+2026-10-26T17:43:17.7956698Z   fetch-tags: false
+2026-10-26T17:43:17.7957526Z   show-progress: true
+2026-10-26T17:43:17.7958455Z   lfs: false
+2026-10-26T17:43:17.7959263Z   submodules: false
+2026-10-26T17:43:17.7960165Z   set-safe-directory: true
+2026-10-26T17:43:17.7961280Z   allow-unsafe-pr-checkout: false
+2026-10-26T17:43:17.7962681Z ##[endgroup]
+2026-10-26T17:43:17.9219205Z Syncing repository: sglavoie/agent-session-loop
+2026-10-26T17:43:17.9222819Z ##[group]Getting Git version info
+2026-10-26T17:43:17.9224494Z Working directory is '/home/runner/work/agent-session-loop/agent-session-loop'
+2026-10-26T17:43:17.9227107Z [command]/usr/bin/git version
+2026-10-26T17:43:17.9241850Z git version 2.55.0
+2026-10-26T17:43:17.9280141Z ##[endgroup]
+2026-10-26T17:43:17.9310203Z Temporarily overriding HOME='/home/runner/work/_temp/5368e68d-2fc1-480f-8aed-452ffa120f5f' before making global git config changes
+2026-10-26T17:43:17.9314183Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-26T17:43:17.9316505Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/agent-session-loop/agent-session-loop
+2026-10-26T17:43:17.9385131Z Deleting the contents of '/home/runner/work/agent-session-loop/agent-session-loop'
+2026-10-26T17:43:17.9390199Z ##[group]Determining repository object format
+2026-10-26T17:43:17.9402330Z ##[endgroup]
+2026-10-26T17:43:17.9403917Z ##[group]Initializing the repository
+2026-10-26T17:43:17.9405455Z [command]/usr/bin/git init /home/runner/work/agent-session-loop/agent-session-loop
+2026-10-26T17:43:17.9489899Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-26T17:43:17.9493365Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-26T17:43:17.9495849Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-26T17:43:17.9497862Z hint: call:
+2026-10-26T17:43:17.9498777Z hint:
+2026-10-26T17:43:17.9499927Z hint: 	git config --global init.defaultBranch <name>
+2026-10-26T17:43:17.9501616Z hint:
+2026-10-26T17:43:17.9503058Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-26T17:43:17.9505538Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-26T17:43:17.9507517Z hint:
+2026-10-26T17:43:17.9508469Z hint: 	git branch -m <name>
+2026-10-26T17:43:17.9510515Z hint:
+2026-10-26T17:43:17.9515728Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-26T17:43:17.9518955Z Initialized empty Git repository in /home/runner/work/agent-session-loop/agent-session-loop/.git/
+2026-10-26T17:43:17.9524472Z [command]/usr/bin/git remote add origin https://github.com/sglavoie/agent-session-loop
+2026-10-26T17:43:17.9557471Z ##[endgroup]
+2026-10-26T17:43:17.9559871Z ##[group]Disabling automatic garbage collection
+2026-10-26T17:43:17.9562302Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-26T17:43:17.9601224Z ##[endgroup]
+2026-10-26T17:43:17.9603454Z ##[group]Setting up auth
+2026-10-26T17:43:17.9604921Z Removing SSH command configuration
+2026-10-26T17:43:17.9610294Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-26T17:43:17.9664484Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-26T17:43:18.0038668Z Removing HTTP extra header
+2026-10-26T17:43:18.0048361Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-26T17:43:18.0105729Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-26T17:43:18.0372369Z Removing includeIf entries pointing to credentials config files
+2026-10-26T17:43:18.0379908Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-26T17:43:18.0422828Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-26T17:43:18.0694790Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-26T17:43:18.0745771Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git.path /home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:18.0787939Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:18.0838327Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:18.0874678Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:18.0912370Z ##[endgroup]
+2026-10-26T17:43:18.0913623Z ##[group]Fetching the repository
+2026-10-26T17:43:18.0920591Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +99f54b1fdf211758193953af3031bd41f42a4377:refs/remotes/pull/1/merge
+2026-10-26T17:43:20.0628226Z From https://github.com/sglavoie/agent-session-loop
+2026-10-26T17:43:20.0632899Z  * [new ref]         99f54b1fdf211758193953af3031bd41f42a4377 -> pull/1/merge
+2026-10-26T17:43:20.0637001Z ##[endgroup]
+2026-10-26T17:43:20.0639082Z ##[group]Determining the checkout info
+2026-10-26T17:43:20.0640956Z ##[endgroup]
+2026-10-26T17:43:20.0643142Z [command]/usr/bin/git sparse-checkout disable
+2026-10-26T17:43:20.0702741Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-26T17:43:20.0749549Z ##[group]Checking out the ref
+2026-10-26T17:43:20.0753423Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1/merge
+2026-10-26T17:43:20.2631621Z Note: switching to 'refs/remotes/pull/1/merge'.
+2026-10-26T17:43:20.2632575Z 
+2026-10-26T17:43:20.2633134Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-26T17:43:20.2634577Z changes and commit them, and you can discard any commits you make in this
+2026-10-26T17:43:20.2635685Z state without impacting any branches by switching back to a branch.
+2026-10-26T17:43:20.2636319Z 
+2026-10-26T17:43:20.2646819Z If you want to create a new branch to retain commits you create, you may
+2026-10-26T17:43:20.2648072Z do so (now or later) by using -c with the switch command. Example:
+2026-10-26T17:43:20.2648665Z 
+2026-10-26T17:43:20.2649083Z   git switch -c <new-branch-name>
+2026-10-26T17:43:20.2649593Z 
+2026-10-26T17:43:20.2650038Z Or undo this operation with:
+2026-10-26T17:43:20.2650798Z 
+2026-10-26T17:43:20.2651207Z   git switch -
+2026-10-26T17:43:20.2651860Z 
+2026-10-26T17:43:20.2652568Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-26T17:43:20.2653383Z 
+2026-10-26T17:43:20.2654118Z HEAD is now at 99f54b1 Merge 884d93425e6d454ea3c929181555ed03a1d05e7e into 6ed7627b1bd696d2f49ccc72d13fb935e5335156
+2026-10-26T17:43:20.2657260Z ##[endgroup]
+2026-10-26T17:43:20.2698360Z [command]/usr/bin/git log -1 --format=%H
+2026-10-26T17:43:20.2729157Z 99f54b1fdf211758193953af3031bd41f42a4377
+2026-10-26T17:43:20.2739836Z ##[group]Removing auth
+2026-10-26T17:43:20.2741059Z Removing SSH command configuration
+2026-10-26T17:43:20.2744003Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-26T17:43:20.2783826Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-26T17:43:20.3038100Z Removing HTTP extra header
+2026-10-26T17:43:20.3043025Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-26T17:43:20.3090867Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-26T17:43:20.3340999Z Removing includeIf entries pointing to credentials config files
+2026-10-26T17:43:20.3344690Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-26T17:43:20.3379276Z includeif.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git.path
+2026-10-26T17:43:20.3381863Z includeif.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git/worktrees/*.path
+2026-10-26T17:43:20.3383657Z includeif.gitdir:/github/workspace/.git.path
+2026-10-26T17:43:20.3385892Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-26T17:43:20.3391396Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git.path
+2026-10-26T17:43:20.3423875Z /home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3437098Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git.path /home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3486826Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git/worktrees/*.path
+2026-10-26T17:43:20.3517401Z /home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3542991Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/agent-session-loop/agent-session-loop/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3593365Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-26T17:43:20.3627063Z /github/runner_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3636642Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3679470Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-26T17:43:20.3709304Z /github/runner_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3719248Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config
+2026-10-26T17:43:20.3762182Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-26T17:43:20.4024348Z Removing credentials config '/home/runner/work/_temp/git-credentials-d9b8fb63-50fc-4886-9dcb-4cc3570f9ddb.config'
+2026-10-26T17:43:20.4034711Z ##[endgroup]
+2026-10-26T17:43:20.4434749Z ##[group]Run actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+2026-10-26T17:43:20.4435857Z with:
+2026-10-26T17:43:20.4436637Z   python-version: 3.15
+2026-10-26T17:43:20.4437441Z   cache: pip
+2026-10-26T17:43:20.4438257Z   cache-dependency-path: pyproject.toml
+2026-10-26T17:43:20.4439145Z   check-latest: false
+2026-10-26T17:43:20.4443064Z   token: ***
+2026-10-26T17:43:20.4444045Z   mirror: https://raw.githubusercontent.com/actions/python-versions/main
+2026-10-26T17:43:20.4445094Z   update-environment: true
+2026-10-26T17:43:20.4445927Z   allow-prereleases: false
+2026-10-26T17:43:20.4446741Z   freethreaded: false
+2026-10-26T17:43:20.4447571Z ##[endgroup]
+2026-10-26T17:43:20.5644826Z ##[group]Installed versions
+2026-10-26T17:43:20.5732457Z Version 3.15 was not found in the local cache
+2026-10-26T17:43:21.3680992Z Version 3.15 is available for downloading
+2026-10-26T17:43:21.3682518Z Download from "https://github.com/actions/python-versions/releases/download/3.15.2-40340363276/python-3.15.2-linux-24.04-x64.tar.gz"
+2026-10-26T17:43:22.0747079Z Extract downloaded archive
+2026-10-26T17:43:22.0886639Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/fd11fe36-7f97-4790-8431-afe5ea2fe949 -f /home/runner/work/_temp/ce83193f-4c51-4c7b-ad40-1beb9ecc3ed2
+2026-10-26T17:43:24.8734436Z Execute installation script
+2026-10-26T17:43:24.8850660Z Check if Python hostedtoolcache folder exist...
+2026-10-26T17:43:24.8851667Z Create Python 3.15.2 folder
+2026-10-26T17:43:24.8868090Z Copy Python binaries to hostedtoolcache folder
+2026-10-26T17:43:25.4699155Z Create additional symlinks (Required for the UsePythonVersion Azure Pipelines task and the setup-python GitHub Action)
+2026-10-26T17:43:25.4757492Z Upgrading pip...
+2026-10-26T17:43:28.0172092Z Collecting pip
+2026-10-26T17:43:28.0669395Z Downloading pip-26.2.2-py3-none-any.whl.metadata (4.6 kB)
+2026-10-26T17:43:28.1177818Z Downloading pip-26.2.2-py3-none-any.whl (1.8 MB)
+2026-10-26T17:43:28.1639902Z ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 88.1 MB/s  0:00:00
+2026-10-26T17:43:28.1640542Z 
+2026-10-26T17:43:28.3157925Z Installing collected packages: pip
+2026-10-26T17:43:28.3158447Z Attempting uninstall: pip
+2026-10-26T17:43:28.3179729Z Found existing installation: pip 26.2.2
+2026-10-26T17:43:28.3498922Z Uninstalling pip-26.2.2:
+2026-10-26T17:43:28.3559481Z Successfully uninstalled pip-26.2.2
+2026-10-26T17:43:29.4968996Z Successfully installed pip-26.2.2
+2026-10-26T17:43:29.5823227Z Create complete file
+2026-10-26T17:43:29.5875750Z Successfully set up CPython (3.15.2)
+2026-10-26T17:43:29.5876863Z ##[endgroup]
+2026-10-26T17:43:29.6155692Z [command]/opt/hostedtoolcache/Python/3.15.2/x64/bin/pip cache dir
+2026-10-26T17:43:29.7711451Z /home/runner/.cache/pip
+2026-10-26T17:43:29.9046365Z pip cache is not found
+2026-10-26T17:43:29.9257341Z ##[group]Run extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3
+2026-10-26T17:43:29.9257761Z with:
+2026-10-26T17:43:29.9260621Z   github-token: ***
+2026-10-26T17:43:29.9260851Z env:
+2026-10-26T17:43:29.9261129Z   pythonLocation: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9261591Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib/pkgconfig
+2026-10-26T17:43:29.9262026Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9262404Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9262780Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9263156Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib
+2026-10-26T17:43:29.9263479Z ##[endgroup]
+2026-10-26T17:43:29.9321036Z ##[start-action display=Run extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d;id=__extractions_setup-just.__extractions_setup-crate]
+2026-10-26T17:43:29.9364192Z ##[group]Run extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d
+2026-10-26T17:43:29.9364599Z with:
+2026-10-26T17:43:29.9364801Z   repo: casey/just
+2026-10-26T17:43:29.9367498Z   github-token: ***
+2026-10-26T17:43:29.9367730Z env:
+2026-10-26T17:43:29.9367999Z   pythonLocation: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9368441Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib/pkgconfig
+2026-10-26T17:43:29.9368870Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9369254Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9369635Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:29.9370020Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib
+2026-10-26T17:43:29.9370520Z ##[endgroup]
+2026-10-26T17:43:30.7958390Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/4abbcfba-8309-4fcd-922c-addd77afe2a4 -f /home/runner/work/_temp/75ab67da-b3d5-49e6-bb66-538594ea0de6
+2026-10-26T17:43:30.8680635Z Successfully setup just v1.59.0
+2026-10-26T17:43:30.8813959Z ##[end-action id=__extractions_setup-just.__extractions_setup-crate;outcome=success;conclusion=success;duration_ms=949]
+2026-10-26T17:43:30.8905763Z ##[group]Run python3 -m pip install --upgrade "pip>=25.1"
+2026-10-26T17:43:30.8906271Z [36;1mpython3 -m pip install --upgrade "pip>=25.1"[0m
+2026-10-26T17:43:30.8906670Z [36;1mpython3 -m pip install --group dev[0m
+2026-10-26T17:43:30.9163692Z shell: /usr/bin/bash -e {0}
+2026-10-26T17:43:30.9163992Z env:
+2026-10-26T17:43:30.9164293Z   pythonLocation: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:30.9164751Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib/pkgconfig
+2026-10-26T17:43:30.9165179Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:30.9165553Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:30.9166173Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:30.9166543Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib
+2026-10-26T17:43:30.9166874Z ##[endgroup]
+2026-10-26T17:43:31.7551659Z Requirement already satisfied: pip>=25.1 in /opt/hostedtoolcache/Python/3.15.2/x64/lib/python3.15/site-packages (26.2.2)
+2026-10-26T17:43:33.0499187Z Collecting ruff==0.16.9
+2026-10-26T17:43:33.1040829Z   Downloading ruff-0.16.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (20 kB)
+2026-10-26T17:43:33.2019579Z Collecting mypy==2.3.1
+2026-10-26T17:43:33.2062706Z   Downloading mypy-2.3.1-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+2026-10-26T17:43:33.2214852Z Collecting typing_extensions>=4.14.0 (from mypy==2.3.1)
+2026-10-26T17:43:33.2259140Z   Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+2026-10-26T17:43:33.2369518Z Collecting mypy_extensions>=1.0.0 (from mypy==2.3.1)
+2026-10-26T17:43:33.2420120Z   Downloading mypy_extensions-1.1.0-py3-none-any.whl.metadata (1.1 kB)
+2026-10-26T17:43:33.2564348Z Collecting pathspec>=1.0.0 (from mypy==2.3.1)
+2026-10-26T17:43:33.2600485Z   Downloading pathspec-1.1.1-py3-none-any.whl.metadata (14 kB)
+2026-10-26T17:43:33.3843197Z Collecting librt>=0.13.0 (from mypy==2.3.1)
+2026-10-26T17:43:33.3908472Z   Downloading librt-0.16.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (1.3 kB)
+2026-10-26T17:43:34.1270833Z Collecting ast-serialize<1.0.0,>=0.6.0 (from mypy==2.3.1)
+2026-10-26T17:43:34.1318565Z   Downloading ast_serialize-0.13.1-cp315-abi3.abi3t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.4 kB)
+2026-10-26T17:43:34.2869360Z Downloading ruff-0.16.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (10.4 MB)
+2026-10-26T17:43:34.3688518Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.4/10.4 MB 140.0 MB/s  0:00:00
+2026-10-26T17:43:34.3783003Z Downloading mypy-2.3.1-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (15.2 MB)
+2026-10-26T17:43:34.4334703Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 15.2/15.2 MB 285.0 MB/s  0:00:00
+2026-10-26T17:43:34.4420646Z Downloading ast_serialize-0.13.1-cp315-abi3.abi3t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.3 MB)
+2026-10-26T17:43:34.4498864Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 192.6 MB/s  0:00:00
+2026-10-26T17:43:34.4537712Z Downloading librt-0.16.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (525 kB)
+2026-10-26T17:43:34.4586821Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 525.1/525.1 kB 107.6 MB/s  0:00:00
+2026-10-26T17:43:34.4621721Z Downloading mypy_extensions-1.1.0-py3-none-any.whl (5.0 kB)
+2026-10-26T17:43:34.4672902Z Downloading pathspec-1.1.1-py3-none-any.whl (57 kB)
+2026-10-26T17:43:34.4727034Z Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+2026-10-26T17:43:34.5519679Z Installing collected packages: typing_extensions, ruff, pathspec, mypy_extensions, librt, ast-serialize, mypy
+2026-10-26T17:43:36.7601128Z 
+2026-10-26T17:43:36.7613996Z Successfully installed ast-serialize-0.13.1 librt-0.16.0 mypy-2.3.1 mypy_extensions-1.1.0 pathspec-1.1.1 ruff-0.16.9 typing_extensions-4.16.0
+2026-10-26T17:43:36.8696435Z ##[group]Run just lint
+2026-10-26T17:43:36.8696723Z [36;1mjust lint[0m
+2026-10-26T17:43:36.8767689Z shell: /usr/bin/bash -e {0}
+2026-10-26T17:43:36.8767978Z env:
+2026-10-26T17:43:36.8768272Z   pythonLocation: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:36.8768737Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib/pkgconfig
+2026-10-26T17:43:36.8769181Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:36.8769579Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:36.8769955Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:43:36.8770506Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib
+2026-10-26T17:43:36.8771057Z ##[endgroup]
+2026-10-26T17:43:36.8901063Z ./lint.sh
+2026-10-26T17:43:40.0152318Z i Found 5 shell script(s):
+2026-10-26T17:43:40.0152811Z   lint.sh
+2026-10-26T17:43:40.0153149Z   scripts/reliability-stress.sh
+2026-10-26T17:43:40.0153677Z   tests/fixtures/harness_stubs/claude
+2026-10-26T17:43:40.0154020Z   tests/fixtures/harness_stubs/codex
+2026-10-26T17:43:40.0154311Z   tests/fixtures/harness_stubs/copilot
+2026-10-26T17:43:40.0154494Z 
+2026-10-26T17:43:40.0157666Z i Running shellcheck...
+2026-10-26T17:43:40.0158006Z 
+2026-10-26T17:43:40.4828842Z 
+2026-10-26T17:43:40.4829475Z ok All 5 script(s) passed shellcheck
+2026-10-26T17:43:40.4834157Z ruff check .
+2026-10-26T17:43:40.8197418Z All checks passed!
+2026-10-26T17:43:40.8217172Z ruff format --check .
+2026-10-26T17:43:41.1257527Z 2058 files already formatted
+2026-10-26T17:43:41.1279083Z mypy
+2026-10-26T17:43:48.8715191Z agent_session_loop/cli_parser_support.py:384: error: Signature of "format_usage" incompatible with supertype "argparse.ArgumentParser"  [override]
+2026-10-26T17:43:48.8716023Z agent_session_loop/cli_parser_support.py:384: note:      Superclass:
+2026-10-26T17:43:48.8716718Z agent_session_loop/cli_parser_support.py:384: note:          def format_usage(self, formatter: HelpFormatter | None = ...) -> str
+2026-10-26T17:43:48.8717380Z agent_session_loop/cli_parser_support.py:384: note:      Subclass:
+2026-10-26T17:43:48.8717902Z agent_session_loop/cli_parser_support.py:384: note:          def format_usage(self) -> str
+2026-10-26T17:43:48.8718660Z agent_session_loop/cli_parser_support.py:388: error: Signature of "format_help" incompatible with supertype "argparse.ArgumentParser"  [override]
+2026-10-26T17:43:48.8719332Z agent_session_loop/cli_parser_support.py:388: note:      Superclass:
+2026-10-26T17:43:48.8719928Z agent_session_loop/cli_parser_support.py:388: note:          def format_help(self, formatter: HelpFormatter | None = ...) -> str
+2026-10-26T17:43:48.8720735Z agent_session_loop/cli_parser_support.py:388: note:      Subclass:
+2026-10-26T17:43:48.8721246Z agent_session_loop/cli_parser_support.py:388: note:          def format_help(self) -> str
+2026-10-26T17:44:08.0078233Z Found 2 errors in 1 file (checked 2001 source files)
+2026-10-26T17:44:08.0521902Z error: recipe `lint-py` failed on line 95 with exit code 1
+2026-10-26T17:44:08.0542707Z ##[error]Process completed with exit code 1.
+2026-10-26T17:44:08.0648046Z ##[group]Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+2026-10-26T17:44:08.0648498Z with:
+2026-10-26T17:44:08.0648737Z   name: run-suite-logs-linux-py3.15
+2026-10-26T17:44:08.0649019Z   path: .cache/run_suite_logs/
+2026-10-26T17:44:08.0649280Z   if-no-files-found: ignore
+2026-10-26T17:44:08.0649531Z   compression-level: 6
+2026-10-26T17:44:08.0649751Z   overwrite: false
+2026-10-26T17:44:08.0649971Z   include-hidden-files: false
+2026-10-26T17:44:08.0650212Z   archive: true
+2026-10-26T17:44:08.0650576Z env:
+2026-10-26T17:44:08.0650837Z   pythonLocation: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:44:08.0651291Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib/pkgconfig
+2026-10-26T17:44:08.0651701Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:44:08.0652103Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:44:08.0652486Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.15.2/x64
+2026-10-26T17:44:08.0652885Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.15.2/x64/lib
+2026-10-26T17:44:08.0653215Z ##[endgroup]
+2026-10-26T17:44:08.2114878Z No files were found with the provided path: .cache/run_suite_logs/. No artifacts will be uploaded.
+2026-10-26T17:44:08.2335142Z Post job cleanup.
+2026-10-26T17:44:08.3302188Z [command]/usr/bin/git version
+2026-10-26T17:44:08.3366384Z git version 2.55.0
+2026-10-26T17:44:08.3412810Z Temporarily overriding HOME='/home/runner/work/_temp/3d847407-7104-4bd2-a973-fe01193102dc' before making global git config changes
+2026-10-26T17:44:08.3414173Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-26T17:44:08.3428904Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/agent-session-loop/agent-session-loop
+2026-10-26T17:44:08.3517955Z Removing SSH command configuration
+2026-10-26T17:44:08.3518648Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-26T17:44:08.3534233Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-26T17:44:08.3815993Z Removing HTTP extra header
+2026-10-26T17:44:08.3821050Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-26T17:44:08.3876475Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-26T17:44:08.4176238Z Removing includeIf entries pointing to credentials config files
+2026-10-26T17:44:08.4190580Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-26T17:44:08.4293295Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-26T17:44:08.4743067Z Cleaning up orphan processes

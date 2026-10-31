@@ -1,0 +1,137 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The release workflow runs every check before it builds anything.
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Check reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+  playback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install mpv
+        run: |
+          sudo apt-get update && sudo apt-get install -y mpv
+          mpv --version
+      - name: Verify real playback continuity
+        env:
+          MUSE_REQUIRE_MPV: "1"
+        run: go test -race -count=1 -failfast -v -tags integration -run RealMPV -timeout 5m ./internal/player/
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        # Same file set as `just fmt-check`: Go files that are not gitignored.
+        run: out="$(git ls-files -z --cached --others --exclude-standard '*.go' | xargs -0 gofmt -l)"; test -z "$out" || (echo "$out" && exit 1)
+      - name: Check go mod tidy
+        run: go mod tidy && git diff --exit-code go.mod go.sum
+      - name: Check CI test runner
+        run: python3 -m unittest discover -s scripts -p 'test_ci_test.py' -v
+      - name: Check release script
+        run: python3 -m unittest discover -s scripts -p 'test_release.py' -v
+      - name: Check Homebrew cask script
+        run: python3 -m unittest discover -s scripts -p 'test_homebrew_cask.py' -v
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+  test-shards:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [core, cli, tui-0, tui-1]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        id: go
+        with:
+          go-version-file: go.mod
+          # Each shard must save its own race build cache, even after a failure.
+          cache: false
+      - name: Locate Go caches
+        id: paths
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v5
+        id: cache
+        with:
+          path: |
+            ${{ steps.paths.outputs.build }}
+            ${{ steps.paths.outputs.modules }}
+          # Refresh source artifacts on each commit; reuse the previous build.
+          key: test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
+            test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.shard }}-
+      - name: Test (stop on first failure)
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: python3 scripts/ci_test.py --shard "$SHARD" --json-output "$RUNNER_TEMP/tests.jsonl"
+      - name: Upload test timings and diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tests-${{ matrix.shard }}
+          path: ${{ runner.temp }}/tests.jsonl
+          retention-days: 7
+      - name: Save race build cache
+        if: ${{ !cancelled() && steps.cache.outputs.cache-hit != 'true' && steps.cache.outcome == 'success' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ steps.paths.outputs.build }}
+            ${{ steps.paths.outputs.modules }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+  # Preserve the required "test" check; skipped/cancelled shards cannot pass it.
+  test:
+    if: ${{ always() }}
+    needs: [checks, test-shards]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every test shard
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          TESTS_RESULT: ${{ needs.test-shards.result }}
+        run: test "$CHECKS_RESULT" = success && test "$TESTS_RESULT" = success
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          # Keep in sync with the golangci_lint variable in the justfile.
+          version: v2.13.1

@@ -1,0 +1,221 @@
+# The whole of Lyzma's automated enforcement.
+#
+# This runs the static-analysis gate and the LyzmaCore/LyzmaArchiveTrust
+# package tests. It deliberately does NOT boot a simulator, and that is a
+# cost/scope call rather than a platform limit: the macos-26 image below ships
+# iOS 26 simulator runtimes with its Xcode 26.x installs, so this job could
+# boot one without downloading a platform first. What it would cost is an
+# xcodebuild of the whole Lyzma app target, a simulator boot, and the LyzmaTests and
+# LyzmaUITests bundles — several times this job's few minutes, on the runner
+# class GitHub bills at the highest multiplier, on every push. The simulator
+# suite is gated locally instead, by the pre-push hook that
+# `Scripts/install-hooks.sh` installs. See docs/ci-and-hooks.md for the split
+# and for what each half does and does not prove.
+#
+# The independent inventory starter is compiled unsigned here to validate
+# project/package wiring; its simulator UI tests remain on the local path.
+#
+# Every step here fails loudly or not at all. There is no `continue-on-error`,
+# no `if:` that can skip a check, and every `run:` uses `bash -euo pipefail`,
+# because a workflow that goes green by silently skipping a step is worse than
+# no workflow.
+
+name: CI
+
+# ---------------------------------------------------------------------------
+# DISABLED — manual dispatch only. Deliberate, not an oversight.
+# ---------------------------------------------------------------------------
+#
+# The job below is complete and correct; only the trigger surface is switched
+# off, so no push and no pull request can start a run. CI is turned on by
+# restoring exactly this block:
+#
+#   on:
+#     push:
+#     pull_request:
+#     workflow_dispatch:
+#
+# That is the whole change — one edit, three lines, nothing else in this file
+# moves. Until it is made, this repository has no automated enforcement on the
+# remote and `Scripts/lint.sh` plus `swift test` remain a local discipline.
+# docs/ci-and-hooks.md says the same thing next to the rest of the story.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Xcode major this repository is configured against. Config/Base.xcconfig
+  # sets IPHONEOS_DEPLOYMENT_TARGET = 26.0, and the SwiftLint/SwiftFormat
+  # thresholds in the repo root were derived under Xcode 26.6's toolchain, so
+  # the runner default is not good enough — it is selected explicitly below.
+  XCODE_MAJOR: "26"
+  HOMEBREW_NO_ANALYTICS: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_ENV_HINTS: "1"
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  gate:
+    name: Lint and package tests
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # `xcode-select` rather than a third-party action: one less unpinned
+      # dependency in the one place that gates every merge. GitHub's macOS
+      # images install each Xcode as /Applications/Xcode_<version>.app, so the
+      # newest 26.x is a glob and a version sort. If none is present the job
+      # stops here and lists what the image actually has, which is the failure
+      # you want when a runner image moves under you.
+      - name: Select Xcode ${{ env.XCODE_MAJOR }}.x
+        id: toolchain
+        run: |
+          selected="$(ls -d "/Applications/Xcode_${XCODE_MAJOR}"*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$selected" ]; then
+            echo "no Xcode ${XCODE_MAJOR}.x on this runner image. Installed:" >&2
+            ls -d /Applications/Xcode*.app >&2 || echo "  (none)" >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$selected/Contents/Developer"
+          xcodebuild -version
+          swift --version
+          # Compiled SwiftPM artifacts are toolchain-specific, so the build
+          # cache below is keyed on this rather than on the runner label.
+          echo "id=$(swift --version | tr -d '\n' | tr -s ' ' '-' | tr -cd 'A-Za-z0-9.-')" >>"$GITHUB_OUTPUT"
+
+      # Homebrew's download cache, not the Cellar: restoring bottles avoids the
+      # network, while `brew bundle` still decides what is installed. Keyed on
+      # the Brewfile, so taking a tool upgrade is a cache miss by construction.
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/Homebrew/downloads
+            ~/Library/Caches/Homebrew/Cask
+          key: brew-${{ runner.os }}-${{ hashFiles('Brewfile') }}
+          restore-keys: |
+            brew-${{ runner.os }}-
+
+      # Installs swiftlint, swiftformat and jscpd.
+      # `Scripts/lint.sh` re-reads the `lyzma-pin:` comments from this same
+      # Brewfile and fails if Homebrew resolved a different version, so an
+      # upstream release shows up as a red build naming the version that moved
+      # — not as silently different findings.
+      #
+      # Deliberately NOT `--no-upgrade`. The runner image preinstalls some of
+      # these tools at whatever version it was baked with — macos-26 ships
+      # SwiftFormat 0.62.1 against this Brewfile's 0.63.0 pin — and
+      # `--no-upgrade` leaves an already-installed older formula exactly where
+      # it is. The job then died in `Scripts/lint.sh`'s version check before a
+      # single quality gate or package test ran. Without the flag Homebrew
+      # moves a preinstalled formula up to the current resolution, which is the
+      # only version `brew bundle` can reach.
+      #
+      # This does not weaken the pin in either direction: `require_tool` in
+      # `Scripts/lint.sh` compares for exact equality, so a formula that has
+      # moved *past* the recorded `lyzma-pin:` still fails the build loudly and
+      # by name. Upgrading toward the pin is the fix; upgrading past it is
+      # still a red build asking for the thresholds to be re-derived.
+      - name: brew bundle
+        run: brew bundle install --file Brewfile
+
+      # Periphery is pinned in the Brewfile but fetched as a checked release
+      # archive; see Scripts/install-periphery.sh for why.
+      - name: Install Periphery
+        run: Scripts/install-periphery.sh
+
+      # No external SwiftPM dependencies, so this caches compiled artifacts
+      # only. `Scripts/lint.sh` builds the package too (Periphery scans it), so
+      # a hit pays for both steps below. restore-keys lets a stale tree restore
+      # and rebuild incrementally instead of starting cold.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v6
+        with:
+          path: |
+            Packages/LyzmaCore/.build
+            Packages/CaptureTestSupport/.build
+            Packages/CapturePresentation/.build
+            Packages/CaptureUI/.build
+            Packages/WorkCore/.build
+            Packages/CaptureCore/.build
+            Packages/CaptureApple/.build
+            Examples/InventoryCapture/.build
+            ~/.cache/org.swift.swiftpm
+          key: spm-${{ steps.toolchain.outputs.id }}-${{ hashFiles('Packages/**/*.swift', 'Examples/InventoryCapture/**/*.swift') }}
+          restore-keys: |
+            spm-${{ steps.toolchain.outputs.id }}-
+
+      # SwiftLint (--strict), SwiftFormat (--lint), Periphery against the
+      # package, and jscpd. Not `--app`: that scan needs a full xcodebuild
+      # against a simulator destination and belongs to the local path.
+      - name: Scripts/lint.sh
+        run: bash Scripts/lint.sh
+
+      # The LyzmaCore suite. This is the only place it runs: the Lyzma scheme's
+      # test action contains LyzmaTests and LyzmaUITests only, so no simulator
+      # run covers these tests — which is exactly why the pre-push hook skips
+      # them and CI does not.
+      - name: swift test
+        run: swift test --package-path Packages/LyzmaCore
+
+      - name: Capture presentation tests
+        run: swift test --package-path Packages/CapturePresentation
+
+      - name: Capture UI build
+        run: swift build --package-path Packages/CaptureUI
+
+      - name: Shared capture test-support tests
+        run: swift test --package-path Packages/CaptureTestSupport
+
+      - name: Capture starter generator tests
+        run: python3 -m unittest discover -s Scripts/tests -p 'test_capture_starter.py'
+
+      - name: Generated capture starter build
+        run: bash Scripts/check-capture-starter.sh
+
+      - name: Inventory starter simulator build
+        run: bash Scripts/build-inventory-unsigned.sh
+
+      - name: Shared work coordination tests
+        run: swift test --package-path Packages/WorkCore
+
+      - name: Independent inventory capture consumer tests
+        run: swift test --package-path Examples/InventoryCapture
+
+      - name: Apple capture adapters build
+        run: swift build --package-path Packages/CaptureApple
+
+      # Isolated archive trust primitives; fake Keychain boundary, no credentials.
+      - name: Archive trust package tests
+        run: swift test --package-path Packages/LyzmaArchiveTrust --scratch-path .build/archive-trust
+
+      - name: Archive device preflight contract checks
+        run: python3 Scripts/check_archive_device_preflight.py
+
+      # Compilation only: never signs, installs or runs physical-device fixture cases.
+      - name: Isolated archive device harness build
+        run: python3 Scripts/archive_device_preflight.py build-unsigned
+
+      - name: Local record process interruption checks
+        run: python3 Scripts/check_record_file_restarts.py
+
+      - name: Nonce store process interruption and concurrency
+        run: python3 Scripts/check_nonce_store_restarts.py
+
+      - name: Local record encryption interoperability
+        run: node Scripts/check_record_encryption_interop.mjs
+
+      - name: Native root signature interoperability
+        run: node Scripts/check_native_root_signatures.mjs

@@ -780,6 +780,17 @@ a PR with published repair commits fails its Dependabot-only authorship gate
 and must be merged manually. Neither the GitHub App nor the
 demo build runs repairs.
 
+## Diagnosis evaluation
+
+`pr eval` replays four embedded real-world cases through the production PR
+diagnosis service with a selected agent. Snapshots, base checks, bounded logs,
+artifacts and selected source files are frozen; replay does not read GitHub
+state. Expected answers are withheld from the agent. Grading uses its original
+answer, before the service adds uncertainty recommendations for omitted checks.
+Live evaluations are opt-in and may incur the configured backend's normal costs.
+They do not edit repositories or perform external PR actions. See the
+[evaluation guide](diagnosis-evaluation.md) for scores, limits and exit codes.
+
 ## Explicit CI reruns
 
 `pr rerun owner/repo#123` previews failed GitHub Actions jobs on an open PR's

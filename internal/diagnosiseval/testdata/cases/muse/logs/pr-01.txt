@@ -1,0 +1,286 @@
+.github:41: Process completed with exit code 1.
+.github:93: config.validateMusicDir calls os.ReadDir
+.github:37: db.MigrateDown calls goose.Down, which eventually calls os.File.ReadDir
+.github:132: control.bindPrivate calls net.Listen
+.github:266: muse.runRemoteAction calls net.DialTimeout
+.github:133: player.NewIPCClient calls net.Dial
+.github:1: "The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026. For more information, see https://github.com/actions/runner-images/issues/14748"
+2026-10-29T08:12:12.6161865Z Current runner version: '2.338.0'
+2026-10-29T08:12:12.6199303Z ##[group]Runner Image Provisioner
+2026-10-29T08:12:12.6200608Z Hosted Compute Agent
+2026-10-29T08:12:12.6201696Z Version: 20261021.618
+2026-10-29T08:12:12.6202832Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-29T08:12:12.6204207Z Build Date: 2026-10-21T00:45:21Z
+2026-10-29T08:12:12.6205391Z Worker ID: {ab5b68bc-7d26-4fe7-a0f1-425731d421d4}
+2026-10-29T08:12:12.6206587Z Region: eastus
+2026-10-29T08:12:12.6207603Z Cloud: Azure
+2026-10-29T08:12:12.6208820Z ##[endgroup]
+2026-10-29T08:12:12.6211455Z ##[group]Operating System
+2026-10-29T08:12:12.6212526Z Ubuntu
+2026-10-29T08:12:12.6213515Z 26.04.1
+2026-10-29T08:12:12.6214433Z LTS
+2026-10-29T08:12:12.6215288Z ##[endgroup]
+2026-10-29T08:12:12.6216417Z ##[group]Runner Image
+2026-10-29T08:12:12.6217436Z Image: ubuntu-26.04
+2026-10-29T08:12:12.6218488Z Version: 20261025.179.1
+2026-10-29T08:12:12.6221079Z Included Software: https://github.com/actions/runner-images/blob/ubuntu26/20261025.179/images/ubuntu/Ubuntu2604-Readme.md
+2026-10-29T08:12:12.6224169Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu26%2F20261025.179
+2026-10-29T08:12:12.6226010Z ##[endgroup]
+2026-10-29T08:12:12.6227874Z ##[group]GITHUB_TOKEN Permissions
+2026-10-29T08:12:12.6231518Z Contents: read
+2026-10-29T08:12:12.6232620Z Metadata: read
+2026-10-29T08:12:12.6233757Z ##[endgroup]
+2026-10-29T08:12:12.6236924Z Secret source: Dependabot
+2026-10-29T08:12:12.6239013Z Cache mode: write
+2026-10-29T08:12:12.6240797Z Prepare workflow directory
+2026-10-29T08:12:12.6751501Z Prepare all required actions
+2026-10-29T08:12:12.6823149Z Getting action download info
+2026-10-29T08:12:12.8449809Z Download action repository 'actions/checkout@v6' (SHA:d23441a48e516b6c34aea4fa41551a30e30af803)
+2026-10-29T08:12:13.0051757Z Download action repository 'actions/setup-go@v6' (SHA:924ae3a1cded613372ab5595356fb5720e22ba16)
+2026-10-29T08:12:13.2476032Z Complete job name: security
+2026-10-29T08:12:13.3426281Z ##[group]Run actions/checkout@v6
+2026-10-29T08:12:13.3427179Z with:
+2026-10-29T08:12:13.3427633Z   repository: sglavoie/muse
+2026-10-29T08:12:13.3432114Z   token: ***
+2026-10-29T08:12:13.3432580Z   ssh-strict: true
+2026-10-29T08:12:13.3433021Z   ssh-user: git
+2026-10-29T08:12:13.3433471Z   persist-credentials: true
+2026-10-29T08:12:13.3433964Z   clean: true
+2026-10-29T08:12:13.3434429Z   sparse-checkout-cone-mode: true
+2026-10-29T08:12:13.3434949Z   fetch-depth: 1
+2026-10-29T08:12:13.3435382Z   fetch-tags: false
+2026-10-29T08:12:13.3435819Z   show-progress: true
+2026-10-29T08:12:13.3436265Z   lfs: false
+2026-10-29T08:12:13.3436675Z   submodules: false
+2026-10-29T08:12:13.3437115Z   set-safe-directory: true
+2026-10-29T08:12:13.3437619Z   allow-unsafe-pr-checkout: false
+2026-10-29T08:12:13.3438460Z ##[endgroup]
+2026-10-29T08:12:14.0178331Z Syncing repository: sglavoie/muse
+2026-10-29T08:12:14.0181267Z ##[group]Getting Git version info
+2026-10-29T08:12:14.0182547Z Working directory is '/home/runner/work/muse/muse'
+2026-10-29T08:12:14.0483088Z [command]/usr/bin/git version
+2026-10-29T08:12:14.0539877Z git version 2.56.0
+2026-10-29T08:12:14.0571196Z ##[endgroup]
+2026-10-29T08:12:14.0586527Z Temporarily overriding HOME='/home/runner/work/_temp/acf647f1-36e6-4f03-8705-a09f35539321' before making global git config changes
+2026-10-29T08:12:14.0591409Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-29T08:12:14.0595348Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/muse/muse
+2026-10-29T08:12:14.0684689Z Deleting the contents of '/home/runner/work/muse/muse'
+2026-10-29T08:12:14.0688925Z ##[group]Determining repository object format
+2026-10-29T08:12:14.0692271Z ##[endgroup]
+2026-10-29T08:12:14.0694731Z ##[group]Initializing the repository
+2026-10-29T08:12:14.0697155Z [command]/usr/bin/git init /home/runner/work/muse/muse
+2026-10-29T08:12:14.0988345Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-29T08:12:14.0992312Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-29T08:12:14.0996163Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-29T08:12:14.0999203Z hint: call:
+2026-10-29T08:12:14.1000989Z hint:
+2026-10-29T08:12:14.1003004Z hint: 	git config --global init.defaultBranch <name>
+2026-10-29T08:12:14.1005318Z hint:
+2026-10-29T08:12:14.1007499Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-29T08:12:14.1011534Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-29T08:12:14.1014571Z hint:
+2026-10-29T08:12:14.1016249Z hint: 	git branch -m <name>
+2026-10-29T08:12:14.1018111Z hint:
+2026-10-29T08:12:14.1020889Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-29T08:12:14.1024089Z Initialized empty Git repository in /home/runner/work/muse/muse/.git/
+2026-10-29T08:12:14.1030640Z [command]/usr/bin/git remote add origin https://github.com/sglavoie/muse
+2026-10-29T08:12:14.1077365Z ##[endgroup]
+2026-10-29T08:12:14.1080565Z ##[group]Disabling automatic garbage collection
+2026-10-29T08:12:14.1083127Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-29T08:12:14.1120813Z ##[endgroup]
+2026-10-29T08:12:14.1123447Z ##[group]Setting up auth
+2026-10-29T08:12:14.1125363Z Removing SSH command configuration
+2026-10-29T08:12:14.1129036Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-29T08:12:14.1177220Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-29T08:12:14.2011090Z Removing HTTP extra header
+2026-10-29T08:12:14.2018119Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-29T08:12:14.2074575Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-29T08:12:14.2354756Z Removing includeIf entries pointing to credentials config files
+2026-10-29T08:12:14.2361097Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-29T08:12:14.2404408Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-29T08:12:14.2709177Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-29T08:12:14.2753427Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/muse/muse/.git.path /home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:14.2978970Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/muse/muse/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:14.3020196Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:14.3062979Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:14.3093696Z ##[endgroup]
+2026-10-29T08:12:14.3095450Z ##[group]Fetching the repository
+2026-10-29T08:12:14.3103983Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c92919f575e0a9cb7560b8ab92d8f91d5c705728:refs/remotes/pull/5/merge
+2026-10-29T08:12:14.6103326Z From https://github.com/sglavoie/muse
+2026-10-29T08:12:14.6105058Z  * [new ref]         c92919f575e0a9cb7560b8ab92d8f91d5c705728 -> pull/5/merge
+2026-10-29T08:12:14.6111114Z ##[endgroup]
+2026-10-29T08:12:14.6111709Z ##[group]Determining the checkout info
+2026-10-29T08:12:14.6113510Z ##[endgroup]
+2026-10-29T08:12:14.6119230Z [command]/usr/bin/git sparse-checkout disable
+2026-10-29T08:12:14.6442541Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-29T08:12:14.6476728Z ##[group]Checking out the ref
+2026-10-29T08:12:14.6480780Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/5/merge
+2026-10-29T08:12:14.7562587Z Note: switching to 'refs/remotes/pull/5/merge'.
+2026-10-29T08:12:14.7563084Z 
+2026-10-29T08:12:14.7563399Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-29T08:12:14.7564084Z changes and commit them, and you can discard any commits you make in this
+2026-10-29T08:12:14.7564753Z state without impacting any branches by switching back to a branch.
+2026-10-29T08:12:14.7565149Z 
+2026-10-29T08:12:14.7565422Z If you want to create a new branch to retain commits you create, you may
+2026-10-29T08:12:14.7566105Z do so (now or later) by using -c with the switch command. Example:
+2026-10-29T08:12:14.7566476Z 
+2026-10-29T08:12:14.7566641Z   git switch -c <new-branch-name>
+2026-10-29T08:12:14.7566885Z 
+2026-10-29T08:12:14.7567074Z Or undo this operation with:
+2026-10-29T08:12:14.7567322Z 
+2026-10-29T08:12:14.7567463Z   git switch -
+2026-10-29T08:12:14.7567673Z 
+2026-10-29T08:12:14.7567984Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-29T08:12:14.7568408Z 
+2026-10-29T08:12:14.7569225Z HEAD is now at c92919f Merge d7db71a22a27b77eb037a98e36a37a2b2f69dc3b into ef72890719d10ab268f9482479b00ebcec5b58a7
+2026-10-29T08:12:14.7574078Z ##[endgroup]
+2026-10-29T08:12:14.7886825Z [command]/usr/bin/git log -1 --format=%H
+2026-10-29T08:12:14.7914588Z c92919f575e0a9cb7560b8ab92d8f91d5c705728
+2026-10-29T08:12:14.8201772Z ##[group]Run actions/setup-go@v6
+2026-10-29T08:12:14.8202137Z with:
+2026-10-29T08:12:14.8202392Z   go-version-file: go.mod
+2026-10-29T08:12:14.8202694Z   check-latest: false
+2026-10-29T08:12:14.8205317Z   token: ***
+2026-10-29T08:12:14.8205592Z   cache: true
+2026-10-29T08:12:14.8205834Z ##[endgroup]
+2026-10-29T08:12:14.9922250Z Setup go version spec 1.26.0
+2026-10-29T08:12:14.9935730Z Attempting to download 1.26.0...
+2026-10-29T08:12:15.7234524Z matching 1.26.0...
+2026-10-29T08:12:15.7281804Z Acquiring 1.26.0 from https://github.com/actions/go-versions/releases/download/1.26.0-21889650668/go-1.26.0-linux-x64.tar.gz
+2026-10-29T08:12:16.1295913Z Extracting Go...
+2026-10-29T08:12:16.1421639Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/484d807b-e666-49a7-874e-16b1138b6e1a -f /home/runner/work/_temp/2ca7674b-f4e2-4a77-b077-c89e4f5863da
+2026-10-29T08:12:17.3506311Z Successfully extracted go to /home/runner/work/_temp/484d807b-e666-49a7-874e-16b1138b6e1a
+2026-10-29T08:12:17.3513387Z Adding to the cache ...
+2026-10-29T08:12:22.4890232Z Successfully cached go to /opt/hostedtoolcache/go/1.26.0/x64
+2026-10-29T08:12:22.4891344Z Added go to the path
+2026-10-29T08:12:22.4893882Z Successfully set up Go version 1.26.0
+2026-10-29T08:12:22.5171306Z [command]/opt/hostedtoolcache/go/1.26.0/x64/bin/go env GOMODCACHE
+2026-10-29T08:12:22.5219831Z [command]/opt/hostedtoolcache/go/1.26.0/x64/bin/go env GOCACHE
+2026-10-29T08:12:22.5279081Z /home/runner/go/pkg/mod
+2026-10-29T08:12:22.5309326Z /home/runner/.cache/go-build
+2026-10-29T08:12:22.5988784Z Cache is not found
+2026-10-29T08:12:22.6014990Z go version go1.26.0 linux/amd64
+2026-10-29T08:12:22.6015344Z 
+2026-10-29T08:12:22.6015790Z ##[group]go env
+2026-10-29T08:12:22.7648095Z AR='ar'
+2026-10-29T08:12:22.7649026Z CC='gcc'
+2026-10-29T08:12:22.7649488Z CGO_CFLAGS='-O2 -g'
+2026-10-29T08:12:22.7649945Z CGO_CPPFLAGS=''
+2026-10-29T08:12:22.7650430Z CGO_CXXFLAGS='-O2 -g'
+2026-10-29T08:12:22.7650867Z CGO_ENABLED='1'
+2026-10-29T08:12:22.7651376Z CGO_FFLAGS='-O2 -g'
+2026-10-29T08:12:22.7651843Z CGO_LDFLAGS='-O2 -g'
+2026-10-29T08:12:22.7652309Z CXX='g++'
+2026-10-29T08:12:22.7670299Z GCCGO='gccgo'
+2026-10-29T08:12:22.7670698Z GO111MODULE=''
+2026-10-29T08:12:22.7671032Z GOAMD64='v1'
+2026-10-29T08:12:22.7671964Z GOARCH='amd64'
+2026-10-29T08:12:22.7672301Z GOAUTH='netrc'
+2026-10-29T08:12:22.7672685Z GOBIN=''
+2026-10-29T08:12:22.7673179Z GOCACHE='/home/runner/.cache/go-build'
+2026-10-29T08:12:22.7673495Z GOCACHEPROG=''
+2026-10-29T08:12:22.7673717Z GODEBUG=''
+2026-10-29T08:12:22.7673937Z GOENV='/home/runner/.config/go/env'
+2026-10-29T08:12:22.7674204Z GOEXE=''
+2026-10-29T08:12:22.7674395Z GOEXPERIMENT=''
+2026-10-29T08:12:22.7674600Z GOFIPS140='off'
+2026-10-29T08:12:22.7674798Z GOFLAGS=''
+2026-10-29T08:12:22.7675508Z GOGCCFLAGS='-fPIC -m64 -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build4147547121=/tmp/go-build -gno-record-gcc-switches'
+2026-10-29T08:12:22.7676198Z GOHOSTARCH='amd64'
+2026-10-29T08:12:22.7676470Z GOHOSTOS='linux'
+2026-10-29T08:12:22.7676675Z GOINSECURE=''
+2026-10-29T08:12:22.7676942Z GOMOD='/home/runner/work/muse/muse/go.mod'
+2026-10-29T08:12:22.7677268Z GOMODCACHE='/home/runner/go/pkg/mod'
+2026-10-29T08:12:22.7677542Z GONOPROXY=''
+2026-10-29T08:12:22.7677760Z GONOSUMDB=''
+2026-10-29T08:12:22.7677946Z GOOS='linux'
+2026-10-29T08:12:22.7678158Z GOPATH='/home/runner/go'
+2026-10-29T08:12:22.7678384Z GOPRIVATE=''
+2026-10-29T08:12:22.7679054Z GOPROXY='https://proxy.golang.org,direct'
+2026-10-29T08:12:22.7679744Z GOROOT='/opt/hostedtoolcache/go/1.26.0/x64'
+2026-10-29T08:12:22.7680308Z GOSUMDB='sum.golang.org'
+2026-10-29T08:12:22.7680739Z GOTELEMETRY='local'
+2026-10-29T08:12:22.7681222Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+2026-10-29T08:12:22.7681800Z GOTMPDIR=''
+2026-10-29T08:12:22.7682169Z GOTOOLCHAIN='local'
+2026-10-29T08:12:22.7682807Z GOTOOLDIR='/opt/hostedtoolcache/go/1.26.0/x64/pkg/tool/linux_amd64'
+2026-10-29T08:12:22.7683499Z GOVCS=''
+2026-10-29T08:12:22.7684167Z GOVERSION='go1.26.0'
+2026-10-29T08:12:22.7684556Z GOWORK=''
+2026-10-29T08:12:22.7684919Z PKG_CONFIG='pkg-config'
+2026-10-29T08:12:22.7685184Z 
+2026-10-29T08:12:22.7685729Z ##[endgroup]
+2026-10-29T08:12:22.7924583Z ##[group]Run go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+2026-10-29T08:12:22.7925477Z [36;1mgo run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...[0m
+2026-10-29T08:12:22.7973280Z shell: /usr/bin/bash -e {0}
+2026-10-29T08:12:22.7973711Z env:
+2026-10-29T08:12:22.7974031Z   GOTOOLCHAIN: local
+2026-10-29T08:12:22.7974389Z ##[endgroup]
+2026-10-29T08:12:22.8472428Z go: downloading golang.org/x/vuln v1.9.0
+2026-10-29T08:12:22.9911752Z go: downloading golang.org/x/telemetry v0.0.0-20261010193011-f71dc92da45e
+2026-10-29T08:12:23.0599823Z go: downloading golang.org/x/mod v0.42.0
+2026-10-29T08:12:23.0639942Z go: downloading golang.org/x/tools v0.52.0
+2026-10-29T08:12:23.1971159Z go: downloading golang.org/x/sync v0.24.0
+2026-10-29T08:12:53.7974649Z === Symbol Results ===
+2026-10-29T08:12:53.7974971Z 
+2026-10-29T08:12:53.7975168Z Vulnerability #1: GO-2026-4971
+2026-10-29T08:12:53.7975964Z     Panic in Dial and LookupPort when handling NUL byte on Windows in net
+2026-10-29T08:12:53.7976880Z   More info: https://pkg.go.dev/vuln/GO-2026-4971
+2026-10-29T08:12:53.7977454Z   Standard library
+2026-10-29T08:12:53.7977901Z     Found in: net@go1.26
+2026-10-29T08:12:53.7978372Z     Fixed in: net@go1.26.3
+2026-10-29T08:12:53.7979112Z     Example traces found:
+2026-10-29T08:12:53.8000936Z ##[error]      #1: internal/player/ipc.go:133:23: player.NewIPCClient calls net.Dial
+2026-10-29T08:12:53.8010347Z ##[error]      #2: remote.go:266:30: muse.runRemoteAction calls net.DialTimeout
+2026-10-29T08:12:53.8011721Z ##[error]      #3: internal/control/server.go:132:29: control.bindPrivate calls net.Listen
+2026-10-29T08:12:53.8012471Z 
+2026-10-29T08:12:53.8012590Z Vulnerability #2: GO-2026-4602
+2026-10-29T08:12:53.8012923Z     FileInfo can escape from a Root in os
+2026-10-29T08:12:53.8013290Z   More info: https://pkg.go.dev/vuln/GO-2026-4602
+2026-10-29T08:12:53.8013629Z   Standard library
+2026-10-29T08:12:53.8013882Z     Found in: os@go1.26
+2026-10-29T08:12:53.8014143Z     Fixed in: os@go1.26.1
+2026-10-29T08:12:53.8014422Z     Example traces found:
+2026-10-29T08:12:53.8015211Z ##[error]      #1: internal/db/migrations.go:37:22: db.MigrateDown calls goose.Down, which eventually calls os.File.ReadDir
+2026-10-29T08:12:53.8017018Z ##[error]      #2: internal/config/validate.go:93:28: config.validateMusicDir calls os.ReadDir
+2026-10-29T08:12:53.8017784Z 
+2026-10-29T08:12:53.8018003Z Your code is affected by 2 vulnerabilities from the Go standard library.
+2026-10-29T08:12:53.8018849Z This scan also found 7 vulnerabilities in packages you import and 38
+2026-10-29T08:12:53.8019408Z vulnerabilities in modules you require, but your code doesn't appear to call
+2026-10-29T08:12:53.8019832Z these vulnerabilities.
+2026-10-29T08:12:53.8020087Z Use '-show verbose' for more details.
+2026-10-29T08:12:53.9538836Z exit status 3
+2026-10-29T08:12:54.0720266Z ##[error]Process completed with exit code 1.
+2026-10-29T08:12:54.0875600Z Post job cleanup.
+2026-10-29T08:12:54.1781736Z [command]/usr/bin/git version
+2026-10-29T08:12:54.1831465Z git version 2.56.0
+2026-10-29T08:12:54.1879491Z Temporarily overriding HOME='/home/runner/work/_temp/576be510-4d4a-436c-b62e-c423a4f38da0' before making global git config changes
+2026-10-29T08:12:54.1881365Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-29T08:12:54.1885571Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/muse/muse
+2026-10-29T08:12:54.1924928Z Removing SSH command configuration
+2026-10-29T08:12:54.1933615Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-29T08:12:54.1977026Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-29T08:12:54.2324486Z Removing HTTP extra header
+2026-10-29T08:12:54.2325498Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-29T08:12:54.2376687Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-29T08:12:54.2686172Z Removing includeIf entries pointing to credentials config files
+2026-10-29T08:12:54.2695705Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-29T08:12:54.2724554Z includeif.gitdir:/home/runner/work/muse/muse/.git.path
+2026-10-29T08:12:54.2725439Z includeif.gitdir:/home/runner/work/muse/muse/.git/worktrees/*.path
+2026-10-29T08:12:54.2725988Z includeif.gitdir:/github/workspace/.git.path
+2026-10-29T08:12:54.2726398Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-29T08:12:54.2735826Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/muse/muse/.git.path
+2026-10-29T08:12:54.2759818Z /home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.2771047Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/muse/muse/.git.path /home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.2810877Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/muse/muse/.git/worktrees/*.path
+2026-10-29T08:12:54.2834772Z /home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.2845952Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/muse/muse/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.2883197Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-29T08:12:54.2906797Z /github/runner_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.2916103Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.2950817Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-29T08:12:54.2974272Z /github/runner_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.2988952Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config
+2026-10-29T08:12:54.3031972Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-29T08:12:54.3314279Z Removing credentials config '/home/runner/work/_temp/git-credentials-36c0667c-6716-41ff-a994-4607edb86ac8.config'
+2026-10-29T08:12:54.3491389Z Cleaning up orphan processes

@@ -72,6 +72,10 @@ cover:
     go test -coverprofile=coverage.out ./...
     go tool cover -func=coverage.out | tail -n 1
 
+# Opt-in PR diagnosis evaluation with frozen cases and a real model
+eval *args:
+    go run . pr eval {{ args }}
+
 # Format code
 fmt:
     gofmt -w .

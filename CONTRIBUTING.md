@@ -40,6 +40,22 @@ re-records [`docs/demo.gif`](docs/demo.gif) from [`demo/demo.tape`](demo/demo.ta
 with [VHS](https://github.com/charmbracelet/vhs); re-record it when the
 report output changes.
 
+## Evaluating PR diagnosis
+
+`go test ./...` tests the evaluation harness with deterministic agent doubles;
+it never runs a live model. To measure actual diagnosis quality, use:
+
+```bash
+go run . pr eval --list
+just eval --agent claude --json > evaluation.json
+just eval lyzma muse --agent codex --timeout 5m
+```
+
+These opt-in runs use the configured model backend and its normal costs.
+They replay embedded evidence and selected source files without contacting
+GitHub. See [the evaluation guide](docs/diagnosis-evaluation.md) for the fixture
+format, grading rules and review requirements.
+
 ## Releasing
 
 From a clean `main` branch, run one of:

@@ -1,0 +1,524 @@
+.github:641: Process completed with exit code 1.
+.github:1: Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.
+[log tail; truncated]
+ 58 [desktop-chromium] › overview.spec.js:249:5 › local overview › the sections are drawn in the order the shell declares (322ms)
+2026-10-26T18:05:18.1568470Z   ✓   59 [desktop-chromium] › overview.spec.js:269:5 › local overview › a section says how many rows it holds, including hidden ones (367ms)
+2026-10-26T18:05:18.3188100Z   ✓   60 [desktop-chromium] › overview.spec.js:298:5 › local overview › the quiet plan starts behind the toggle and the toggle reveals it (458ms)
+2026-10-26T18:05:18.5564360Z   ✓   61 [desktop-chromium] › overview.spec.js:322:5 › local overview › current work stays on the screen without the toggle (393ms)
+2026-10-26T18:05:18.7202990Z   ✓   62 [desktop-chromium] › overview.spec.js:337:5 › local overview › the older toggle survives a reload through the URL (398ms)
+2026-10-26T18:05:19.0136790Z   ✓   63 [desktop-chromium] › overview.spec.js:359:5 › local overview › a link to a run that has gone quiet gets its own heading (449ms)
+2026-10-26T18:05:19.2759060Z   ✓   64 [desktop-chromium] › overview.spec.js:392:5 › local overview › a link to a run that is still current work is left where it is (549ms)
+2026-10-26T18:05:19.3928520Z   ✓   65 [desktop-chromium] › overview.spec.js:419:5 › local overview › every drawn row sits under a project heading (364ms)
+2026-10-26T18:05:19.5684730Z   ✓   66 [desktop-chromium] › overview.spec.js:432:5 › local overview › a project heading is drawn once and names itself (282ms)
+2026-10-26T18:05:19.8276190Z   ✓   67 [desktop-chromium] › overview.spec.js:471:5 › local overview › the facet selects offer what the catalog holds (435ms)
+2026-10-26T18:05:20.0328080Z   ✓   68 [desktop-chromium] › overview.spec.js:486:5 › local overview › choosing a project narrows the queue and lands in the URL (459ms)
+2026-10-26T18:05:20.2640160Z   ✓   69 [desktop-chromium] › overview.spec.js:512:5 › local overview › a project nothing is in empties the queue and says why (429ms)
+2026-10-26T18:05:20.5161030Z   ✓   71 [desktop-chromium] › overview.spec.js:542:5 › local overview › a link carrying filters opens the view it describes (246ms)
+2026-10-26T18:05:20.6910880Z   ✓   70 [desktop-chromium] › overview.spec.js:531:5 › local overview › a search narrows the queue to the matching plan (651ms)
+2026-10-26T18:05:20.8771200Z   ✓   72 [desktop-chromium] › overview.spec.js:555:5 › local overview › every sort mode the shell offers is one the server accepts (355ms)
+2026-10-26T18:05:21.3168210Z   ✓   74 [desktop-chromium] › overview.spec.js:596:5 › local overview › show-completed widens the request rather than the page (433ms)
+2026-10-26T18:05:21.6099420Z   ✓   75 [desktop-chromium] › overview.spec.js:611:5 › local overview › a complete live observation raises no banner (286ms)
+2026-10-26T18:05:22.0941860Z   ✓   76 [desktop-chromium] › overview.spec.js:625:5 › local overview › only an alert nobody can account for raises the delivery banner (478ms)
+2026-10-26T18:05:22.4997280Z   ✓   77 [desktop-chromium] › overview.spec.js:679:5 › local overview › every row says whether it is live information (394ms)
+2026-10-26T18:05:23.1971220Z   ✓   78 [desktop-chromium] › overview.spec.js:697:5 › local overview › history is collapsed until it is asked for (684ms)
+2026-10-26T18:05:23.6439480Z   ✓   79 [desktop-chromium] › overview.spec.js:717:5 › local overview › the endings are listed newest first with their outcomes (440ms)
+2026-10-26T18:05:24.0472000Z   ✓   80 [desktop-chromium] › overview.spec.js:731:5 › local overview › an ending renders the facts an operator reads it for (397ms)
+2026-10-26T18:05:24.5385570Z   ✓   81 [desktop-chromium] › overview.spec.js:770:5 › local overview › the outcome filter narrows the pane to one ending (484ms)
+2026-10-26T18:05:24.9852800Z   ✓   82 [desktop-chromium] › overview.spec.js:800:5 › local overview › a filter changed during a slow history read is not dropped (439ms)
+2026-10-26T18:05:25.6303630Z   ✓   83 [desktop-chromium] › overview.spec.js:843:5 › local overview › history is narrowed by the same words the queue is (636ms)
+2026-10-26T18:05:26.0889850Z   ✓   73 [desktop-chromium] › overview.spec.js:569:5 › local overview › the default view asks the server to hide completed work (5.4s)
+2026-10-26T18:05:26.1716710Z   ✓   84 [desktop-chromium] › overview.spec.js:861:5 › local overview › an ending links to the run the queue shows (529ms)
+2026-10-26T18:05:26.5627280Z   ✓   85 [desktop-chromium] › overview.spec.js:235:5 › remote overview › every plan is drawn in the section the fixture says it belongs in (459ms)
+2026-10-26T18:05:26.7514300Z   ✓   86 [desktop-chromium] › overview.spec.js:249:5 › remote overview › the sections are drawn in the order the shell declares (572ms)
+2026-10-26T18:05:26.8795970Z   ✓   87 [desktop-chromium] › overview.spec.js:269:5 › remote overview › a section says how many rows it holds, including hidden ones (309ms)
+2026-10-26T18:05:27.2148270Z   ✓   89 [desktop-chromium] › overview.spec.js:322:5 › remote overview › current work stays on the screen without the toggle (324ms)
+2026-10-26T18:05:27.3439350Z   ✓   88 [desktop-chromium] › overview.spec.js:298:5 › remote overview › the quiet plan starts behind the toggle and the toggle reveals it (583ms)
+2026-10-26T18:05:27.7236270Z   ✓   90 [desktop-chromium] › overview.spec.js:337:5 › remote overview › the older toggle survives a reload through the URL (502ms)
+2026-10-26T18:05:27.8145320Z   ✓   91 [desktop-chromium] › overview.spec.js:359:5 › remote overview › a link to a run that has gone quiet gets its own heading (461ms)
+2026-10-26T18:05:28.2741220Z   ✓   92 [desktop-chromium] › overview.spec.js:392:5 › remote overview › a link to a run that is still current work is left where it is (543ms)
+2026-10-26T18:05:28.3011230Z   ✓   93 [desktop-chromium] › overview.spec.js:419:5 › remote overview › every drawn row sits under a project heading (476ms)
+2026-10-26T18:05:28.6418440Z   ✓   94 [desktop-chromium] › overview.spec.js:432:5 › remote overview › a project heading is drawn once and names itself (362ms)
+2026-10-26T18:05:28.7710820Z   ✓   95 [desktop-chromium] › overview.spec.js:471:5 › remote overview › the facet selects offer what the catalog holds (463ms)
+2026-10-26T18:05:29.0402790Z   ✓   96 [desktop-chromium] › overview.spec.js:486:5 › remote overview › choosing a project narrows the queue and lands in the URL (392ms)
+2026-10-26T18:05:29.1631760Z   ✓   97 [desktop-chromium] › overview.spec.js:512:5 › remote overview › a project nothing is in empties the queue and says why (388ms)
+2026-10-26T18:05:29.4990130Z   ✓   99 [desktop-chromium] › overview.spec.js:542:5 › remote overview › a link carrying filters opens the view it describes (329ms)
+2026-10-26T18:05:29.6875290Z   ✓   98 [desktop-chromium] › overview.spec.js:531:5 › remote overview › a search narrows the queue to the matching plan (641ms)
+2026-10-26T18:05:29.9588220Z   ✓  100 [desktop-chromium] › overview.spec.js:555:5 › remote overview › every sort mode the shell offers is one the server accepts (451ms)
+2026-10-26T18:05:30.3751580Z   ✓  102 [desktop-chromium] › overview.spec.js:596:5 › remote overview › show-completed widens the request rather than the page (410ms)
+2026-10-26T18:05:30.6023980Z   ✓  103 [desktop-chromium] › overview.spec.js:611:5 › remote overview › a complete live observation raises no banner (222ms)
+2026-10-26T18:05:31.0205920Z   ✓  104 [desktop-chromium] › overview.spec.js:625:5 › remote overview › only an alert nobody can account for raises the delivery banner (413ms)
+2026-10-26T18:05:31.3084830Z   ✓  105 [desktop-chromium] › overview.spec.js:679:5 › remote overview › every row says whether it is live information (281ms)
+2026-10-26T18:05:31.7487460Z   ✓  106 [desktop-chromium] › overview.spec.js:697:5 › remote overview › history is collapsed until it is asked for (434ms)
+2026-10-26T18:05:32.1046100Z   ✓  107 [desktop-chromium] › overview.spec.js:717:5 › remote overview › the endings are listed newest first with their outcomes (350ms)
+2026-10-26T18:05:32.4562040Z   ✓  108 [desktop-chromium] › overview.spec.js:731:5 › remote overview › an ending renders the facts an operator reads it for (345ms)
+2026-10-26T18:05:32.8633610Z   ✓  109 [desktop-chromium] › overview.spec.js:770:5 › remote overview › the outcome filter narrows the pane to one ending (399ms)
+2026-10-26T18:05:33.3342360Z   ✓  110 [desktop-chromium] › overview.spec.js:800:5 › remote overview › a filter changed during a slow history read is not dropped (463ms)
+2026-10-26T18:05:33.9105340Z   ✓  111 [desktop-chromium] › overview.spec.js:843:5 › remote overview › history is narrowed by the same words the queue is (570ms)
+2026-10-26T18:05:34.3618450Z   ✓  112 [desktop-chromium] › overview.spec.js:861:5 › remote overview › an ending links to the run the queue shows (445ms)
+2026-10-26T18:05:34.7217210Z   ✓  113 [desktop-chromium] › shell.spec.js:300:5 › local deployment › the queue lists exactly the plans this deployment published (345ms)
+2026-10-26T18:05:34.9919000Z   ✓  101 [desktop-chromium] › overview.spec.js:569:5 › remote overview › the default view asks the server to hide completed work (5.3s)
+2026-10-26T18:05:35.0116550Z   ✓  114 [desktop-chromium] › shell.spec.js:333:5 › local deployment › every row carries a name and a way back to its plan (282ms)
+2026-10-26T18:05:35.8919420Z   ✓  115 [desktop-chromium] › shell.spec.js:352:5 › local deployment › a row opens its plan in the shape the viewport calls for (884ms)
+2026-10-26T18:05:36.0241470Z   ✓  116 [desktop-chromium] › shell.spec.js:389:5 › local deployment › both historic link formats land on the same plan (997ms)
+2026-10-26T18:05:36.5490330Z   ✓  118 [desktop-chromium] › shell.spec.js:507:5 › local deployment › an unresolvable run link says so instead of showing an empty plan (515ms)
+2026-10-26T18:05:36.7374960Z   ✓  117 [desktop-chromium] › shell.spec.js:428:5 › local deployment › a plan opened while another's read is in flight shows the one opened last (839ms)
+2026-10-26T18:05:37.3953390Z   ✓  119 [desktop-chromium] › shell.spec.js:525:7 › local deployment › every detail pane of alpha shows material or says it has none (840ms)
+2026-10-26T18:05:37.4613130Z   ✓  120 [desktop-chromium] › shell.spec.js:525:7 › local deployment › every detail pane of bravo shows material or says it has none (708ms)
+2026-10-26T18:05:38.0698050Z   ✓  121 [desktop-chromium] › shell.spec.js:525:7 › local deployment › every detail pane of charlie shows material or says it has none (666ms)
+2026-10-26T18:05:38.0800850Z   ✓  122 [desktop-chromium] › shell.spec.js:555:5 › local deployment › a focus deep link puts the keyboard where the link asked (618ms)
+2026-10-26T18:05:38.7894080Z   ✓  123 [desktop-chromium] › shell.spec.js:570:5 › local deployment › a poll that redraws the same queue does not move the page (708ms)
+2026-10-26T18:05:38.7991730Z   ✓  124 [desktop-chromium] › shell.spec.js:600:5 › local deployment › a poll that shortens the page puts the operator back (714ms)
+2026-10-26T18:05:39.3320690Z   ✓  126 [desktop-chromium] › shell.spec.js:656:5 › local deployment › the refresh line is a status region that speaks only errors (522ms)
+2026-10-26T18:05:39.4912090Z   ✓  125 [desktop-chromium] › shell.spec.js:633:5 › local deployment › the keyboard can reach a plan without a pointer (694ms)
+2026-10-26T18:05:39.8772060Z   ✓  127 [desktop-chromium] › shell.spec.js:687:5 › local deployment › leaving a plan gives the keyboard back to the queue (539ms)
+2026-10-26T18:05:39.9924850Z   ✓  128 [desktop-chromium] › shell.spec.js:721:5 › local deployment › a row itself selects its plan from the keyboard (494ms)
+2026-10-26T18:05:40.2844260Z   ✓  129 [desktop-chromium] › shell.spec.js:300:5 › remote deployment › the queue lists exactly the plans this deployment published (399ms)
+2026-10-26T18:05:40.3222360Z   ✓  130 [desktop-chromium] › shell.spec.js:333:5 › remote deployment › every row carries a name and a way back to its plan (320ms)
+2026-10-26T18:05:41.0405800Z   ✓  131 [desktop-chromium] › shell.spec.js:352:5 › remote deployment › a row opens its plan in the shape the viewport calls for (744ms)
+2026-10-26T18:05:41.0887270Z   ✓  132 [desktop-chromium] › shell.spec.js:389:5 › remote deployment › both historic link formats land on the same plan (748ms)
+2026-10-26T18:05:41.4694170Z   ✓  134 [desktop-chromium] › shell.spec.js:507:5 › remote deployment › an unresolvable run link says so instead of showing an empty plan (372ms)
+2026-10-26T18:05:41.9043210Z   ✓  133 [desktop-chromium] › shell.spec.js:428:5 › remote deployment › a plan opened while another's read is in flight shows the one opened last (853ms)
+2026-10-26T18:05:42.1078660Z   ✓  135 [desktop-chromium] › shell.spec.js:525:7 › remote deployment › every detail pane of alpha shows material or says it has none (632ms)
+2026-10-26T18:05:42.5152760Z   ✓  136 [desktop-chromium] › shell.spec.js:525:7 › remote deployment › every detail pane of bravo shows material or says it has none (604ms)
+2026-10-26T18:05:42.6712640Z   ✓  137 [desktop-chromium] › shell.spec.js:525:7 › remote deployment › every detail pane of charlie shows material or says it has none (555ms)
+2026-10-26T18:05:43.0547460Z   ✓  138 [desktop-chromium] › shell.spec.js:555:5 › remote deployment › a focus deep link puts the keyboard where the link asked (533ms)
+2026-10-26T18:05:43.1872160Z   ✓  139 [desktop-chromium] › shell.spec.js:570:5 › remote deployment › a poll that redraws the same queue does not move the page (509ms)
+2026-10-26T18:05:43.5950620Z   ✓  140 [desktop-chromium] › shell.spec.js:600:5 › remote deployment › a poll that shortens the page puts the operator back (533ms)
+2026-10-26T18:05:43.6053870Z   ✓  141 [desktop-chromium] › shell.spec.js:633:5 › remote deployment › the keyboard can reach a plan without a pointer (408ms)
+2026-10-26T18:05:44.0323600Z   ✓  143 [desktop-chromium] › shell.spec.js:687:5 › remote deployment › leaving a plan gives the keyboard back to the queue (423ms)
+2026-10-26T18:05:44.0402300Z   ✓  142 [desktop-chromium] › shell.spec.js:656:5 › remote deployment › the refresh line is a status region that speaks only errors (426ms)
+2026-10-26T18:05:44.6249720Z   ✓  144 [desktop-chromium] › shell.spec.js:721:5 › remote deployment › a row itself selects its plan from the keyboard (581ms)
+2026-10-26T18:05:45.2559180Z   ✓  145 [desktop-chromium] › shell.spec.js:744:1 › both deployments show the same plan under the same keys (1.2s)
+2026-10-26T18:05:52.1255880Z   ✓  147 [desktop-webkit] › interactions.spec.js:190:5 › local deployment › a disabled control's reason is readable without a pointer (5.1s)
+2026-10-26T18:05:52.1358630Z   ✓  146 [desktop-webkit] › interactions.spec.js:166:5 › local deployment › a control this mode cannot carry out says so in the mode's own words (5.1s)
+2026-10-26T18:05:55.2485070Z   ✓  148 [desktop-webkit] › interactions.spec.js:209:5 › local deployment › a reply form with no question behind it says so on the button (3.1s)
+2026-10-26T18:05:56.8476210Z   ✓  150 [desktop-webkit] › interactions.spec.js:640:5 › local deployment › a control aimed at a run that is not there names the run, not the mode (1.6s)
+2026-10-26T18:05:59.3059700Z   ✘  149 [desktop-webkit] › interactions.spec.js:239:5 › local deployment › an unanswered-question run link opens the live reply form (6.9s)
+2026-10-26T18:05:59.9461750Z   ✓  151 [desktop-webkit] › interactions.spec.js:658:5 › local deployment › a confirm dialog gives the keyboard back to the control that opened it (3.1s)
+2026-10-26T18:06:03.6584250Z   ✓  152 [desktop-webkit] › interactions.spec.js:726:5 › local deployment › a retry of an unanswered submission resends the same id (3.7s)
+2026-10-26T18:06:04.1688020Z   ✓  153 [desktop-webkit] › interactions.spec.js:678:5 › local deployment › a submission that gets no answer is reported as unknown and keeps its id (3.4s)
+2026-10-26T18:06:06.9655340Z   ✓  155 [desktop-webkit] › interactions.spec.js:825:5 › local deployment › a correction answered after the operator moved on stays with its own plan (2.8s)
+2026-10-26T18:06:07.0552600Z   ✓  154 [desktop-webkit] › interactions.spec.js:753:5 › local deployment › a reply answered after the operator moved on stays with its own plan (3.4s)
+2026-10-26T18:06:09.8259390Z   ✓  157 [desktop-webkit] › interactions.spec.js:912:5 › local deployment › bulk cleanup is a review before it is an action (2.7s)
+2026-10-26T18:06:11.1203430Z   ✓  156 [desktop-webkit] › interactions.spec.js:888:5 › local deployment › an open operation is dismissible without being claimed as done (4.1s)
+2026-10-26T18:06:11.6436760Z   ✓  158 [desktop-webkit] › interactions.spec.js:956:5 › local deployment › select candidates includes matches beyond the first catalog page (1.8s)
+2026-10-26T18:06:13.4455090Z   ✓  159 [desktop-webkit] › interactions.spec.js:995:5 › local deployment › select candidates walks every page this deployment really serves (2.3s)
+2026-10-26T18:06:13.5082480Z   ✓  160 [desktop-webkit] › interactions.spec.js:1025:5 › local deployment › select candidates accepts pages that carry no revision at all (1.8s)
+2026-10-26T18:06:16.2277630Z   ✓  162 [desktop-webkit] › interactions.spec.js:1103:5 › local deployment › opening another plan forgets the last one before the read lands (2.7s)
+2026-10-26T18:06:17.8918610Z   ✓  161 [desktop-webkit] › interactions.spec.js:1054:5 › local deployment › a detail poll leaves the operator's edits and errors alone (4.4s)
+2026-10-26T18:06:19.4769870Z   ✓  163 [desktop-webkit] › interactions.spec.js:1149:5 › local deployment › a panel read that lands after a plan switch is not drawn (3.1s)
+2026-10-26T18:06:19.6785840Z   ✓  164 [desktop-webkit] › interactions.spec.js:1215:5 › local deployment › a detail error leaves nothing of the plan behind it (1.8s)
+2026-10-26T18:06:21.5772440Z   ✓  166 [desktop-webkit] › interactions.spec.js:1268:5 › local deployment › the archive reloads after a refresh asked for mid-read (1.9s)
+2026-10-26T18:06:22.8418240Z   ✓  165 [desktop-webkit] › interactions.spec.js:1234:5 › local deployment › closing a plan routes back to the queue exactly once (3.3s)
+2026-10-26T18:06:22.9197030Z   ✓  167 [desktop-webkit] › interactions.spec.js:1292:5 › local deployment › an unchanged poll writes nothing into the preview (1.3s)
+2026-10-26T18:06:24.0122980Z   ✓  168 [desktop-webkit] › interactions.spec.js:1325:5 › local deployment › every view reads an epoch spelled as text as a moment (1.2s)
+2026-10-26T18:06:25.4619450Z   ✓  169 [desktop-webkit] › interactions.spec.js:1359:5 › local deployment › the archive is either browsable or explained, never blank (2.5s)
+2026-10-26T18:06:25.7032400Z   ✓  170 [desktop-webkit] › interactions.spec.js:1383:5 › local deployment › purging an expired entry asks to be looked at before it asks for a number (1.7s)
+2026-10-26T18:06:27.4687770Z   ✓  172 [desktop-webkit] › interactions.spec.js:1502:5 › local deployment › a bulk action with nothing selected explains the selection, not the mode (1.7s)
+2026-10-26T18:06:28.6542790Z   ✓  173 [desktop-webkit] › interactions.spec.js:1526:5 › local deployment › the archive review fits the screen it is read on (1.2s)
+2026-10-26T18:06:29.1364310Z   ✓  171 [desktop-webkit] › interactions.spec.js:1448:5 › local deployment › a restore stays shut until its receipt settles (3.7s)
+2026-10-26T18:06:31.1132180Z   ✓  174 [desktop-webkit] › interactions.spec.js:166:5 › remote deployment › a control this mode cannot carry out says so in the mode's own words (2.4s)
+2026-10-26T18:06:31.2539950Z   ✓  175 [desktop-webkit] › interactions.spec.js:190:5 › remote deployment › a disabled control's reason is readable without a pointer (2.1s)
+2026-10-26T18:06:33.6042990Z   ✓  176 [desktop-webkit] › interactions.spec.js:209:5 › remote deployment › a reply form with no question behind it says so on the button (2.5s)
+2026-10-26T18:06:35.1283280Z   ✓  178 [desktop-webkit] › interactions.spec.js:640:5 › remote deployment › a control aimed at a run that is not there names the run, not the mode (1.5s)
+2026-10-26T18:06:36.4613170Z   ✘  177 [desktop-webkit] › interactions.spec.js:239:5 › remote deployment › an unanswered-question run link opens the live reply form (5.1s)
+2026-10-26T18:06:36.5820120Z   ✓  179 [desktop-webkit] › interactions.spec.js:658:5 › remote deployment › a confirm dialog gives the keyboard back to the control that opened it (1.4s)
+2026-10-26T18:06:39.1104230Z   ✓  180 [desktop-webkit] › interactions.spec.js:726:5 › remote deployment › a retry of an unanswered submission resends the same id (2.5s)
+2026-10-26T18:06:39.4301060Z   ✓  181 [desktop-webkit] › interactions.spec.js:678:5 › remote deployment › a submission that gets no answer is reported as unknown and keeps its id (2.2s)
+2026-10-26T18:06:42.1808780Z   ✓  183 [desktop-webkit] › interactions.spec.js:825:5 › remote deployment › a correction answered after the operator moved on stays with its own plan (2.7s)
+2026-10-26T18:06:42.2061500Z   ✓  182 [desktop-webkit] › interactions.spec.js:753:5 › remote deployment › a reply answered after the operator moved on stays with its own plan (3.1s)
+2026-10-26T18:06:44.6056990Z   ✓  185 [desktop-webkit] › interactions.spec.js:912:5 › remote deployment › bulk cleanup is a review before it is an action (2.4s)
+2026-10-26T18:06:44.6432750Z   ✓  184 [desktop-webkit] › interactions.spec.js:888:5 › remote deployment › an open operation is dismissible without being claimed as done (2.5s)
+2026-10-26T18:06:47.1438040Z   ✓  187 [desktop-webkit] › interactions.spec.js:995:5 › remote deployment › select candidates walks every page this deployment really serves (2.5s)
+2026-10-26T18:06:47.1883420Z   ✓  186 [desktop-webkit] › interactions.spec.js:956:5 › remote deployment › select candidates includes matches beyond the first catalog page (2.6s)
+2026-10-26T18:06:49.3049580Z   ✓  188 [desktop-webkit] › interactions.spec.js:1025:5 › remote deployment › select candidates accepts pages that carry no revision at all (2.1s)
+2026-10-26T18:06:49.5035440Z   ✓  189 [desktop-webkit] › interactions.spec.js:1054:5 › remote deployment › a detail poll leaves the operator's edits and errors alone (2.3s)
+2026-10-26T18:06:51.6950050Z   ✓  191 [desktop-webkit] › interactions.spec.js:1149:5 › remote deployment › a panel read that lands after a plan switch is not drawn (2.1s)
+2026-10-26T18:06:51.7576230Z   ✓  190 [desktop-webkit] › interactions.spec.js:1103:5 › remote deployment › opening another plan forgets the last one before the read lands (2.4s)
+2026-10-26T18:06:53.9618390Z   ✓  192 [desktop-webkit] › interactions.spec.js:1215:5 › remote deployment › a detail error leaves nothing of the plan behind it (2.3s)
+2026-10-26T18:06:55.0356540Z   ✓  193 [desktop-webkit] › interactions.spec.js:1234:5 › remote deployment › closing a plan routes back to the queue exactly once (3.3s)
+2026-10-26T18:06:55.1586140Z   ✓  194 [desktop-webkit] › interactions.spec.js:1268:5 › remote deployment › the archive reloads after a refresh asked for mid-read (1.2s)
+2026-10-26T18:06:56.1143990Z   ✓  195 [desktop-webkit] › interactions.spec.js:1292:5 › remote deployment › an unchanged poll writes nothing into the preview (1.1s)
+2026-10-26T18:06:56.6501320Z   ✓  196 [desktop-webkit] › interactions.spec.js:1325:5 › remote deployment › every view reads an epoch spelled as text as a moment (1.5s)
+2026-10-26T18:06:57.5489710Z   ✓  197 [desktop-webkit] › interactions.spec.js:1359:5 › remote deployment › the archive is either browsable or explained, never blank (1.4s)
+2026-10-26T18:06:58.9965300Z   ✓  198 [desktop-webkit] › interactions.spec.js:1383:5 › remote deployment › purging an expired entry asks to be looked at before it asks for a number (2.3s)
+2026-10-26T18:07:00.0125130Z   ✓  200 [desktop-webkit] › interactions.spec.js:1502:5 › remote deployment › a bulk action with nothing selected explains the selection, not the mode (1.0s)
+2026-10-26T18:07:00.4431550Z   ✓  199 [desktop-webkit] › interactions.spec.js:1448:5 › remote deployment › a restore stays shut until its receipt settles (2.9s)
+2026-10-26T18:07:02.4124000Z   ✓  201 [desktop-webkit] › interactions.spec.js:1526:5 › remote deployment › the archive review fits the screen it is read on (2.4s)
+2026-10-26T18:07:02.5822290Z   ✓  202 [desktop-webkit] › overview.spec.js:235:5 › local overview › every plan is drawn in the section the fixture says it belongs in (2.1s)
+2026-10-26T18:07:04.8595610Z   ✓  203 [desktop-webkit] › overview.spec.js:249:5 › local overview › the sections are drawn in the order the shell declares (2.4s)
+2026-10-26T18:07:04.9345430Z   ✓  204 [desktop-webkit] › overview.spec.js:269:5 › local overview › a section says how many rows it holds, including hidden ones (2.3s)
+2026-10-26T18:07:06.9901780Z   ✓  206 [desktop-webkit] › overview.spec.js:322:5 › local overview › current work stays on the screen without the toggle (2.0s)
+2026-10-26T18:07:07.0923030Z   ✓  205 [desktop-webkit] › overview.spec.js:298:5 › local overview › the quiet plan starts behind the toggle and the toggle reveals it (2.2s)
+2026-10-26T18:07:09.2326850Z   ✓  208 [desktop-webkit] › overview.spec.js:359:5 › local overview › a link to a run that has gone quiet gets its own heading (2.1s)
+2026-10-26T18:07:09.3083370Z   ✓  207 [desktop-webkit] › overview.spec.js:337:5 › local overview › the older toggle survives a reload through the URL (2.3s)
+2026-10-26T18:07:11.4001460Z   ✓  210 [desktop-webkit] › overview.spec.js:419:5 › local overview › every drawn row sits under a project heading (2.1s)
+2026-10-26T18:07:11.5264600Z   ✓  209 [desktop-webkit] › overview.spec.js:392:5 › local overview › a link to a run that is still current work is left where it is (2.3s)
+2026-10-26T18:07:13.6140350Z   ✓  211 [desktop-webkit] › overview.spec.js:432:5 › local overview › a project heading is drawn once and names itself (2.2s)
+2026-10-26T18:07:13.7601470Z   ✓  212 [desktop-webkit] › overview.spec.js:471:5 › local overview › the facet selects offer what the catalog holds (2.2s)
+2026-10-26T18:07:15.7641720Z   ✓  213 [desktop-webkit] › overview.spec.js:486:5 › local overview › choosing a project narrows the queue and lands in the URL (2.1s)
+2026-10-26T18:07:15.8345600Z   ✓  214 [desktop-webkit] › overview.spec.js:512:5 › local overview › a project nothing is in empties the queue and says why (2.0s)
+2026-10-26T18:07:17.1177250Z   ✓  216 [desktop-webkit] › overview.spec.js:542:5 › local overview › a link carrying filters opens the view it describes (1.3s)
+2026-10-26T18:07:18.6205960Z   ✓  215 [desktop-webkit] › overview.spec.js:531:5 › local overview › a search narrows the queue to the matching plan (2.8s)
+2026-10-26T18:07:18.8977700Z   ✓  217 [desktop-webkit] › overview.spec.js:555:5 › local overview › every sort mode the shell offers is one the server accepts (1.8s)
+2026-10-26T18:07:21.0912160Z   ✓  219 [desktop-webkit] › overview.spec.js:596:5 › local overview › show-completed widens the request rather than the page (2.2s)
+2026-10-26T18:07:22.5356120Z   ✓  220 [desktop-webkit] › overview.spec.js:611:5 › local overview › a complete live observation raises no banner (1.4s)
+2026-10-26T18:07:24.1326460Z   ✓  221 [desktop-webkit] › overview.spec.js:625:5 › local overview › only an alert nobody can account for raises the delivery banner (1.6s)
+2026-10-26T18:07:24.2904090Z   ✓  218 [desktop-webkit] › overview.spec.js:569:5 › local overview › the default view asks the server to hide completed work (5.7s)
+2026-10-26T18:07:25.4321430Z   ✓  222 [desktop-webkit] › overview.spec.js:679:5 › local overview › every row says whether it is live information (1.3s)
+2026-10-26T18:07:27.0530680Z   ✓  224 [desktop-webkit] › overview.spec.js:717:5 › local overview › the endings are listed newest first with their outcomes (1.6s)
+2026-10-26T18:07:27.1352650Z   ✓  223 [desktop-webkit] › overview.spec.js:697:5 › local overview › history is collapsed until it is asked for (2.8s)
+2026-10-26T18:07:29.4737610Z   ✓  225 [desktop-webkit] › overview.spec.js:731:5 › local overview › an ending renders the facts an operator reads it for (2.4s)
+2026-10-26T18:07:29.6524030Z   ✓  226 [desktop-webkit] › overview.spec.js:770:5 › local overview › the outcome filter narrows the pane to one ending (2.5s)
+2026-10-26T18:07:31.6211800Z   ✓  227 [desktop-webkit] › overview.spec.js:800:5 › local overview › a filter changed during a slow history read is not dropped (2.1s)
+2026-10-26T18:07:31.8307930Z   ✓  228 [desktop-webkit] › overview.spec.js:843:5 › local overview › history is narrowed by the same words the queue is (2.2s)
+2026-10-26T18:07:33.4421840Z   ✓  230 [desktop-webkit] › overview.spec.js:235:5 › remote overview › every plan is drawn in the section the fixture says it belongs in (1.6s)
+2026-10-26T18:07:33.7181920Z   ✓  229 [desktop-webkit] › overview.spec.js:861:5 › local overview › an ending links to the run the queue shows (2.1s)
+2026-10-26T18:07:34.7678650Z   ✓  231 [desktop-webkit] › overview.spec.js:249:5 › remote overview › the sections are drawn in the order the shell declares (1.3s)
+2026-10-26T18:07:36.3759880Z   ✓  232 [desktop-webkit] › overview.spec.js:269:5 › remote overview › a section says how many rows it holds, including hidden ones (2.6s)
+2026-10-26T18:07:36.5219370Z   ✓  233 [desktop-webkit] › overview.spec.js:298:5 › remote overview › the quiet plan starts behind the toggle and the toggle reveals it (1.7s)
+2026-10-26T18:07:37.4885130Z   ✓  234 [desktop-webkit] › overview.spec.js:322:5 › remote overview › current work stays on the screen without the toggle (1.1s)
+2026-10-26T18:07:39.2458340Z   ✓  236 [desktop-webkit] › overview.spec.js:359:5 › remote overview › a link to a run that has gone quiet gets its own heading (1.7s)
+2026-10-26T18:07:39.3034140Z   ✓  235 [desktop-webkit] › overview.spec.js:337:5 › remote overview › the older toggle survives a reload through the URL (2.8s)
+2026-10-26T18:07:41.3177930Z   ✓  238 [desktop-webkit] › overview.spec.js:419:5 › remote overview › every drawn row sits under a project heading (2.0s)
+2026-10-26T18:07:41.3636040Z   ✓  237 [desktop-webkit] › overview.spec.js:392:5 › remote overview › a link to a run that is still current work is left where it is (2.1s)
+2026-10-26T18:07:42.4837220Z   ✓  239 [desktop-webkit] › overview.spec.js:432:5 › remote overview › a project heading is drawn once and names itself (1.2s)
+2026-10-26T18:07:43.9541350Z   ✓  240 [desktop-webkit] › overview.spec.js:471:5 › remote overview › the facet selects offer what the catalog holds (2.6s)
+2026-10-26T18:07:44.0617080Z   ✓  241 [desktop-webkit] › overview.spec.js:486:5 › remote overview › choosing a project narrows the queue and lands in the URL (1.6s)
+2026-10-26T18:07:45.8337670Z   ✓  242 [desktop-webkit] › overview.spec.js:512:5 › remote overview › a project nothing is in empties the queue and says why (1.9s)
+2026-10-26T18:07:45.9315820Z   ✓  243 [desktop-webkit] › overview.spec.js:531:5 › remote overview › a search narrows the queue to the matching plan (1.9s)
+2026-10-26T18:07:47.8076660Z   ✓  244 [desktop-webkit] › overview.spec.js:542:5 › remote overview › a link carrying filters opens the view it describes (2.0s)
+2026-10-26T18:07:47.9043020Z   ✓  245 [desktop-webkit] › overview.spec.js:555:5 › remote overview › every sort mode the shell offers is one the server accepts (2.0s)
+2026-10-26T18:07:49.8331070Z   ✓  247 [desktop-webkit] › overview.spec.js:596:5 › remote overview › show-completed widens the request rather than the page (1.9s)
+2026-10-26T18:07:51.0708770Z   ✓  248 [desktop-webkit] › overview.spec.js:611:5 › remote overview › a complete live observation raises no banner (1.2s)
+2026-10-26T18:07:52.4792750Z   ✓  249 [desktop-webkit] › overview.spec.js:625:5 › remote overview › only an alert nobody can account for raises the delivery banner (1.4s)
+2026-10-26T18:07:53.6603790Z   ✓  246 [desktop-webkit] › overview.spec.js:569:5 › remote overview › the default view asks the server to hide completed work (5.8s)
+2026-10-26T18:07:53.7014000Z   ✓  250 [desktop-webkit] › overview.spec.js:679:5 › remote overview › every row says whether it is live information (1.2s)
+2026-10-26T18:07:55.7397660Z   ✓  252 [desktop-webkit] › overview.spec.js:717:5 › remote overview › the endings are listed newest first with their outcomes (2.0s)
+2026-10-26T18:07:55.8785410Z   ✓  251 [desktop-webkit] › overview.spec.js:697:5 › remote overview › history is collapsed until it is asked for (2.2s)
+2026-10-26T18:07:57.7537950Z   ✓  253 [desktop-webkit] › overview.spec.js:731:5 › remote overview › an ending renders the facts an operator reads it for (2.0s)
+2026-10-26T18:07:58.0059970Z   ✓  254 [desktop-webkit] › overview.spec.js:770:5 › remote overview › the outcome filter narrows the pane to one ending (2.1s)
+2026-10-26T18:07:59.9315440Z   ✓  255 [desktop-webkit] › overview.spec.js:800:5 › remote overview › a filter changed during a slow history read is not dropped (2.1s)
+2026-10-26T18:08:00.0801610Z   ✓  256 [desktop-webkit] › overview.spec.js:843:5 › remote overview › history is narrowed by the same words the queue is (2.1s)
+2026-10-26T18:08:02.0057610Z   ✓  257 [desktop-webkit] › overview.spec.js:861:5 › remote overview › an ending links to the run the queue shows (2.0s)
+2026-10-26T18:08:02.0791740Z   ✓  258 [desktop-webkit] › shell.spec.js:300:5 › local deployment › the queue lists exactly the plans this deployment published (1.9s)
+2026-10-26T18:08:04.2773660Z   ✓  259 [desktop-webkit] › shell.spec.js:333:5 › local deployment › every row carries a name and a way back to its plan (2.2s)
+2026-10-26T18:08:04.5947770Z   ✓  260 [desktop-webkit] › shell.spec.js:352:5 › local deployment › a row opens its plan in the shape the viewport calls for (2.5s)
+2026-10-26T18:08:07.1736740Z   ✓  261 [desktop-webkit] › shell.spec.js:389:5 › local deployment › both historic link formats land on the same plan (2.9s)
+2026-10-26T18:08:07.6826960Z   ✓  262 [desktop-webkit] › shell.spec.js:428:5 › local deployment › a plan opened while another's read is in flight shows the one opened last (3.1s)
+2026-10-26T18:08:09.2142030Z   ✓  263 [desktop-webkit] › shell.spec.js:507:5 › local deployment › an unresolvable run link says so instead of showing an empty plan (2.0s)
+2026-10-26T18:08:10.5558760Z   ✓  264 [desktop-webkit] › shell.spec.js:525:7 › local deployment › every detail pane of alpha shows material or says it has none (2.9s)
+2026-10-26T18:08:11.0292120Z   ✓  265 [desktop-webkit] › shell.spec.js:525:7 › local deployment › every detail pane of bravo shows material or says it has none (1.8s)
+2026-10-26T18:08:13.0783160Z   ✓  267 [desktop-webkit] › shell.spec.js:555:5 › local deployment › a focus deep link puts the keyboard where the link asked (2.0s)
+2026-10-26T18:08:13.1385090Z   ✓  266 [desktop-webkit] › shell.spec.js:525:7 › local deployment › every detail pane of charlie shows material or says it has none (2.6s)
+2026-10-26T18:08:15.6360820Z   ✓  268 [desktop-webkit] › shell.spec.js:570:5 › local deployment › a poll that redraws the same queue does not move the page (2.5s)
+2026-10-26T18:08:15.6577640Z   ✓  269 [desktop-webkit] › shell.spec.js:600:5 › local deployment › a poll that shortens the page puts the operator back (2.5s)
+2026-10-26T18:08:17.9593670Z   ✓  270 [desktop-webkit] › shell.spec.js:633:5 › local deployment › the keyboard can reach a plan without a pointer (2.3s)
+2026-10-26T18:08:17.9798910Z   ✓  271 [desktop-webkit] › shell.spec.js:656:5 › local deployment › the refresh line is a status region that speaks only errors (2.3s)
+2026-10-26T18:08:20.3233240Z   ✓  273 [desktop-webkit] › shell.spec.js:721:5 › local deployment › a row itself selects its plan from the keyboard (2.3s)
+2026-10-26T18:08:20.4077720Z   ✓  272 [desktop-webkit] › shell.spec.js:687:5 › local deployment › leaving a plan gives the keyboard back to the queue (2.4s)
+2026-10-26T18:08:22.0874050Z   ✓  274 [desktop-webkit] › shell.spec.js:300:5 › remote deployment › the queue lists exactly the plans this deployment published (1.7s)
+2026-10-26T18:08:22.3331870Z   ✓  275 [desktop-webkit] › shell.spec.js:333:5 › remote deployment › every row carries a name and a way back to its plan (1.9s)
+2026-10-26T18:08:24.7197070Z   ✓  276 [desktop-webkit] › shell.spec.js:352:5 › remote deployment › a row opens its plan in the shape the viewport calls for (2.6s)
+2026-10-26T18:08:24.7996830Z   ✓  277 [desktop-webkit] › shell.spec.js:389:5 › remote deployment › both historic link formats land on the same plan (2.4s)
+2026-10-26T18:08:26.5094410Z   ✓  279 [desktop-webkit] › shell.spec.js:507:5 › remote deployment › an unresolvable run link says so instead of showing an empty plan (1.7s)
+2026-10-26T18:08:28.2533370Z   ✓  278 [desktop-webkit] › shell.spec.js:428:5 › remote deployment › a plan opened while another's read is in flight shows the one opened last (3.5s)
+2026-10-26T18:08:28.3708880Z   ✓  280 [desktop-webkit] › shell.spec.js:525:7 › remote deployment › every detail pane of alpha shows material or says it has none (1.9s)
+2026-10-26T18:08:30.8275620Z   ✓  281 [desktop-webkit] › shell.spec.js:525:7 › remote deployment › every detail pane of bravo shows material or says it has none (2.6s)
+2026-10-26T18:08:31.2506640Z   ✓  282 [desktop-webkit] › shell.spec.js:525:7 › remote deployment › every detail pane of charlie shows material or says it has none (2.9s)
+2026-10-26T18:08:33.1867170Z   ✓  283 [desktop-webkit] › shell.spec.js:555:5 › remote deployment › a focus deep link puts the keyboard where the link asked (2.3s)
+2026-10-26T18:08:33.5426380Z   ✓  284 [desktop-webkit] › shell.spec.js:570:5 › remote deployment › a poll that redraws the same queue does not move the page (2.3s)
+2026-10-26T18:08:35.8070320Z   ✓  286 [desktop-webkit] › shell.spec.js:633:5 › remote deployment › the keyboard can reach a plan without a pointer (2.2s)
+2026-10-26T18:08:35.9020730Z   ✓  285 [desktop-webkit] › shell.spec.js:600:5 › remote deployment › a poll that shortens the page puts the operator back (2.7s)
+2026-10-26T18:08:37.9432820Z   ✓  287 [desktop-webkit] › shell.spec.js:656:5 › remote deployment › the refresh line is a status region that speaks only errors (2.1s)
+2026-10-26T18:08:38.0356220Z   ✓  288 [desktop-webkit] › shell.spec.js:687:5 › remote deployment › leaving a plan gives the keyboard back to the queue (2.1s)
+2026-10-26T18:08:40.1210550Z   ✓  289 [desktop-webkit] › shell.spec.js:721:5 › remote deployment › a row itself selects its plan from the keyboard (2.1s)
+2026-10-26T18:08:40.8257740Z   ✓  290 [desktop-webkit] › shell.spec.js:744:1 › both deployments show the same plan under the same keys (2.8s)
+2026-10-26T18:08:44.7502060Z   ✓  291 [mobile-webkit] › interactions.spec.js:166:5 › local deployment › a control this mode cannot carry out says so in the mode's own words (2.8s)
+2026-10-26T18:08:45.0325970Z   ✓  292 [mobile-webkit] › interactions.spec.js:190:5 › local deployment › a disabled control's reason is readable without a pointer (3.1s)
+2026-10-26T18:08:47.5027680Z   ✓  293 [mobile-webkit] › interactions.spec.js:209:5 › local deployment › a reply form with no question behind it says so on the button (2.7s)
+2026-10-26T18:08:49.1250590Z   ✓  295 [mobile-webkit] › interactions.spec.js:640:5 › local deployment › a control aimed at a run that is not there names the run, not the mode (1.6s)
+2026-10-26T18:08:50.5840020Z   ✘  294 [mobile-webkit] › interactions.spec.js:239:5 › local deployment › an unanswered-question run link opens the live reply form (5.4s)
+2026-10-26T18:08:50.6752420Z   ✓  296 [mobile-webkit] › interactions.spec.js:658:5 › local deployment › a confirm dialog gives the keyboard back to the control that opened it (1.5s)
+2026-10-26T18:08:53.6091450Z   ✓  297 [mobile-webkit] › interactions.spec.js:726:5 › local deployment › a retry of an unanswered submission resends the same id (2.9s)
+2026-10-26T18:08:53.8659230Z   ✓  298 [mobile-webkit] › interactions.spec.js:678:5 › local deployment › a submission that gets no answer is reported as unknown and keeps its id (2.4s)
+2026-10-26T18:08:57.3943710Z   ✓  300 [mobile-webkit] › interactions.spec.js:825:5 › local deployment › a correction answered after the operator moved on stays with its own plan (3.5s)
+2026-10-26T18:08:57.5505920Z   ✓  299 [mobile-webkit] › interactions.spec.js:753:5 › local deployment › a reply answered after the operator moved on stays with its own plan (3.9s)
+2026-10-26T18:09:01.0991840Z   ✓  302 [mobile-webkit] › interactions.spec.js:912:5 › local deployment › bulk cleanup is a review before it is an action (3.5s)
+2026-10-26T18:09:01.3059630Z   ✓  301 [mobile-webkit] › interactions.spec.js:888:5 › local deployment › an open operation is dismissible without being claimed as done (3.9s)
+2026-10-26T18:09:04.0838380Z   ✓  303 [mobile-webkit] › interactions.spec.js:956:5 › local deployment › select candidates includes matches beyond the first catalog page (3.0s)
+2026-10-26T18:09:04.1058530Z   ✓  304 [mobile-webkit] › interactions.spec.js:995:5 › local deployment › select candidates walks every page this deployment really serves (2.8s)
+2026-10-26T18:09:07.1106320Z   ✓  305 [mobile-webkit] › interactions.spec.js:1025:5 › local deployment › select candidates accepts pages that carry no revision at all (3.0s)
+2026-10-26T18:09:09.4699400Z   ✓  306 [mobile-webkit] › interactions.spec.js:1054:5 › local deployment › a detail poll leaves the operator's edits and errors alone (5.3s)
+2026-10-26T18:09:09.8729850Z   ✓  307 [mobile-webkit] › interactions.spec.js:1103:5 › local deployment › opening another plan forgets the last one before the read lands (2.7s)
+2026-10-26T18:09:14.1318180Z   ✓  309 [mobile-webkit] › interactions.spec.js:1215:5 › local deployment › a detail error leaves nothing of the plan behind it (4.2s)
+2026-10-26T18:09:14.3193290Z   ✓  308 [mobile-webkit] › interactions.spec.js:1149:5 › local deployment › a panel read that lands after a plan switch is not drawn (4.8s)
+2026-10-26T18:09:17.1644760Z   ✓  311 [mobile-webkit] › interactions.spec.js:1268:5 › local deployment › the archive reloads after a refresh asked for mid-read (2.8s)
+2026-10-26T18:09:19.0757440Z   ✓  310 [mobile-webkit] › interactions.spec.js:1234:5 › local deployment › closing a plan routes back to the queue exactly once (4.9s)
+2026-10-26T18:09:19.1194950Z   ✓  312 [mobile-webkit] › interactions.spec.js:1292:5 › local deployment › an unchanged poll writes nothing into the preview (1.9s)
+2026-10-26T18:09:21.0547470Z   ✓  313 [mobile-webkit] › interactions.spec.js:1325:5 › local deployment › every view reads an epoch spelled as text as a moment (1.9s)
+2026-10-26T18:09:22.3408450Z   ✓  314 [mobile-webkit] › interactions.spec.js:1359:5 › local deployment › the archive is either browsable or explained, never blank (3.2s)
+2026-10-26T18:09:25.6940030Z   ✓  315 [mobile-webkit] › interactions.spec.js:1383:5 › local deployment › purging an expired entry asks to be looked at before it asks for a number (4.6s)
+2026-10-26T18:09:27.6410780Z   ✓  317 [mobile-webkit] › interactions.spec.js:1502:5 › local deployment › a bulk action with nothing selected explains the selection, not the mode (1.9s)
+2026-10-26T18:09:28.1402710Z   ✓  316 [mobile-webkit] › interactions.spec.js:1448:5 › local deployment › a restore stays shut until its receipt settles (5.8s)
+2026-10-26T18:09:30.2961500Z   ✓  318 [mobile-webkit] › interactions.spec.js:1526:5 › local deployment › the archive review fits the screen it is read on (2.6s)
+2026-10-26T18:09:30.5742800Z   ✓  319 [mobile-webkit] › interactions.spec.js:166:5 › remote deployment › a control this mode cannot carry out says so in the mode's own words (2.4s)
+2026-10-26T18:09:32.7862510Z   ✓  320 [mobile-webkit] › interactions.spec.js:190:5 › remote deployment › a disabled control's reason is readable without a pointer (2.5s)
+2026-10-26T18:09:32.8924210Z   ✓  321 [mobile-webkit] › interactions.spec.js:209:5 › remote deployment › a reply form with no question behind it says so on the button (2.3s)
+2026-10-26T18:09:35.0945180Z   ✓  323 [mobile-webkit] › interactions.spec.js:640:5 › remote deployment › a control aimed at a run that is not there names the run, not the mode (2.2s)
+2026-10-26T18:09:36.4647310Z   ✓  324 [mobile-webkit] › interactions.spec.js:658:5 › remote deployment › a confirm dialog gives the keyboard back to the control that opened it (1.4s)
+2026-10-26T18:09:37.8671190Z   ✓  325 [mobile-webkit] › interactions.spec.js:678:5 › remote deployment › a submission that gets no answer is reported as unknown and keeps its id (1.4s)
+2026-10-26T18:09:39.2899940Z   ✓  326 [mobile-webkit] › interactions.spec.js:726:5 › remote deployment › a retry of an unanswered submission resends the same id (1.4s)
+2026-10-26T18:09:40.6082830Z   ✓  327 [mobile-webkit] › interactions.spec.js:753:5 › remote deployment › a reply answered after the operator moved on stays with its own plan (1.3s)
+2026-10-26T18:09:42.0099920Z   ✓  328 [mobile-webkit] › interactions.spec.js:825:5 › remote deployment › a correction answered after the operator moved on stays with its own plan (1.4s)
+2026-10-26T18:09:43.3359340Z   ✓  329 [mobile-webkit] › interactions.spec.js:888:5 › remote deployment › an open operation is dismissible without being claimed as done (1.3s)
+2026-10-26T18:09:44.6995660Z   ✓  330 [mobile-webkit] › interactions.spec.js:912:5 › remote deployment › bulk cleanup is a review before it is an action (1.3s)
+2026-10-26T18:09:46.3517930Z   ✓  331 [mobile-webkit] › interactions.spec.js:956:5 › remote deployment › select candidates includes matches beyond the first catalog page (1.6s)
+2026-10-26T18:09:48.2913810Z   ✓  332 [mobile-webkit] › interactions.spec.js:995:5 › remote deployment › select candidates walks every page this deployment really serves (1.9s)
+2026-10-26T18:09:48.3693590Z   ✓  322 [mobile-webkit] › interactions.spec.js:239:5 › remote deployment › an unanswered-question run link opens the live reply form (15.6s)
+2026-10-26T18:09:51.4401940Z   ✓  333 [mobile-webkit] › interactions.spec.js:1025:5 › remote deployment › select candidates accepts pages that carry no revision at all (3.1s)
+2026-10-26T18:09:51.6092190Z   ✓  334 [mobile-webkit] › interactions.spec.js:1054:5 › remote deployment › a detail poll leaves the operator's edits and errors alone (3.2s)
+2026-10-26T18:09:54.9124100Z   ✓  335 [mobile-webkit] › interactions.spec.js:1103:5 › remote deployment › opening another plan forgets the last one before the read lands (3.4s)
+2026-10-26T18:09:55.0335250Z   ✓  336 [mobile-webkit] › interactions.spec.js:1149:5 › remote deployment › a panel read that lands after a plan switch is not drawn (3.4s)
+2026-10-26T18:09:58.8351220Z   ✓  337 [mobile-webkit] › interactions.spec.js:1215:5 › remote deployment › a detail error leaves nothing of the plan behind it (3.9s)
+2026-10-26T18:09:59.4177770Z   ✓  338 [mobile-webkit] › interactions.spec.js:1234:5 › remote deployment › closing a plan routes back to the queue exactly once (4.4s)
+2026-10-26T18:10:01.3784270Z   ✓  340 [mobile-webkit] › interactions.spec.js:1292:5 › remote deployment › an unchanged poll writes nothing into the preview (1.9s)
+2026-10-26T18:10:02.0450700Z   ✓  339 [mobile-webkit] › interactions.spec.js:1268:5 › remote deployment › the archive reloads after a refresh asked for mid-read (3.2s)
+2026-10-26T18:10:03.3082150Z   ✓  341 [mobile-webkit] › interactions.spec.js:1325:5 › remote deployment › every view reads an epoch spelled as text as a moment (1.9s)
+2026-10-26T18:10:05.2475240Z   ✓  342 [mobile-webkit] › interactions.spec.js:1359:5 › remote deployment › the archive is either browsable or explained, never blank (3.2s)
+2026-10-26T18:10:07.8568710Z   ✓  343 [mobile-webkit] › interactions.spec.js:1383:5 › remote deployment › purging an expired entry asks to be looked at before it asks for a number (4.5s)
+2026-10-26T18:10:09.8075040Z   ✓  345 [mobile-webkit] › interactions.spec.js:1502:5 › remote deployment › a bulk action with nothing selected explains the selection, not the mode (1.9s)
+2026-10-26T18:10:10.3113000Z   ✓  344 [mobile-webkit] › interactions.spec.js:1448:5 › remote deployment › a restore stays shut until its receipt settles (5.0s)
+2026-10-26T18:10:13.4932700Z   ✓  347 [mobile-webkit] › overview.spec.js:235:5 › local overview › every plan is drawn in the section the fixture says it belongs in (3.0s)
+2026-10-26T18:10:13.5058380Z   ✓  346 [mobile-webkit] › interactions.spec.js:1526:5 › remote deployment › the archive review fits the screen it is read on (3.7s)
+2026-10-26T18:10:16.6635450Z   ✓  349 [mobile-webkit] › overview.spec.js:269:5 › local overview › a section says how many rows it holds, including hidden ones (3.1s)
+2026-10-26T18:10:16.7959850Z   ✓  348 [mobile-webkit] › overview.spec.js:249:5 › local overview › the sections are drawn in the order the shell declares (3.3s)
+2026-10-26T18:10:20.4410240Z   ✓  351 [mobile-webkit] › overview.spec.js:322:5 › local overview › current work stays on the screen without the toggle (3.6s)
+2026-10-26T18:10:20.4502420Z   ✓  350 [mobile-webkit] › overview.spec.js:298:5 › local overview › the quiet plan starts behind the toggle and the toggle reveals it (3.8s)
+2026-10-26T18:10:24.9100430Z   ✓  353 [mobile-webkit] › overview.spec.js:359:5 › local overview › a link to a run that has gone quiet gets its own heading (4.4s)
+2026-10-26T18:10:25.3803950Z   ✓  352 [mobile-webkit] › overview.spec.js:337:5 › local overview › the older toggle survives a reload through the URL (4.9s)
+2026-10-26T18:10:29.1766970Z   ✓  355 [mobile-webkit] › overview.spec.js:419:5 › local overview › every drawn row sits under a project heading (3.8s)
+2026-10-26T18:10:29.4026190Z   ✓  354 [mobile-webkit] › overview.spec.js:392:5 › local overview › a link to a run that is still current work is left where it is (4.5s)
+2026-10-26T18:10:32.3581690Z   ✓  356 [mobile-webkit] › overview.spec.js:432:5 › local overview › a project heading is drawn once and names itself (3.1s)
+2026-10-26T18:10:33.0900980Z   ✓  357 [mobile-webkit] › overview.spec.js:471:5 › local overview › the facet selects offer what the catalog holds (3.7s)
+2026-10-26T18:10:35.4745260Z   ✓  358 [mobile-webkit] › overview.spec.js:486:5 › local overview › choosing a project narrows the queue and lands in the URL (3.1s)
+2026-10-26T18:10:35.5469560Z   ✓  359 [mobile-webkit] › overview.spec.js:512:5 › local overview › a project nothing is in empties the queue and says why (2.4s)
+2026-10-26T18:10:37.6724540Z   ✓  361 [mobile-webkit] › overview.spec.js:542:5 › local overview › a link carrying filters opens the view it describes (2.1s)
+2026-10-26T18:10:39.5281050Z   ✓  360 [mobile-webkit] › overview.spec.js:531:5 › local overview › a search narrows the queue to the matching plan (4.0s)
+2026-10-26T18:10:39.6427140Z   ✓  362 [mobile-webkit] › overview.spec.js:555:5 › local overview › every sort mode the shell offers is one the server accepts (1.9s)
+2026-10-26T18:10:41.7940530Z   ✓  364 [mobile-webkit] › overview.spec.js:596:5 › local overview › show-completed widens the request rather than the page (2.1s)
+2026-10-26T18:10:42.4542510Z   ✓  365 [mobile-webkit] › overview.spec.js:611:5 › local overview › a complete live observation raises no banner (645ms)
+2026-10-26T18:10:44.1547180Z   ✓  366 [mobile-webkit] › overview.spec.js:625:5 › local overview › only an alert nobody can account for raises the delivery banner (1.7s)
+2026-10-26T18:10:45.4069630Z   ✓  363 [mobile-webkit] › overview.spec.js:569:5 › local overview › the default view asks the server to hide completed work (5.9s)
+2026-10-26T18:10:45.4747530Z   ✓  367 [mobile-webkit] › overview.spec.js:679:5 › local overview › every row says whether it is live information (1.3s)
+2026-10-26T18:10:47.7420510Z   ✓  369 [mobile-webkit] › overview.spec.js:717:5 › local overview › the endings are listed newest first with their outcomes (2.3s)
+2026-10-26T18:10:47.7942710Z   ✓  368 [mobile-webkit] › overview.spec.js:697:5 › local overview › history is collapsed until it is asked for (2.4s)
+2026-10-26T18:10:50.1412580Z   ✓  370 [mobile-webkit] › overview.spec.js:731:5 › local overview › an ending renders the facts an operator reads it for (2.4s)
+2026-10-26T18:10:50.4285930Z   ✓  371 [mobile-webkit] › overview.spec.js:770:5 › local overview › the outcome filter narrows the pane to one ending (2.6s)
+2026-10-26T18:10:52.1741070Z   ✓  372 [mobile-webkit] › overview.spec.js:800:5 › local overview › a filter changed during a slow history read is not dropped (2.0s)
+2026-10-26T18:10:53.4138200Z   ✓  373 [mobile-webkit] › overview.spec.js:843:5 › local overview › history is narrowed by the same words the queue is (3.0s)
+2026-10-26T18:10:53.6502320Z   ✓  374 [mobile-webkit] › overview.spec.js:861:5 › local overview › an ending links to the run the queue shows (1.5s)
+2026-10-26T18:10:55.5672720Z   ✓  376 [mobile-webkit] › overview.spec.js:249:5 › remote overview › the sections are drawn in the order the shell declares (1.9s)
+2026-10-26T18:10:55.7534420Z   ✓  375 [mobile-webkit] › overview.spec.js:235:5 › remote overview › every plan is drawn in the section the fixture says it belongs in (2.3s)
+2026-10-26T18:10:57.0100030Z   ✓  377 [mobile-webkit] › overview.spec.js:269:5 › remote overview › a section says how many rows it holds, including hidden ones (1.4s)
+2026-10-26T18:10:58.5706570Z   ✓  379 [mobile-webkit] › overview.spec.js:322:5 › remote overview › current work stays on the screen without the toggle (1.5s)
+2026-10-26T18:10:58.6059780Z   ✓  378 [mobile-webkit] › overview.spec.js:298:5 › remote overview › the quiet plan starts behind the toggle and the toggle reveals it (2.9s)
+2026-10-26T18:11:00.9578640Z   ✓  381 [mobile-webkit] › overview.spec.js:359:5 › remote overview › a link to a run that has gone quiet gets its own heading (2.3s)
+2026-10-26T18:11:01.1108710Z   ✓  380 [mobile-webkit] › overview.spec.js:337:5 › remote overview › the older toggle survives a reload through the URL (2.5s)
+2026-10-26T18:11:02.8416180Z   ✓  383 [mobile-webkit] › overview.spec.js:419:5 › remote overview › every drawn row sits under a project heading (1.7s)
+2026-10-26T18:11:03.3500010Z   ✓  382 [mobile-webkit] › overview.spec.js:392:5 › remote overview › a link to a run that is still current work is left where it is (2.3s)
+2026-10-26T18:11:04.2601930Z   ✓  384 [mobile-webkit] › overview.spec.js:432:5 › remote overview › a project heading is drawn once and names itself (1.4s)
+2026-10-26T18:11:05.0977160Z   ✓  385 [mobile-webkit] › overview.spec.js:471:5 › remote overview › the facet selects offer what the catalog holds (1.7s)
+2026-10-26T18:11:06.9325350Z   ✓  386 [mobile-webkit] › overview.spec.js:486:5 › remote overview › choosing a project narrows the queue and lands in the URL (2.7s)
+2026-10-26T18:11:06.9711100Z   ✓  387 [mobile-webkit] › overview.spec.js:512:5 › remote overview › a project nothing is in empties the queue and says why (1.9s)
+2026-10-26T18:11:09.1119040Z   ✓  389 [mobile-webkit] › overview.spec.js:542:5 › remote overview › a link carrying filters opens the view it describes (2.1s)
+2026-10-26T18:11:09.3173150Z   ✓  388 [mobile-webkit] › overview.spec.js:531:5 › remote overview › a search narrows the queue to the matching plan (2.4s)
+2026-10-26T18:11:11.5743100Z   ✓  390 [mobile-webkit] › overview.spec.js:555:5 › remote overview › every sort mode the shell offers is one the server accepts (2.4s)
+2026-10-26T18:11:13.1387230Z   ✓  392 [mobile-webkit] › overview.spec.js:596:5 › remote overview › show-completed widens the request rather than the page (1.5s)
+2026-10-26T18:11:14.4138140Z   ✓  393 [mobile-webkit] › overview.spec.js:611:5 › remote overview › a complete live observation raises no banner (1.3s)
+2026-10-26T18:11:15.6525100Z   ✓  391 [mobile-webkit] › overview.spec.js:569:5 › remote overview › the default view asks the server to hide completed work (6.3s)
+2026-10-26T18:11:16.1195660Z   ✓  394 [mobile-webkit] › overview.spec.js:625:5 › remote overview › only an alert nobody can account for raises the delivery banner (1.7s)
+2026-10-26T18:11:17.0945550Z   ✓  395 [mobile-webkit] › overview.spec.js:679:5 › remote overview › every row says whether it is live information (1.4s)
+2026-10-26T18:11:18.8616460Z   ✓  397 [mobile-webkit] › overview.spec.js:717:5 › remote overview › the endings are listed newest first with their outcomes (1.7s)
+2026-10-26T18:11:18.9366830Z   ✓  396 [mobile-webkit] › overview.spec.js:697:5 › remote overview › history is collapsed until it is asked for (2.8s)
+2026-10-26T18:11:22.9608670Z   ✓  398 [mobile-webkit] › overview.spec.js:731:5 › remote overview › an ending renders the facts an operator reads it for (4.0s)
+2026-10-26T18:11:23.8083110Z   ✓  399 [mobile-webkit] › overview.spec.js:770:5 › remote overview › the outcome filter narrows the pane to one ending (4.8s)
+2026-10-26T18:11:26.3597220Z   ✓  400 [mobile-webkit] › overview.spec.js:800:5 › remote overview › a filter changed during a slow history read is not dropped (3.4s)
+2026-10-26T18:11:26.4454090Z   ✓  401 [mobile-webkit] › overview.spec.js:843:5 › remote overview › history is narrowed by the same words the queue is (2.6s)
+2026-10-26T18:11:28.3862220Z   ✓  402 [mobile-webkit] › overview.spec.js:861:5 › remote overview › an ending links to the run the queue shows (2.0s)
+2026-10-26T18:11:28.6641960Z   ✓  403 [mobile-webkit] › shell.spec.js:300:5 › local deployment › the queue lists exactly the plans this deployment published (2.1s)
+2026-10-26T18:11:31.0636860Z   ✓  404 [mobile-webkit] › shell.spec.js:333:5 › local deployment › every row carries a name and a way back to its plan (2.7s)
+2026-10-26T18:11:32.3992360Z   ✓  405 [mobile-webkit] › shell.spec.js:352:5 › local deployment › a row opens its plan in the shape the viewport calls for (3.7s)
+2026-10-26T18:11:34.0478810Z   ✓  406 [mobile-webkit] › shell.spec.js:389:5 › local deployment › both historic link formats land on the same plan (3.0s)
+2026-10-26T18:11:36.6093410Z   ✓  408 [mobile-webkit] › shell.spec.js:507:5 › local deployment › an unresolvable run link says so instead of showing an empty plan (2.5s)
+2026-10-26T18:11:36.8091020Z   ✓  407 [mobile-webkit] › shell.spec.js:428:5 › local deployment › a plan opened while another's read is in flight shows the one opened last (4.4s)
+2026-10-26T18:11:42.1810340Z   ✓  410 [mobile-webkit] › shell.spec.js:525:7 › local deployment › every detail pane of bravo shows material or says it has none (5.3s)
+2026-10-26T18:11:42.1913330Z   ✓  409 [mobile-webkit] › shell.spec.js:525:7 › local deployment › every detail pane of alpha shows material or says it has none (5.6s)
+2026-10-26T18:11:46.0315770Z   ✓  412 [mobile-webkit] › shell.spec.js:555:5 › local deployment › a focus deep link puts the keyboard where the link asked (3.8s)
+2026-10-26T18:11:46.2499740Z   ✓  411 [mobile-webkit] › shell.spec.js:525:7 › local deployment › every detail pane of charlie shows material or says it has none (4.0s)
+2026-10-26T18:11:49.1725980Z   ✓  413 [mobile-webkit] › shell.spec.js:570:5 › local deployment › a poll that redraws the same queue does not move the page (3.1s)
+2026-10-26T18:11:49.2170420Z   ✓  414 [mobile-webkit] › shell.spec.js:600:5 › local deployment › a poll that shortens the page puts the operator back (2.9s)
+2026-10-26T18:11:52.2464480Z   ✓  416 [mobile-webkit] › shell.spec.js:656:5 › local deployment › the refresh line is a status region that speaks only errors (3.0s)
+2026-10-26T18:11:52.4761670Z   ✓  415 [mobile-webkit] › shell.spec.js:633:5 › local deployment › the keyboard can reach a plan without a pointer (3.3s)
+2026-10-26T18:11:55.0463430Z   ✓  418 [mobile-webkit] › shell.spec.js:721:5 › local deployment › a row itself selects its plan from the keyboard (2.6s)
+2026-10-26T18:11:55.2688430Z   ✓  417 [mobile-webkit] › shell.spec.js:687:5 › local deployment › leaving a plan gives the keyboard back to the queue (3.0s)
+2026-10-26T18:11:57.0852380Z   ✓  419 [mobile-webkit] › shell.spec.js:300:5 › remote deployment › the queue lists exactly the plans this deployment published (2.0s)
+2026-10-26T18:11:58.6151270Z   ✓  420 [mobile-webkit] › shell.spec.js:333:5 › remote deployment › every row carries a name and a way back to its plan (3.3s)
+2026-10-26T18:11:59.9750110Z   ✓  421 [mobile-webkit] › shell.spec.js:352:5 › remote deployment › a row opens its plan in the shape the viewport calls for (2.9s)
+2026-10-26T18:12:00.6060650Z   ✓  422 [mobile-webkit] › shell.spec.js:389:5 › remote deployment › both historic link formats land on the same plan (2.0s)
+2026-10-26T18:12:02.7234090Z   ✓  424 [mobile-webkit] › shell.spec.js:507:5 › remote deployment › an unresolvable run link says so instead of showing an empty plan (2.1s)
+2026-10-26T18:12:03.4059070Z   ✓  423 [mobile-webkit] › shell.spec.js:428:5 › remote deployment › a plan opened while another's read is in flight shows the one opened last (3.4s)
+2026-10-26T18:12:05.4807370Z   ✓  425 [mobile-webkit] › shell.spec.js:525:7 › remote deployment › every detail pane of alpha shows material or says it has none (2.7s)
+2026-10-26T18:12:05.6842520Z   ✓  426 [mobile-webkit] › shell.spec.js:525:7 › remote deployment › every detail pane of bravo shows material or says it has none (2.2s)
+2026-10-26T18:12:07.7943610Z   ✓  428 [mobile-webkit] › shell.spec.js:555:5 › remote deployment › a focus deep link puts the keyboard where the link asked (2.1s)
+2026-10-26T18:12:07.9277310Z   ✓  427 [mobile-webkit] › shell.spec.js:525:7 › remote deployment › every detail pane of charlie shows material or says it has none (2.4s)
+2026-10-26T18:12:10.1049470Z   ✓  429 [mobile-webkit] › shell.spec.js:570:5 › remote deployment › a poll that redraws the same queue does not move the page (2.3s)
+2026-10-26T18:12:10.1533470Z   ✓  430 [mobile-webkit] › shell.spec.js:600:5 › remote deployment › a poll that shortens the page puts the operator back (2.2s)
+2026-10-26T18:12:12.5554980Z   ✓  431 [mobile-webkit] › shell.spec.js:633:5 › remote deployment › the keyboard can reach a plan without a pointer (2.4s)
+2026-10-26T18:12:12.6432980Z   ✓  432 [mobile-webkit] › shell.spec.js:656:5 › remote deployment › the refresh line is a status region that speaks only errors (2.4s)
+2026-10-26T18:12:14.9109800Z   ✓  434 [mobile-webkit] › shell.spec.js:721:5 › remote deployment › a row itself selects its plan from the keyboard (2.2s)
+2026-10-26T18:12:15.0908000Z   ✓  433 [mobile-webkit] › shell.spec.js:687:5 › remote deployment › leaving a plan gives the keyboard back to the queue (2.5s)
+2026-10-26T18:12:16.8212930Z   ✓  435 [mobile-webkit] › shell.spec.js:744:1 › both deployments show the same plan under the same keys (1.9s)
+2026-10-26T18:12:16.9648170Z 
+2026-10-26T18:12:16.9655230Z 
+2026-10-26T18:12:16.9668100Z   1) [desktop-webkit] › interactions.spec.js:239:5 › local deployment › an unanswered-question run link opens the live reply form 
+2026-10-26T18:12:16.9669440Z 
+2026-10-26T18:12:16.9670000Z     Error: expect(locator).toBeVisible() failed
+2026-10-26T18:12:16.9670560Z 
+2026-10-26T18:12:16.9670960Z     Locator:  locator('#wb-reply-form')
+2026-10-26T18:12:16.9671840Z     Expected: visible
+2026-10-26T18:12:16.9672570Z     Received: hidden
+2026-10-26T18:12:16.9673310Z     Timeout:  2500ms
+2026-10-26T18:12:16.9673650Z 
+2026-10-26T18:12:16.9674050Z     Call log:
+2026-10-26T18:12:16.9675100Z       - Expect "toBeVisible" locator('#wb-reply-form') with timeout 2500ms
+2026-10-26T18:12:16.9679070Z       - waiting for locator('#wb-reply-form')
+2026-10-26T18:12:16.9680180Z         7 × locator resolved to <form hidden="" novalidate="" id="wb-reply-form" autocomplete="off" class="wb-reply__form">…</form>
+2026-10-26T18:12:16.9680760Z           - unexpected value "hidden"
+2026-10-26T18:12:16.9680940Z 
+2026-10-26T18:12:16.9680980Z 
+2026-10-26T18:12:16.9681320Z       405 |       // payload is needed, and no plan panel can introduce another question
+2026-10-26T18:12:16.9681820Z       406 |       // while the operator is answering this one.
+2026-10-26T18:12:16.9682290Z     > 407 |       await expect(form).toBeVisible({ timeout: 2500 });
+2026-10-26T18:12:16.9682780Z           |                          ^
+2026-10-26T18:12:16.9683180Z       408 |       const send = form.locator('button[type="submit"]');
+2026-10-26T18:12:16.9683550Z       409 |       const activateSend = () =>
+2026-10-26T18:12:16.9684170Z       410 |         testInfo.project.name === "mobile-webkit" ? send.tap() : send.click();
+2026-10-26T18:12:16.9684950Z         at /Users/runner/work/agent-session-loop/agent-session-loop/tests/workbench_browser/interactions.spec.js:407:26
+2026-10-26T18:12:16.9685370Z 
+2026-10-26T18:12:16.9686120Z     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9687020Z     .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-desktop-webkit/test-failed-1.png
+2026-10-26T18:12:16.9687820Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9688160Z 
+2026-10-26T18:12:16.9688650Z     Error Context: .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-desktop-webkit/error-context.md
+2026-10-26T18:12:16.9689120Z 
+2026-10-26T18:12:16.9690220Z     attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9691000Z     .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-desktop-webkit/trace.zip
+2026-10-26T18:12:16.9691620Z     Usage:
+2026-10-26T18:12:16.9691750Z 
+2026-10-26T18:12:16.9692260Z         npx playwright show-trace .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-desktop-webkit/trace.zip
+2026-10-26T18:12:16.9692800Z 
+2026-10-26T18:12:16.9693470Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9693770Z 
+2026-10-26T18:12:16.9927310Z   2) [desktop-webkit] › interactions.spec.js:239:5 › remote deployment › an unanswered-question run link opens the live reply form 
+2026-10-26T18:12:16.9927830Z 
+2026-10-26T18:12:16.9928020Z     Error: expect(locator).toBeVisible() failed
+2026-10-26T18:12:16.9928280Z 
+2026-10-26T18:12:16.9928470Z     Locator:  locator('#wb-reply-form')
+2026-10-26T18:12:16.9928840Z     Expected: visible
+2026-10-26T18:12:16.9929200Z     Received: hidden
+2026-10-26T18:12:16.9929460Z     Timeout:  2500ms
+2026-10-26T18:12:16.9929640Z 
+2026-10-26T18:12:16.9929780Z     Call log:
+2026-10-26T18:12:16.9930270Z       - Expect "toBeVisible" locator('#wb-reply-form') with timeout 2500ms
+2026-10-26T18:12:16.9930740Z       - waiting for locator('#wb-reply-form')
+2026-10-26T18:12:16.9931640Z         7 × locator resolved to <form hidden="" novalidate="" id="wb-reply-form" autocomplete="off" class="wb-reply__form">…</form>
+2026-10-26T18:12:16.9932310Z           - unexpected value "hidden"
+2026-10-26T18:12:16.9932530Z 
+2026-10-26T18:12:16.9932540Z 
+2026-10-26T18:12:16.9932860Z       405 |       // payload is needed, and no plan panel can introduce another question
+2026-10-26T18:12:16.9933470Z       406 |       // while the operator is answering this one.
+2026-10-26T18:12:16.9933950Z     > 407 |       await expect(form).toBeVisible({ timeout: 2500 });
+2026-10-26T18:12:16.9934420Z           |                          ^
+2026-10-26T18:12:16.9934850Z       408 |       const send = form.locator('button[type="submit"]');
+2026-10-26T18:12:16.9935420Z       409 |       const activateSend = () =>
+2026-10-26T18:12:16.9935950Z       410 |         testInfo.project.name === "mobile-webkit" ? send.tap() : send.click();
+2026-10-26T18:12:16.9936790Z         at /Users/runner/work/agent-session-loop/agent-session-loop/tests/workbench_browser/interactions.spec.js:407:26
+2026-10-26T18:12:16.9937260Z 
+2026-10-26T18:12:16.9937680Z     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9938570Z     .artifacts/results/interactions-remote-deploy-b9a55-k-opens-the-live-reply-form-desktop-webkit/test-failed-1.png
+2026-10-26T18:12:16.9939440Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9939750Z 
+2026-10-26T18:12:16.9940880Z     Error Context: .artifacts/results/interactions-remote-deploy-b9a55-k-opens-the-live-reply-form-desktop-webkit/error-context.md
+2026-10-26T18:12:16.9941450Z 
+2026-10-26T18:12:16.9941890Z     attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9942790Z     .artifacts/results/interactions-remote-deploy-b9a55-k-opens-the-live-reply-form-desktop-webkit/trace.zip
+2026-10-26T18:12:16.9943380Z     Usage:
+2026-10-26T18:12:16.9943550Z 
+2026-10-26T18:12:16.9944130Z         npx playwright show-trace .artifacts/results/interactions-remote-deploy-b9a55-k-opens-the-live-reply-form-desktop-webkit/trace.zip
+2026-10-26T18:12:16.9944940Z 
+2026-10-26T18:12:16.9945360Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9945670Z 
+2026-10-26T18:12:16.9946250Z   3) [mobile-webkit] › interactions.spec.js:239:5 › local deployment › an unanswered-question run link opens the live reply form 
+2026-10-26T18:12:16.9946710Z 
+2026-10-26T18:12:16.9946940Z     Error: expect(locator).toBeVisible() failed
+2026-10-26T18:12:16.9947130Z 
+2026-10-26T18:12:16.9947340Z     Locator:  locator('#wb-reply-form')
+2026-10-26T18:12:16.9947700Z     Expected: visible
+2026-10-26T18:12:16.9947950Z     Received: hidden
+2026-10-26T18:12:16.9948290Z     Timeout:  2500ms
+2026-10-26T18:12:16.9948470Z 
+2026-10-26T18:12:16.9948600Z     Call log:
+2026-10-26T18:12:16.9948980Z       - Expect "toBeVisible" locator('#wb-reply-form') with timeout 2500ms
+2026-10-26T18:12:16.9950160Z       - waiting for locator('#wb-reply-form')
+2026-10-26T18:12:16.9953320Z         7 × locator resolved to <form hidden="" novalidate="" id="wb-reply-form" autocomplete="off" class="wb-reply__form">…</form>
+2026-10-26T18:12:16.9955050Z           - unexpected value "hidden"
+2026-10-26T18:12:16.9955590Z 
+2026-10-26T18:12:16.9955620Z 
+2026-10-26T18:12:16.9956480Z       405 |       // payload is needed, and no plan panel can introduce another question
+2026-10-26T18:12:16.9957710Z       406 |       // while the operator is answering this one.
+2026-10-26T18:12:16.9959000Z     > 407 |       await expect(form).toBeVisible({ timeout: 2500 });
+2026-10-26T18:12:16.9960120Z           |                          ^
+2026-10-26T18:12:16.9961080Z       408 |       const send = form.locator('button[type="submit"]');
+2026-10-26T18:12:16.9962190Z       409 |       const activateSend = () =>
+2026-10-26T18:12:16.9963420Z       410 |         testInfo.project.name === "mobile-webkit" ? send.tap() : send.click();
+2026-10-26T18:12:16.9965370Z         at /Users/runner/work/agent-session-loop/agent-session-loop/tests/workbench_browser/interactions.spec.js:407:26
+2026-10-26T18:12:16.9966690Z 
+2026-10-26T18:12:16.9968160Z     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9970260Z     .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-mobile-webkit/test-failed-1.png
+2026-10-26T18:12:16.9972420Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9973180Z 
+2026-10-26T18:12:16.9975650Z     Error Context: .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-mobile-webkit/error-context.md
+2026-10-26T18:12:16.9977700Z 
+2026-10-26T18:12:16.9978820Z     attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9981310Z     .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-mobile-webkit/trace.zip
+2026-10-26T18:12:16.9983760Z     Usage:
+2026-10-26T18:12:16.9984160Z 
+2026-10-26T18:12:16.9985600Z         npx playwright show-trace .artifacts/results/interactions-local-deploym-a59dd-k-opens-the-live-reply-form-mobile-webkit/trace.zip
+2026-10-26T18:12:16.9987000Z 
+2026-10-26T18:12:16.9987980Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-10-26T18:12:16.9988760Z 
+2026-10-26T18:12:16.9988960Z   3 failed
+2026-10-26T18:12:16.9990750Z     [desktop-webkit] › interactions.spec.js:239:5 › local deployment › an unanswered-question run link opens the live reply form 
+2026-10-26T18:12:16.9993340Z     [desktop-webkit] › interactions.spec.js:239:5 › remote deployment › an unanswered-question run link opens the live reply form 
+2026-10-26T18:12:16.9995870Z     [mobile-webkit] › interactions.spec.js:239:5 › local deployment › an unanswered-question run link opens the live reply form 
+2026-10-26T18:12:16.9997410Z   432 passed (7.7m)
+2026-10-26T18:12:17.0582690Z error: recipe `test-browser` failed on line 64 with exit code 1
+2026-10-26T18:12:17.0805990Z ##[error]Process completed with exit code 1.
+2026-10-26T18:12:17.1425790Z Post job cleanup.
+2026-10-26T18:12:17.6903120Z [command]/opt/homebrew/bin/git version
+2026-10-26T18:12:17.7242990Z git version 2.56.0
+2026-10-26T18:12:17.7290550Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/6156596d-5e87-49cb-9ad7-717a7c809000/.gitconfig'
+2026-10-26T18:12:17.7306090Z Temporarily overriding HOME='/Users/runner/work/_temp/6156596d-5e87-49cb-9ad7-717a7c809000' before making global git config changes
+2026-10-26T18:12:17.7308160Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-26T18:12:17.7315710Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/agent-session-loop/agent-session-loop
+2026-10-26T18:12:17.7630260Z Removing SSH command configuration
+2026-10-26T18:12:17.7630860Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-26T18:12:17.8753890Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-26T18:12:18.0881500Z Removing HTTP extra header
+2026-10-26T18:12:18.0890440Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-26T18:12:18.0986770Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-26T18:12:18.2091900Z Removing includeIf entries pointing to credentials config files
+2026-10-26T18:12:18.2207900Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-26T18:12:18.2333380Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-26T18:12:18.3941400Z Cleaning up orphan processes

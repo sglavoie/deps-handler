@@ -1,0 +1,700 @@
+{
+  "id": "agent-session-loop",
+  "description": "Mixed CI failures: shared base failures, a mypy repair and a suspected macOS flake.",
+  "provenance": {
+    "source_report": "repair-asl.md",
+    "captured_at": "2026-10-30T23:59:10.923805+00:00",
+    "notes": [
+      "Snapshot and evidence captured with the production GitHub PR client, while the head and base matched the saved report. Raw report conclusions and expected actions are not included in agent evidence.",
+      "Checkout contains selected verbatim files read through the GitHub contents API at snapshot.head_oid; it is a partial source snapshot, not a runnable full repository.",
+      "Logs are production-bounded excerpts. URL query strings and signed storage URLs were removed; control characters and recognizable tokens were cleaned. Artifact collection limits and missing evidence are retained.",
+      "Expected actions are curated benchmark labels based on the frozen logs and code, not confirmed repair outcomes; review the full model diagnoses alongside scores.",
+      "Frozen source files: .github/workflows/check.yml, .github/workflows/workbench-browser.yml, LICENSE, agent_session_loop/cli_parser_support.py, justfile, pyproject.toml, tests/test_asl_harness_process_sweep_recovery.py, tests/workbench_browser/interactions.spec.js"
+    ]
+  },
+  "snapshot": {
+    "target": {
+      "owner": "sglavoie",
+      "repo": "agent-session-loop",
+      "number": 1
+    },
+    "title": "chore(deps): Bump actions/setup-python from 6.3.0 to 7.1.0",
+    "url": "https://github.com/sglavoie/agent-session-loop/pull/1",
+    "state": "OPEN",
+    "draft": false,
+    "archived": false,
+    "permission": "ADMIN",
+    "head_oid": "884d93425e6d454ea3c929181555ed03a1d05e7e",
+    "head_ref": "dependabot/github_actions/actions/setup-python-7.1.0",
+    "head_repo": "sglavoie/agent-session-loop",
+    "base_ref": "main",
+    "base_oid": "6ed7627b1bd696d2f49ccc72d13fb935e5335156",
+    "mergeable": "MERGEABLE",
+    "merge_state": "UNSTABLE",
+    "review_decision": "",
+    "checks_complete": true,
+    "checks": [
+      {
+        "name": "Workbench browser (Playwright)",
+        "state": "failed",
+        "id": 121742179377,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226856/job/121742179377",
+        "app_id": 15368,
+        "workflow_id": 397190472,
+        "suite_id": 109420740037,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "Linux (portable, Python 3.14)",
+        "state": "passed",
+        "id": 121742179900,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742179900",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "codex latest",
+        "state": "passed",
+        "id": 121742179683,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179683",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "Linux (portable, Python 3.15)",
+        "state": "failed",
+        "id": 121742180386,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180386",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "codex previous",
+        "state": "passed",
+        "id": 121742179691,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179691",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "claude latest",
+        "state": "passed",
+        "id": 121742179710,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179710",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "claude previous",
+        "state": "passed",
+        "id": 121742179695,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179695",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "copilot latest",
+        "state": "passed",
+        "id": 121742179819,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179819",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "copilot previous",
+        "state": "passed",
+        "id": 121742179560,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179560",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "Linux (portable Workbench, Python 3.13)",
+        "state": "passed",
+        "id": 121742180349,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180349",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "upstream drift (advisory)",
+        "state": "passed",
+        "id": 121742179200,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179200",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "macOS (full 1/4)",
+        "state": "passed",
+        "id": 121742180144,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180144",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "macOS (full 2/4)",
+        "state": "passed",
+        "id": 121742180545,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180545",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "macOS (full 3/4)",
+        "state": "failed",
+        "id": 121742180285,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180285",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "macOS (full 4/4)",
+        "state": "passed",
+        "id": 121742180412,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180412",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "GitGuardian Security Checks",
+        "state": "passed",
+        "id": 121742170014,
+        "url": "https://dashboard.gitguardian.com",
+        "app_id": 46505,
+        "suite_id": 109420712370,
+        "status_context": false
+      }
+    ]
+  },
+  "evidence": {
+    "details": {
+      "Body": "Bumps [actions/setup-python](https://github.com/actions/setup-python) from 6.3.0 to 7.1.0.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/actions/setup-python/releases\">actions/setup-python's releases</a>.</em></p>\n<blockquote>\n<h2>v7.1.0</h2>\n<h2>What's Changed</h2>\n<h3>Enhancements</h3>\n<ul>\n<li>Add <code>mirror</code> and <code>mirror-token</code> inputs for custom Python distribution sources by <a href=\"https://github.com/luhenry\"><code>@luhenry</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1302\">actions/setup-python#1302</a></li>\n<li>Improve error message clarity by <a href=\"https://github.com/v-lmvysakh\"><code>@v-lmvysakh</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1351\">actions/setup-python#1351</a></li>\n</ul>\n<h3>Dependency Upgrade</h3>\n<ul>\n<li>Upgrade browserslist from 4.28.2 to 4.28.9 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1353\">actions/setup-python#1353</a></li>\n<li>Upgrade <code>@typescript-eslint/parser</code> from 8.62.0 to 8.70.0 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1343\">actions/setup-python#1343</a></li>\n<li>Upgrade eslint-plugin-jest from 29.15.2 to 29.16.6 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1342\">actions/setup-python#1342</a></li>\n<li>Upgrade <code>@vercel/ncc</code> from 0.44.0 to 0.45.0 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1357\">actions/setup-python#1357</a></li>\n<li>Upgrade <code>@types/semver</code> from 7.7.1 to 7.8.0 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1359\">actions/setup-python#1359</a></li>\n<li>Upgrade undici from 6.28.0 to 6.29.0 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1364\">actions/setup-python#1364</a></li>\n<li>Upgrade ts-jest from 29.4.11 to 29.4.14 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1361\">actions/setup-python#1361</a></li>\n<li>Upgrade brace-expansion from 5.0.9 to 5.0.12 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1365\">actions/setup-python#1365</a></li>\n<li>Upgrade prettier from 3.8.4 to 3.9.9 and package.json from 7.0.0 to 7.1.0 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1363\">actions/setup-python#1363</a></li>\n<li>Upgrade <code>@typescript-eslint/eslint-plugin</code> from 8.62.0 to 8.71.1 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1369\">actions/setup-python#1369</a></li>\n<li>Upgrade actions/checkout from 7.0.0 to 7.0.1 by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1345\">actions/setup-python#1345</a></li>\n<li>Upgrade cache to 6.3.0 by <a href=\"https://github.com/v-HarithaVattikuti\"><code>@v-HarithaVattikuti</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1370\">actions/setup-python#1370</a></li>\n<li>Resolve Basic Validation audit failures by <a href=\"https://github.com/v-HarithaVattikuti\"><code>@v-HarithaVattikuti</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1347\">actions/setup-python#1347</a></li>\n<li>Resolve npm audit failures by <a href=\"https://github.com/v-HarithaVattikuti\"><code>@v-HarithaVattikuti</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1350\">actions/setup-python#1350</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/luhenry\"><code>@luhenry</code></a> made their first contribution in <a href=\"https://redirect.github.com/actions/setup-python/pull/1302\">actions/setup-python#1302</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/actions/setup-python/compare/v7.0.0...v7.1.0\">https://github.com/actions/setup-python/compare/v7.0.0...v7.1.0</a></p>\n<h2>v7.0.0</h2>\n<h2>What's Changed</h2>\n<h3>Enhancements</h3>\n<ul>\n<li>Migrate to ESM and upgrade dependencies by <a href=\"https://github.com/priyagupta108\"><code>@priyagupta108</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1330\">actions/setup-python#1330</a></li>\n<li>Pin SHA commits and update docs with latest versions by <a href=\"https://github.com/HarithaVattikuti\"><code>@HarithaVattikuti</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1338\">actions/setup-python#1338</a></li>\n<li>Remove the pip-install input by <a href=\"https://github.com/gowridurgad\"><code>@gowridurgad</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1336\">actions/setup-python#1336</a></li>\n</ul>\n<h3>Bug Fix</h3>\n<ul>\n<li>Fix to Classify stderr warning messages as warnings instead of errors in annotations by <a href=\"https://github.com/lmvysakh\"><code>@lmvysakh</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1335\">actions/setup-python#1335</a></li>\n<li>Validate and retry manifest fetch to prevent silent failures by <a href=\"https://github.com/priyagupta108\"><code>@priyagupta108</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1332\">actions/setup-python#1332</a></li>\n</ul>\n<h3>Dependency Upgrade</h3>\n<ul>\n<li>Bump certifi from 2020.6.20 to 2024.7.4 in /<strong>tests</strong>/data by <a href=\"https://github.com/dependabot\"><code>@dependabot</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1328\">actions/setup-python#1328</a></li>\n<li>Remove EOL Python versions and Bumps numpy text fixture by <a href=\"https://github.com/priya-kinthali\"><code>@priya-kinthali</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1333\">actions/setup-python#1333</a></li>\n<li>Upgrade <code>@actions/cache</code> to 6.2.0 by <a href=\"https://github.com/philip-gai\"><code>@philip-gai</code></a> in <a href=\"https://redirect.github.com/actions/setup-python/pull/1337\">actions/setup-python#1337</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/lmvysakh\"><code>@lmvysakh</code></a> made their first contribution in <a href=\"https://redirect.github.com/actions/setup-python/pull/1335\">actions/setup-python#1335</a></li>\n<li><a href=\"https://github.com/philip-gai\"><code>@philip-gai</code></a> made their first contribution in <a href=\"https://redirect.github.com/actions/setup-python/pull/1337\">actions/setup-python#1337</a></li>\n</ul>\n<!-- raw HTML omitted -->\n</blockquote>\n<p>... (truncated)</p>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/actions/setup-python/commit/6d4fd22b20465ccc0f7354476588e8df7c9ca0e0\"><code>6d4fd22</code></a> Cache upgrade to 6.3.0 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1370\">#1370</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/ec52d0af729a7c50ced4261d17a07916f43f5b8e\"><code>ec52d0a</code></a> Bump <code>@typescript-eslint/eslint-plugin</code> from 8.62.0 to 8.71.1 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1369\">#1369</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/ff73b2463e2f3baa703f830da214b8dfeeaeccf8\"><code>ff73b24</code></a> Bump prettier from 3.8.4 to 3.9.9 and package.json from 7.0.0 to 7.1.0 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1363\">#1363</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/0e40890053525508c059c61932a6b8614f9e95db\"><code>0e40890</code></a> Bump brace-expansion from 5.0.9 to 5.0.12 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1365\">#1365</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/3892123fbe74688ccc83ec7c465dc688359e5199\"><code>3892123</code></a> Bump ts-jest from 29.4.11 to 29.4.14 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1361\">#1361</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/660965736c4aecc62797ea07d351a3c259f14660\"><code>6609657</code></a> Bump undici from 6.28.0 to 6.29.0 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1364\">#1364</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/e1be392b26fb1917a7b2c455817e4b4dad6544ce\"><code>e1be392</code></a> Bump <code>@types/semver</code> from 7.7.1 to 7.8.0 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1359\">#1359</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/06da6279cdbca41027908073e81a4544dc79c06b\"><code>06da627</code></a> Bump <code>@vercel/ncc</code> from 0.44.0 to 0.45.0 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1357\">#1357</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/af9bcc7548695e66d75709de6f29e337624b8de8\"><code>af9bcc7</code></a> Bump eslint-plugin-jest from 29.15.2 to 29.16.6 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1342\">#1342</a>)</li>\n<li><a href=\"https://github.com/actions/setup-python/commit/7aeabeba5501120d873c50398519dbfd0657031c\"><code>7aeabeb</code></a> Bump <code>@typescript-eslint/parser</code> from 8.62.0 to 8.70.0 (<a href=\"https://redirect.github.com/actions/setup-python/issues/1343\">#1343</a>)</li>\n<li>Additional commits viewable in <a href=\"https://github.com/actions/setup-python/compare/ece7cb06caefa5fff74198d8649806c4678c61a1...6d4fd22b20465ccc0f7354476588e8df7c9ca0e0\">compare view</a></li>\n</ul>\n</details>\n<br />\n",
+      "Diff": "diff --git a/.github/workflows/check.yml b/.github/workflows/check.yml\nindex afbfbcae..f6ae2c21 100644\n--- a/.github/workflows/check.yml\n+++ b/.github/workflows/check.yml\n@@ -52,7 +52,7 @@ jobs:\n           persist-credentials: false\n \n       - name: Set up Python\n-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0\n         with:\n           python-version: ${{ matrix.python-version }}\n           # The tool pins live in pyproject.toml, so it is the cache key.\n@@ -109,7 +109,7 @@ jobs:\n       # (see `[tool.ruff.per-file-target-version]` in pyproject.toml), so its\n       # portable lane has to import and pass there, not only on 3.14+.\n       - name: Set up Python\n-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0\n         with:\n           python-version: \"3.13\"\n \n@@ -137,7 +137,7 @@ jobs:\n           persist-credentials: false\n \n       - name: Set up Python\n-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0\n         with:\n           python-version: \"3.14\"\n           # The tool pins live in pyproject.toml, so it is the cache key. Only\ndiff --git a/.github/workflows/harness-compatibility.yml b/.github/workflows/harness-compatibility.yml\nindex e617c2db..ca734c91 100644\n--- a/.github/workflows/harness-compatibility.yml\n+++ b/.github/workflows/harness-compatibility.yml\n@@ -88,7 +88,7 @@ jobs:\n           persist-credentials: false\n \n       - name: Set up Python\n-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0\n         with:\n           python-version: \"3.14\"\n \n@@ -131,7 +131,7 @@ jobs:\n           persist-credentials: false\n \n       - name: Set up Python\n-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0\n         with:\n           python-version: \"3.14\"\n \ndiff --git a/.github/workflows/workbench-browser.yml b/.github/workflows/workbench-browser.yml\nindex c003034e..5b2df0ce 100644\n--- a/.github/workflows/workbench-browser.yml\n+++ b/.github/workflows/workbench-browser.yml\n@@ -72,7 +72,7 @@ jobs:\n \n       # The fixture server Playwright starts is `python3 fixture_server.py`.\n       - name: Set up Python\n-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0\n         with:\n           python-version: \"3.14\"\n \n",
+      "Truncated": false,
+      "DiffError": ""
+    },
+    "checks": [
+      {
+        "name": "Workbench browser (Playwright)",
+        "state": "failed",
+        "id": 121742179377,
+        "job_id": 121742179377,
+        "run_id": 40371226856,
+        "run_attempt": 1,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226856/job/121742179377",
+        "app_id": 15368,
+        "workflow_id": 397190472,
+        "suite_id": 109420740037,
+        "event": "pull_request",
+        "status_context": false,
+        "log_file": "logs/pr-01.txt"
+      },
+      {
+        "name": "Linux (portable, Python 3.14)",
+        "state": "passed",
+        "id": 121742179900,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742179900",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "codex latest",
+        "state": "passed",
+        "id": 121742179683,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179683",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "Linux (portable, Python 3.15)",
+        "state": "failed",
+        "id": 121742180386,
+        "job_id": 121742180386,
+        "run_id": 40371226864,
+        "run_attempt": 1,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180386",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false,
+        "log_file": "logs/pr-04.txt"
+      },
+      {
+        "name": "codex previous",
+        "state": "passed",
+        "id": 121742179691,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179691",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "claude latest",
+        "state": "passed",
+        "id": 121742179710,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179710",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "claude previous",
+        "state": "passed",
+        "id": 121742179695,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179695",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "copilot latest",
+        "state": "passed",
+        "id": 121742179819,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179819",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "copilot previous",
+        "state": "passed",
+        "id": 121742179560,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179560",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "Linux (portable Workbench, Python 3.13)",
+        "state": "passed",
+        "id": 121742180349,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180349",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "upstream drift (advisory)",
+        "state": "passed",
+        "id": 121742179200,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226828/job/121742179200",
+        "app_id": 15368,
+        "workflow_id": 394395600,
+        "suite_id": 109420739951,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "macOS (full 1/4)",
+        "state": "passed",
+        "id": 121742180144,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180144",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "macOS (full 2/4)",
+        "state": "passed",
+        "id": 121742180545,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180545",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "macOS (full 3/4)",
+        "state": "failed",
+        "id": 121742180285,
+        "job_id": 121742180285,
+        "run_id": 40371226864,
+        "run_attempt": 1,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180285",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false,
+        "log_file": "logs/pr-14.txt"
+      },
+      {
+        "name": "macOS (full 4/4)",
+        "state": "passed",
+        "id": 121742180412,
+        "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/job/121742180412",
+        "app_id": 15368,
+        "workflow_id": 394395599,
+        "suite_id": 109420740066,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "GitGuardian Security Checks",
+        "state": "passed",
+        "id": 121742170014,
+        "url": "https://dashboard.gitguardian.com",
+        "app_id": 46505,
+        "suite_id": 109420712370,
+        "status_context": false
+      }
+    ],
+    "base": {
+      "oid": "6ed7627b1bd696d2f49ccc72d13fb935e5335156",
+      "checks_complete": true,
+      "checks": [
+        {
+          "name": "Workbench browser (Playwright)",
+          "state": "failed",
+          "id": 121740945084,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872024/job/121740945084",
+          "app_id": 15368,
+          "workflow_id": 397190472,
+          "suite_id": 109419750475,
+          "event": "push",
+          "status_context": false,
+          "log_file": "logs/base-01.txt"
+        },
+        {
+          "name": "Linux (portable, Python 3.14)",
+          "state": "passed",
+          "id": 121740947220,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872199/job/121740947220",
+          "app_id": 15368,
+          "workflow_id": 394395599,
+          "suite_id": 109419750721,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "codex latest",
+          "state": "passed",
+          "id": 121740945807,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370871910/job/121740945807",
+          "app_id": 15368,
+          "workflow_id": 394395600,
+          "suite_id": 109419750247,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "Linux (portable, Python 3.15)",
+          "state": "failed",
+          "id": 121740947081,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872199/job/121740947081",
+          "app_id": 15368,
+          "workflow_id": 394395599,
+          "suite_id": 109419750721,
+          "event": "push",
+          "status_context": false,
+          "log_file": "logs/base-04.txt"
+        },
+        {
+          "name": "codex previous",
+          "state": "passed",
+          "id": 121740945777,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370871910/job/121740945777",
+          "app_id": 15368,
+          "workflow_id": 394395600,
+          "suite_id": 109419750247,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "claude latest",
+          "state": "passed",
+          "id": 121740945997,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370871910/job/121740945997",
+          "app_id": 15368,
+          "workflow_id": 394395600,
+          "suite_id": 109419750247,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "claude previous",
+          "state": "passed",
+          "id": 121740945898,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370871910/job/121740945898",
+          "app_id": 15368,
+          "workflow_id": 394395600,
+          "suite_id": 109419750247,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "copilot latest",
+          "state": "passed",
+          "id": 121740945888,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370871910/job/121740945888",
+          "app_id": 15368,
+          "workflow_id": 394395600,
+          "suite_id": 109419750247,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "copilot previous",
+          "state": "passed",
+          "id": 121740945815,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370871910/job/121740945815",
+          "app_id": 15368,
+          "workflow_id": 394395600,
+          "suite_id": 109419750247,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "Linux (portable Workbench, Python 3.13)",
+          "state": "passed",
+          "id": 121740946514,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872199/job/121740946514",
+          "app_id": 15368,
+          "workflow_id": 394395599,
+          "suite_id": 109419750721,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "upstream drift (advisory)",
+          "state": "passed",
+          "id": 121740945990,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370871910/job/121740945990",
+          "app_id": 15368,
+          "workflow_id": 394395600,
+          "suite_id": 109419750247,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "macOS (full 1/4)",
+          "state": "passed",
+          "id": 121740947054,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872199/job/121740947054",
+          "app_id": 15368,
+          "workflow_id": 394395599,
+          "suite_id": 109419750721,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "macOS (full 2/4)",
+          "state": "passed",
+          "id": 121740947245,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872199/job/121740947245",
+          "app_id": 15368,
+          "workflow_id": 394395599,
+          "suite_id": 109419750721,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "macOS (full 3/4)",
+          "state": "passed",
+          "id": 121740947070,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872199/job/121740947070",
+          "app_id": 15368,
+          "workflow_id": 394395599,
+          "suite_id": 109419750721,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "macOS (full 4/4)",
+          "state": "passed",
+          "id": 121740947091,
+          "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40370872199/job/121740947091",
+          "app_id": 15368,
+          "workflow_id": 394395599,
+          "suite_id": 109419750721,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": ".github/dependabot.yml",
+          "state": "passed",
+          "id": 121740928075,
+          "url": "https://dependabot-api.githubapp.com",
+          "app_id": 29110,
+          "suite_id": 109419739364,
+          "status_context": false
+        }
+      ]
+    },
+    "artifacts": [
+      {
+        "run_id": 40371226856,
+        "run_attempt": 1,
+        "head_oid": "884d93425e6d454ea3c929181555ed03a1d05e7e",
+        "artifacts": [],
+        "evidence_error": "no workflow artifacts available"
+      },
+      {
+        "run_id": 40371226864,
+        "run_attempt": 1,
+        "head_oid": "884d93425e6d454ea3c929181555ed03a1d05e7e",
+        "artifacts": [
+          {
+            "id": 12674482947,
+            "name": "run-suite-logs-macos-3",
+            "url": "https://github.com/sglavoie/agent-session-loop/actions/runs/40371226864/artifacts/12674482947",
+            "size_in_bytes": 1034,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/agent-session-loop/actions/artifacts/12674482947/zip > artifact-12674482947.zip",
+            "files": [
+              {
+                "path": "tests.test_asl_harness_process_sweep_recovery.log",
+                "content": "F[2026-10-26 18:10:38] run started: harness codex; run test-run; 0/1 sessions complete; 1 pending; next session 1; approval unsafe-bypass; run dir /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpqm3c6fd0/state/59b6f293bce0d28bcf7b30e8910862fd320ae81af11f5cd1cd08bb843cac9718/runs/test-run; state /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpqm3c6fd0/state/59b6f293bce0d28bcf7b30e8910862fd320ae81af11f5cd1cd08bb843cac9718/state.json; events /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpqm3c6fd0/state/59b6f293bce0d28bcf7b30e8910862fd320ae81af11f5cd1cd08bb843cac9718/events.jsonl\n[2026-10-26 18:10:38] session 1/1 started\n[2026-10-26 18:10:39] session 1/1 finished (status complete, return code 0, duration 0.8s, total 1.0s)\n[2026-10-26 18:10:39] run finished: run test-run, reason all-complete, duration 1.4s\n.[2026-10-26 18:10:39] run started: harness codex; run test-run; 0/1 sessions complete; 1 pending; next session 1; approval unsafe-bypass; run dir /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpq7sw39s7/state/cb207a1629e1d0948bd4bc1079d22152c9082be2eb6fcfc8325fbccf549ec883/runs/test-run; state /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpq7sw39s7/state/cb207a1629e1d0948bd4bc1079d22152c9082be2eb6fcfc8325fbccf549ec883/state.json; events /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpq7sw39s7/state/cb207a1629e1d0948bd4bc1079d22152c9082be2eb6fcfc8325fbccf549ec883/events.jsonl\n[2026-10-26 18:10:39] session 1/1 started\n[2026-10-26 18:10:40] verification started for session 1/1 turn 1 (1 check)\n[2026-10-26 18:10:40] verification check 1/1 started: leaky-check (command)\n[2026-10-26 18:10:40] verification check 1/1 finished: leaky-check (command) status pass, duration 0.5s\n[2026-10-26 18:10:40] verification passed for session 1/1 (1/1 checks passed, 1 gate, duration 0.5s)\n[2026-10-26 18:10:40] session 1/1 finished (status complete, return code 0, duration 0.4s, total 0.5s)\n[2026-10-26 18:10:41] run finished: run test-run, reason all-complete, duration 1.6s\n.\n======================================================================\nFAIL: test_post_result_leaf_recovery_advances_and_releases_lock (tests.test_asl_harness_process_sweep_recovery.ProcessSweepAndLeafRecoveryTests.test_post_result_leaf_recovery_advances_and_releases_lock)\nA terminal fake-Claude result with a live leaf recovers in-place.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/runner/work/agent-session-loop/agent-session-loop/tests/test_asl_harness_process_sweep_recovery.py\", line 353, in test_post_result_leaf_recovery_advances_and_releases_lock\n    self.assertEqual(1, len(suspected))\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^\nAssertionError: 1 != 2\n\n----------------------------------------------------------------------\nRan 3 tests in 5.503s\n\nFAILED (failures=1)\n"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "recommendations": [
+      {
+        "subject": "Linux (portable, Python 3.15)",
+        "actions": [
+          "code_repair"
+        ]
+      },
+      {
+        "subject": "macOS (full 3/4)",
+        "actions": [
+          "rerun_candidate",
+          "insufficient_evidence"
+        ]
+      },
+      {
+        "subject": "Workbench browser (Playwright)",
+        "actions": [
+          "rerun_candidate",
+          "insufficient_evidence"
+        ]
+      }
+    ],
+    "assertions": [
+      {
+        "id": "mypy repair file",
+        "any_of": [
+          "cli_parser_support.py"
+        ],
+        "subject": "Linux (portable, Python 3.15)"
+      },
+      {
+        "id": "mypy signature evidence",
+        "any_of": [
+          "formatter"
+        ],
+        "subject": "Linux (portable, Python 3.15)"
+      },
+      {
+        "id": "Linux base comparison",
+        "any_of": [
+          "base",
+          "both",
+          "main"
+        ],
+        "subject": "Linux (portable, Python 3.15)"
+      },
+      {
+        "id": "browser base comparison",
+        "any_of": [
+          "base",
+          "both",
+          "main"
+        ],
+        "subject": "Workbench browser (Playwright)"
+      },
+      {
+        "id": "macOS passing baseline",
+        "any_of": [
+          "base",
+          "main"
+        ],
+        "subject": "macOS (full 3/4)"
+      },
+      {
+        "id": "macOS uncertainty",
+        "any_of": [
+          "suspect",
+          "flake",
+          "flaky",
+          "unconfirmed",
+          "uncertain",
+          "not proven",
+          "inconclusive"
+        ],
+        "subject": "macOS (full 3/4)"
+      }
+    ]
+  }
+}

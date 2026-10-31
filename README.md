@@ -332,6 +332,27 @@ request outcomes, observed attempts, warnings and errors. Invalid arguments
 exit 2 and interruption exits 130. Runs are processed serially; if one stops,
 later runs are left untouched and earlier requests remain in GitHub.
 
+### Evaluate PR diagnosis
+
+Replay four frozen real-world PR cases through the same diagnosis service,
+without reading live GitHub state:
+
+```bash
+deps-handler pr eval --list                  # list cases; no agent needed
+deps-handler pr eval --agent claude          # run all four cases
+deps-handler pr eval lyzma muse --agent codex --json > evaluation.json
+```
+
+The suite covers billing blockers, a vulnerable Go toolchain, browser failures
+with artifact evidence, and mixed failures compared with the base commit.
+It scores recommended actions, unsupported code repairs, omitted blockers and
+selected evidence references. Expected answers stay outside the agent's
+temporary checkout. No repository is fetched, edited or pushed; the model
+backend may still use network access and incur its usual costs. Live model
+evaluations are opt-in and separate from ordinary tests.
+See [the evaluation guide](docs/diagnosis-evaluation.md) for scoring, limitations
+and how to add a case.
+
 ### Try it without your repositories
 
 The `demo` build replaces GitHub and the agent with fictional `acme`

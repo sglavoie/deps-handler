@@ -1,0 +1,723 @@
+{
+  "id": "zoomflow",
+  "description": "Browser failures with bounded artifact evidence and unconfirmed causes.",
+  "provenance": {
+    "source_report": "repair-zoomflow.md",
+    "captured_at": "2026-10-31T00:04:30.576851+00:00",
+    "notes": [
+      "Snapshot and evidence captured with the production GitHub PR client, while the head and base matched the saved report. Raw report conclusions and expected actions are not included in agent evidence.",
+      "Checkout contains selected verbatim files read through the GitHub contents API at snapshot.head_oid; it is a partial source snapshot, not a runnable full repository.",
+      "Logs are production-bounded excerpts. URL query strings and signed storage URLs were removed; control characters and recognizable tokens were cleaned. Artifact collection limits and missing evidence are retained.",
+      "Expected actions are curated benchmark labels based on the frozen logs and code, not confirmed repair outcomes; review the full model diagnoses alongside scores.",
+      "Frozen source files: LICENSE, apps/web/package.json, apps/web/src/export-menu.ts, apps/web/src/text.ts, tests/e2e/atlas.spec.ts, tests/e2e/documents.spec.ts",
+      "Re-read the snapshot after GitHub initially reported transient UNKNOWN mergeability. The head SHA, base SHA and check IDs/outcomes were unchanged; GitHub confirmed MERGEABLE/UNSTABLE."
+    ]
+  },
+  "snapshot": {
+    "target": {
+      "owner": "sglavoie",
+      "repo": "zoomflow",
+      "number": 10
+    },
+    "title": "build(deps): Bump @codemirror/view from 6.43.14 to 6.43.15 in the codemirror group across 1 directory",
+    "url": "https://github.com/sglavoie/zoomflow/pull/10",
+    "state": "OPEN",
+    "draft": false,
+    "archived": false,
+    "permission": "ADMIN",
+    "head_oid": "c2ef60cd07cd9cb370ad397582721a34a5fac70e",
+    "head_ref": "dependabot/npm_and_yarn/codemirror-523a922720",
+    "head_repo": "sglavoie/zoomflow",
+    "base_ref": "main",
+    "base_oid": "247c2b8f3111270eb1a79f0f060914b2e2b04dc2",
+    "mergeable": "MERGEABLE",
+    "merge_state": "UNSTABLE",
+    "review_decision": "",
+    "checks_complete": true,
+    "checks": [
+      {
+        "name": "checks",
+        "state": "passed",
+        "id": 122738903723,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122738903723",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "diagrams",
+        "state": "passed",
+        "id": 122738901826,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523529/job/122738901826",
+        "app_id": 15368,
+        "workflow_id": 388639626,
+        "suite_id": 110222130350,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "build",
+        "state": "passed",
+        "id": 122738903150,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122738903150",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "update-snapshots",
+        "state": "skipped",
+        "id": 122738905205,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122738905205",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "browser",
+        "state": "passed",
+        "id": 122739095254,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095254",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 1/4)",
+        "state": "passed",
+        "id": 122739095673,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095673",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 2/4)",
+        "state": "passed",
+        "id": 122739095773,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095773",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 3/4)",
+        "state": "passed",
+        "id": 122739095879,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095879",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 4/4)",
+        "state": "passed",
+        "id": 122739095755,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095755",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (firefox 1/4)",
+        "state": "failed",
+        "id": 122739095753,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095753",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (firefox 2/4)",
+        "state": "passed",
+        "id": 122739095662,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095662",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (firefox 3/4)",
+        "state": "passed",
+        "id": 122739095738,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095738",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (firefox 4/4)",
+        "state": "passed",
+        "id": 122739095621,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095621",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (webkit 1/4)",
+        "state": "passed",
+        "id": 122739095787,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095787",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (webkit 2/4)",
+        "state": "failed",
+        "id": 122739095696,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095696",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (webkit 3/4)",
+        "state": "passed",
+        "id": 122739095716,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095716",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (webkit 4/4)",
+        "state": "passed",
+        "id": 122739095601,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095601",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "GitGuardian Security Checks",
+        "state": "passed",
+        "id": 122738878706,
+        "url": "https://dashboard.gitguardian.com",
+        "app_id": 46505,
+        "suite_id": 110222101497,
+        "status_context": false
+      }
+    ]
+  },
+  "evidence": {
+    "details": {
+      "Body": "Bumps the codemirror group with 1 update in the / directory: [@codemirror/view](https://github.com/codemirror/view).\n\nUpdates `@codemirror/view` from 6.43.14 to 6.43.15\n<details>\n<summary>Commits</summary>\n<ul>\n<li>See full diff in <a href=\"https://github.com/codemirror/view/commits\">compare view</a></li>\n</ul>\n</details>\n<br />\n",
+      "Diff": "diff --git a/apps/web/package.json b/apps/web/package.json\nindex 47d1143..e51e618 100644\n--- a/apps/web/package.json\n+++ b/apps/web/package.json\n@@ -9,7 +9,7 @@\n     \"@codemirror/language\": \"6.13.1\",\n     \"@codemirror/lint\": \"6.9.7\",\n     \"@codemirror/state\": \"6.7.6\",\n-    \"@codemirror/view\": \"6.43.14\",\n+    \"@codemirror/view\": \"6.43.15\",\n     \"@d2lang/d2\": \"file:../../vendor/d2/d2lang-d2-0.1.34-zoomflow.1.tgz\",\n     \"@lezer/highlight\": \"1.2.5\",\n     \"@zoomflow/core\": \"workspace:*\",\ndiff --git a/pnpm-lock.yaml b/pnpm-lock.yaml\nindex fb50293..39e2009 100644\n--- a/pnpm-lock.yaml\n+++ b/pnpm-lock.yaml\n@@ -206,8 +206,8 @@ importers:\n         specifier: 6.7.6\n         version: 6.7.6\n       '@codemirror/view':\n-        specifier: 6.43.14\n-        version: 6.43.14\n+        specifier: 6.43.15\n+        version: 6.43.15\n       '@d2lang/d2':\n         specifier: file:../../vendor/d2/d2lang-d2-0.1.34-zoomflow.1.tgz\n         version: file:vendor/d2/d2lang-d2-0.1.34-zoomflow.1.tgz\n@@ -363,8 +363,8 @@ packages:\n   '@codemirror/streamparser@6.0.0':\n     resolution: {integrity: sha512-JTFPF6xrfjt0mnfGPgzcLiMwYmvIyNaoizp8BYzv8FE8KrT6GBGDZ190rtt+O7Wke3gG/MFHyiY9YGNeimof4w==}\n \n-  '@codemirror/view@6.43.14':\n-    resolution: {integrity: sha512-hC45YnmJNR1rz42OF57BLoQNFMV12/13drnvibDsR2quNDmldcb4WvYVV81hFQg56i9lcqQMEDqilhX2QDcGQQ==}\n+  '@codemirror/view@6.43.15':\n+    resolution: {integrity: sha512-HHsfpqFeHyXLs983pSRe38Xajs0vFWZQ2BuX0m7Ki8w3jZ5iD8cuR3lBz2/5/X53Dhf32SBHKh6rtSTB6tKeGw==}\n \n   '@d2lang/d2@file:vendor/d2/d2lang-d2-0.1.34-zoomflow.1.tgz':\n     resolution: {integrity: sha512-+wchlV2983FghZWxYUiMv0ppXzMtqESzEAn91oZHiY33q0oa9rJpnG9nQj/Al81Yfeowpb5fsn1/ZJjdiaGZMg==, tarball: file:vendor/d2/d2lang-d2-0.1.34-zoomflow.1.tgz}\n@@ -1205,21 +1205,21 @@ snapshots:\n     dependencies:\n       '@codemirror/language': 6.13.1\n       '@codemirror/state': 6.7.6\n-      '@codemirror/view': 6.43.14\n+      '@codemirror/view': 6.43.15\n       '@lezer/common': 1.5.3\n \n   '@codemirror/commands@6.11.1':\n     dependencies:\n       '@codemirror/language': 6.13.1\n       '@codemirror/state': 6.7.6\n-      '@codemirror/view': 6.43.14\n+      '@codemirror/view': 6.43.15\n       '@lezer/common': 1.5.3\n \n   '@codemirror/language@6.13.1':\n     dependencies:\n       '@codemirror/state': 6.7.6\n       '@codemirror/streamparser': 6.0.0\n-      '@codemirror/view': 6.43.14\n+      '@codemirror/view': 6.43.15\n       '@lezer/common': 1.5.3\n       '@lezer/highlight': 1.2.5\n       '@lezer/lr': 1.4.11\n@@ -1228,13 +1228,13 @@ snapshots:\n   '@codemirror/lint@6.9.7':\n     dependencies:\n       '@codemirror/state': 6.7.6\n-      '@codemirror/view': 6.43.14\n+      '@codemirror/view': 6.43.15\n       crelt: 1.0.7\n \n   '@codemirror/search@6.7.2':\n     dependencies:\n       '@codemirror/state': 6.7.6\n-      '@codemirror/view': 6.43.14\n+      '@codemirror/view': 6.43.15\n       crelt: 1.0.7\n \n   '@codemirror/state@6.7.6':\n@@ -1243,7 +1243,7 @@ snapshots:\n \n   '@codemirror/streamparser@6.0.0': {}\n \n-  '@codemirror/view@6.43.14':\n+  '@codemirror/view@6.43.15':\n     dependencies:\n       '@codemirror/state': 6.7.6\n       crelt: 1.0.7\n@@ -1534,7 +1534,7 @@ snapshots:\n       '@codemirror/lint': 6.9.7\n       '@codemirror/search': 6.7.2\n       '@codemirror/state': 6.7.6\n-      '@codemirror/view': 6.43.14\n+      '@codemirror/view': 6.43.15\n \n   crelt@1.0.7: {}\n \n",
+      "Truncated": false,
+      "DiffError": ""
+    },
+    "checks": [
+      {
+        "name": "checks",
+        "state": "passed",
+        "id": 122738903723,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122738903723",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "diagrams",
+        "state": "passed",
+        "id": 122738901826,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523529/job/122738901826",
+        "app_id": 15368,
+        "workflow_id": 388639626,
+        "suite_id": 110222130350,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "build",
+        "state": "passed",
+        "id": 122738903150,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122738903150",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "update-snapshots",
+        "state": "skipped",
+        "id": 122738905205,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122738905205",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "browser",
+        "state": "passed",
+        "id": 122739095254,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095254",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 1/4)",
+        "state": "passed",
+        "id": 122739095673,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095673",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 2/4)",
+        "state": "passed",
+        "id": 122739095773,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095773",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 3/4)",
+        "state": "passed",
+        "id": 122739095879,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095879",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (chromium 4/4)",
+        "state": "passed",
+        "id": 122739095755,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095755",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (firefox 1/4)",
+        "state": "failed",
+        "id": 122739095753,
+        "job_id": 122739095753,
+        "run_id": 40665523490,
+        "run_attempt": 1,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095753",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false,
+        "log_file": "logs/pr-10.txt"
+      },
+      {
+        "name": "engines (firefox 2/4)",
+        "state": "passed",
+        "id": 122739095662,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095662",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (firefox 3/4)",
+        "state": "passed",
+        "id": 122739095738,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095738",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (firefox 4/4)",
+        "state": "passed",
+        "id": 122739095621,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095621",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (webkit 1/4)",
+        "state": "passed",
+        "id": 122739095787,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095787",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (webkit 2/4)",
+        "state": "failed",
+        "id": 122739095696,
+        "job_id": 122739095696,
+        "run_id": 40665523490,
+        "run_attempt": 1,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095696",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false,
+        "log_file": "logs/pr-15.txt"
+      },
+      {
+        "name": "engines (webkit 3/4)",
+        "state": "passed",
+        "id": 122739095716,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095716",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "engines (webkit 4/4)",
+        "state": "passed",
+        "id": 122739095601,
+        "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/job/122739095601",
+        "app_id": 15368,
+        "workflow_id": 390025402,
+        "suite_id": 110222130400,
+        "event": "pull_request",
+        "status_context": false
+      },
+      {
+        "name": "GitGuardian Security Checks",
+        "state": "passed",
+        "id": 122738878706,
+        "url": "https://dashboard.gitguardian.com",
+        "app_id": 46505,
+        "suite_id": 110222101497,
+        "status_context": false
+      }
+    ],
+    "base": {
+      "oid": "247c2b8f3111270eb1a79f0f060914b2e2b04dc2",
+      "checks_complete": true,
+      "checks": [
+        {
+          "name": "build",
+          "state": "passed",
+          "id": 122270282012,
+          "url": "https://github.com/sglavoie/zoomflow/actions/runs/40527311570/job/122270282012",
+          "app_id": 15368,
+          "workflow_id": 391978764,
+          "suite_id": 109845661297,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "diagrams",
+          "state": "passed",
+          "id": 122270277646,
+          "url": "https://github.com/sglavoie/zoomflow/actions/runs/40527311571/job/122270277646",
+          "app_id": 15368,
+          "workflow_id": 388639626,
+          "suite_id": 109845661296,
+          "event": "push",
+          "status_context": false
+        },
+        {
+          "name": "deploy",
+          "state": "passed",
+          "id": 122271524904,
+          "url": "https://github.com/sglavoie/zoomflow/actions/runs/40527311570/job/122271524904",
+          "app_id": 15368,
+          "workflow_id": 391978764,
+          "suite_id": 109845661297,
+          "event": "push",
+          "status_context": false
+        }
+      ]
+    },
+    "artifacts": [
+      {
+        "run_id": 40665523490,
+        "run_attempt": 1,
+        "head_oid": "c2ef60cd07cd9cb370ad397582721a34a5fac70e",
+        "artifacts": [
+          {
+            "id": 12806566452,
+            "name": "browser-report-linux-chromium-1",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12806566452",
+            "size_in_bytes": 341217,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12806566452/zip > artifact-12806566452.zip",
+            "files": [],
+            "evidence_error": "no supported text reports, screenshots or traces in artifact"
+          },
+          {
+            "id": 12806431482,
+            "name": "browser-report-linux-webkit-3",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12806431482",
+            "size_in_bytes": 501528,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12806431482/zip > artifact-12806431482.zip",
+            "files": [
+              {
+                "path": "test-results/export-inlines-remote-imag-0074e-eholder-when-fetching-fails-webkit/image-root.png",
+                "evidence_error": "binary artifact not inspected; download the archive for manual inspection"
+              }
+            ]
+          },
+          {
+            "id": 12806316743,
+            "name": "browser-report-linux-chromium-3",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12806316743",
+            "size_in_bytes": 503962,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12806316743/zip > artifact-12806316743.zip",
+            "files": [
+              {
+                "path": "test-results/export-inlines-remote-imag-0074e-eholder-when-fetching-fails-chromium/image-root.png",
+                "evidence_error": "binary artifact not inspected; download the archive for manual inspection"
+              }
+            ]
+          },
+          {
+            "id": 12806281972,
+            "name": "browser-report-linux-firefox-1",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12806281972",
+            "size_in_bytes": 59719236,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12806281972/zip > artifact-12806281972.zip",
+            "files": [],
+            "evidence_error": "artifact archive exceeds 8 MiB or remaining download budget"
+          },
+          {
+            "id": 12806222088,
+            "name": "browser-report-linux-chromium-2",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12806222088",
+            "size_in_bytes": 390064,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12806222088/zip > artifact-12806222088.zip",
+            "files": [],
+            "evidence_error": "no supported text reports, screenshots or traces in artifact"
+          },
+          {
+            "id": 12806212351,
+            "name": "browser-report-linux-webkit-4",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12806212351",
+            "size_in_bytes": 400589,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12806212351/zip > artifact-12806212351.zip",
+            "files": [],
+            "evidence_error": "no supported text reports, screenshots or traces in artifact"
+          },
+          {
+            "id": 12806023196,
+            "name": "browser-report-linux-firefox-3",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12806023196",
+            "size_in_bytes": 500258,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12806023196/zip > artifact-12806023196.zip",
+            "files": [
+              {
+                "path": "test-results/export-inlines-remote-imag-0074e-eholder-when-fetching-fails-firefox/image-root.png",
+                "evidence_error": "binary artifact not inspected; download the archive for manual inspection"
+              }
+            ]
+          },
+          {
+            "id": 12805842926,
+            "name": "browser-report-linux-firefox-4",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12805842926",
+            "size_in_bytes": 400314,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12805842926/zip > artifact-12805842926.zip",
+            "files": [],
+            "evidence_error": "no supported text reports, screenshots or traces in artifact"
+          },
+          {
+            "id": 12805677787,
+            "name": "browser-report-macos",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12805677787",
+            "size_in_bytes": 767693,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12805677787/zip > artifact-12805677787.zip",
+            "files": [
+              {
+                "path": "test-results/export-downloads-the-curre-c0726-tches-the-root-PNG-snapshot-chromium/order-charge.png",
+                "evidence_error": "binary artifact not inspected; download the archive for manual inspection"
+              },
+              {
+                "path": "test-results/export-downloads-the-curre-c0726-tches-the-root-PNG-snapshot-chromium/order-root.png",
+                "evidence_error": "binary artifact not inspected; download the archive for manual inspection"
+              }
+            ]
+          },
+          {
+            "id": 12805612964,
+            "name": "browser-report-linux-webkit-1",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12805612964",
+            "size_in_bytes": 342307,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12805612964/zip > artifact-12805612964.zip",
+            "files": [],
+            "evidence_error": "no supported text reports, screenshots or traces in artifact"
+          },
+          {
+            "id": 12805423400,
+            "name": "browser-report-linux-webkit-2",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12805423400",
+            "size_in_bytes": 4618875,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12805423400/zip > artifact-12805423400.zip",
+            "files": [
+              {
+                "path": "test-results/documents-naming-a-diagram-7c520-kes-Save-ask-for-a-new-file-webkit/error-context.md",
+                "content": "# Instructions\n\n- Following Playwright test failed.\n- Explain why, be concise, respect Playwright best practices.\n- Provide a snippet of code with the fix, if possible.\n\n# Test info\n\n- Name: documents.spec.ts >> naming a diagram names its exports, keeps examples intact and makes Save ask for a new file\n- Location: tests/e2e/documents.spec.ts:140:1\n\n# Error details\n\n```\nError: expect(received).toBe(expected) // Object.is equality\n\nExpected: \"Checkout plan-root.svg\"\nReceived: \"Checkout_plan-root.svg\"\n```\n\n# Page snapshot\n\n```yaml\n- generic [ref=e1]:\n  - banner [ref=e2]:\n    - strong [ref=e3]: Zoomflow\n    - generic [ref=e4]:\n      - button \"New flow\" [ref=e5] [cursor=pointer]\n      - generic [ref=e6] [cursor=pointer]:\n        - text: Open .d2\n        - button \"Open .d2\" [ref=e7]\n      - button \"Open folder\" [ref=e8] [cursor=pointer]\n      - group [ref=e10]:\n        - generic \"Checkout plan.d2, unsaved changes — choose a diagram\" [ref=e11] [cursor=pointer]:\n          - generic \"Checkout plan.d2\" [ref=e12]\n          - img \"Unsaved changes\" [ref=e13]: •\n          - generic [aria-hidden] [ref=e14]: ⌄\n        - text: ✓\n      - button \"Export\" [active] [ref=e16] [cursor=pointer]\n    - generic [ref=e17]:\n      - generic [ref=e18]:\n        - generic [ref=e19]: Layout\n        - combobox \"Layout\" [ref=e20] [cursor=pointer]:\n          - option \"Single\" [selected]\n          - option \"Split · tabs\"\n          - option \"Split · all views\"\n      - generic [ref=e21]:\n        - generic [ref=e22]: Theme\n        - combobox \"Theme\" [ref=e23] [cursor=pointer]:\n          - option \"System\" [selected]\n          - option \"Light\"\n          - option \"Dark\"\n      - button \"D2 reference\" [ref=e24] [cursor=pointer]\n      - button \"Keyboard shortcuts\" [ref=e25] [cursor=pointer]\n  - generic:\n    - status\n  - status\n  - main [ref=e29]:\n    - generic [ref=e30]:\n      - region \"Diagram and reference\" [ref=e31]:\n        - region \"Live preview\" [ref=e32]:\n          - navigation \"Breadcrumb\" [ref=e33]:\n            - button \"Root\" [ref=e34] [cursor=pointer]\n          - generic [ref=e35]:\n            - status\n            - alert\n          - generic [ref=e36]: Root board\n          - generic [ref=e37]:\n            - region \"Root diagram\" [ref=e38]:\n              - img [ref=e39]:\n                - img [ref=e40]:\n                  - button \"Select source for Before\" [ref=e42] [cursor=pointer]:\n                    - generic [ref=e45]: Before\n            - group \"Diagram zoom\" [ref=e46]:\n              - button \"Zoom out\" [ref=e47] [cursor=pointer]: −\n              - status \"Diagram fitted to the available space\" [ref=e48]: Fit\n              - button \"Fit diagram\" [disabled] [ref=e49]\n              - button \"Zoom in\" [ref=e53] [cursor=pointer]: +\n            - button \"Fullscreen\" [ref=e54] [cursor=pointer]\n            - generic \"Click a shape to select its source\" [ref=e55]\n      - separator \"Resize diagram and D2 source\" [ref=e56]\n      - region \"Source editor\" [ref=e57]:\n        - generic [ref=e58]:\n          - generic [ref=e59]: D2 source\n          - generic [ref=e60]:\n            - button \"Clear\" [ref=e61] [cursor=pointer]\n            - button \"Format\" [ref=e62] [cursor=pointer]\n            - button \"Save .d2\" [ref=e63] [cursor=pointer]\n          - generic [ref=e64]: Edits are backed up in this browser. Save a disk copy to keep them; browser storage can be cleared.\n        - group \"Diagram status\" [ref=e65]:\n          - generic [ref=e66]:\n            - generic [ref=e67]:\n              - status\n            - generic [aria-hidden] [ref=e68]: \"Download started: Checkout plan-root.svg\"\n            - status [ref=e70]: \"Download started: Checkout plan-root.svg\"\n        - generic [ref=e71]:\n          - group [ref=e72]:\n            - generic \"▸Ask AI about this diagram\" [ref=e73] [cursor=pointer]\n          - group [ref=e74]:\n            - generic \"▸Lint options\" [ref=e75] [cursor=pointer]\n          - generic:\n            - status\n        - generic [ref=e78]:\n          - generic [ref=e80]: \"1\"\n          - textbox \"D2 source\" [ref=e86]:\n            - generic [ref=e87]: \"named: Before\"\n  - generic:\n    - status\n```\n\n# Test source\n\n```ts\n  63  |   const textPrevented = await page.evaluate(() => {\n  64  |     const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });\n  65  |     document.dispatchEvent(event);\n  66  |     return event.defaultPrevented;\n  67  |   });\n  68  |   expect(textPrevented).toBe(false);\n  69  |   await page.evaluate(() => {\n  70  |     const transfer = new DataTransfer();\n  71  |     transfer.items.add(new File(['not D2'], 'notes.txt', { type: 'text/plain' }));\n  72  |     document.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));\n  73  |   });\n  74  |   await expect(page.locator('#activity-status')).toContainText('Choose a .d2 file');\n  75  |   await expect(page.locator('#file-status')).toBeVisible();\n  76  |   await expect(page.locator('#filename')).toHaveText('order.d2');\n  77  | });\n  78  | \n  79  | test('routine editing keeps status copy steady and exposes recovery details without layout movement', async ({ page }) => {\n  80  |   await page.goto('/'); await previewReady(page);\n  81  |   const before = await page.locator('#editor').boundingBox();\n  82  |   await source(page).fill('a: First edit');\n  83  |   await expect(page.locator('#draft-status')).toHaveText('File has unsaved changes');\n  84  |   await expect(page.locator('#draft-status')).toHaveAttribute('data-recovery', 'saved');\n  85  |   await expect(page.locator('#draft-status')).toHaveAttribute('title', /Browser draft saved/);\n  86  |   await page.evaluate(() => {\n  87  |     const el = document.querySelector('#draft-status')!;\n  88  |     const updates: string[] = [];\n  89  |     (window as typeof window & { statusUpdates: string[] }).statusUpdates = updates;\n  90  |     new MutationObserver(() => updates.push(el.textContent!)).observe(el, { childList: true, subtree: true });\n  91  |   });\n  92  |   await source(page).press('End');\n  93  |   await source(page).pressSequentially(' updated', { delay: 80 });\n  94  |   await expect(page.locator('#draft-status')).toHaveAttribute('data-recovery', 'saved');\n  95  |   await previewReady(page);\n  96  |   expect(await page.evaluate(() => (window as typeof window & { statusUpdates: string[] }).statusUpdates)).toEqual([]);\n  97  |   await expect(page.locator('#preview-status')).toBeHidden();\n  98  |   await expect(page.locator('#lint-summary')).toBeHidden();\n  99  |   expect((await page.locator('#editor').boundingBox())!.y).toBe(before!.y);\n  100 | });\n  101 | \n  102 | test('saving an example creates a named copy with its history, export names and reload identity', async ({ page }) => {\n  103 |   await page.addInitScript(() => {\n  104 |     const target = window as typeof window & { showSaveFilePicker?: () => Promise<unknown> };\n  105 |     target.showSaveFilePicker = async () => ({ name: 'checkout-design.d2', createWritable: async () => ({\n  106 |       write: async () => {}, close: async () => {}, abort: async () => {},\n  107 |     }) });\n  108 |   });\n  109 |   await page.goto('/'); await previewReady(page);\n  110 |   const original = await source(page).textContent();\n  111 |   await source(page).fill('saved: After');\n  112 |   await expect(page.locator('.zf-stage')).toContainText('After'); await previewReady(page);\n  113 |   await source(page).press('ControlOrMeta+s');\n  114 |   await expect(page.locator('#filename')).toHaveText('checkout-design.d2');\n  115 |   await expect(page).toHaveTitle('checkout-design.d2 — Zoomflow');\n  116 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  117 |   await source(page).press('ControlOrMeta+z');\n  118 |   await expect(source(page)).toHaveText(original!);\n  119 |   await expect(page).toHaveTitle('• checkout-design.d2 — Zoomflow');\n  120 |   await source(page).press('ControlOrMeta+Shift+z');\n  121 |   await expect(source(page)).toHaveText('saved: After');\n  122 |   await expect(page.locator('.zf-stage')).toContainText('After');\n  123 |   await previewReady(page);\n  124 |   await selectMenuOption(page, '#export-format', 'svg');\n  125 |   const pending = page.waitForEvent('download');\n  126 |   await downloadExport(page);\n  127 |   expect((await pending).suggestedFilename()).toBe('checkout-design-root.svg');\n  128 |   await page.locator('#example-picker summary').click();\n  129 |   await expect(page.locator('#draft-options')).toContainText('Saved copy of Order flow');\n  130 |   // The edits moved to the saved copy, so the example itself is no longer modified.\n  131 |   await expect(page.locator('#example-options').getByRole('button', { name: /^Order flow/ }).locator('.example-modified')).toBeHidden();\n  132 |   await expect(page.getByRole('button', { name: 'Restore original example: Order flow' })).toBeHidden();\n  133 |   await page.keyboard.press('Escape');\n  134 |   await page.reload(); await previewReady(page);\n  135 |   await expect(page.locator('#filename')).toHaveText('checkout-design.d2');\n  136 |   await expect(page).toHaveTitle('checkout-design.d2 — Zoomflow');\n  137 |   await expect(source(page)).toHaveText('saved: After');\n  138 | });\n  139 | \n  140 | test('naming a diagram names its exports, keeps examples intact and makes Save ask for a new file', async ({ page }) => {\n  141 |   await page.addInitScript(() => {\n  142 |     const target = window as typeof window & { suggested?: string; showOpenFilePicker?: () => Promise<unknown[]>; showSaveFilePicker?: (options: { suggestedName: string }) => Promise<unknown> };\n  143 |     const handle = (name: string) => ({ name, getFile: async () => new File(['a -> b'], name, { lastModified: 1 }),\n  144 |       createWritable: async () => ({ write: async () => {}, close: async () => {}, abort: async () => {} }) });\n  145 |     target.showOpenFilePicker = async () => [handle('work.d2')];\n  146 |     target.showSaveFilePicker = async ({ suggestedName }) => { target.suggested = suggestedName; return handle(suggestedName); };\n  147 |   });\n  148 |   await page.goto('/'); await previewReady(page);\n  149 |   await source(page).fill('named: Before');\n  150 |   await expect(page.locator('.zf-stage')).toContainText('Before'); await previewReady(page);\n  151 |   await openDownloads(page);\n  152 |   await expect(page.locator('#export-name')).toHaveValue('order');\n  153 |   await page.locator('#export-name').fill('Checkout plan');\n  154 |   await page.locator('#export-name').press('Enter');\n  155 |   await expect(page.locator('#filename')).toHaveText('Checkout plan.d2');\n  156 |   await expect(page.locator('#export-name')).toHaveValue('Checkout plan');\n  157 |   // Enter commits the name and keeps focus in the open menu.\n  158 |   await expect(page.locator('#export-name')).toBeFocused();\n  159 |   await expect(page.locator('#draft-status')).toHaveText('File has unsaved changes');\n  160 |   await selectMenuOption(page, '#export-format', 'svg');\n  161 |   const pending = page.waitForEvent('download');\n  162 |   await downloadExport(page);\n> 163 |   expect((await pending).suggestedFilename()).toBe('Checkout plan-root.svg');\n      |                                               ^ Error: expect(received).toBe(expected) // Object.is equality\n  164 |   // The edits moved to the named draft with their history; the example is unedited.\n  165 |   await source(page).press('ControlOrMeta+z');\n  166 |   await expect(source(page)).not.toContainText('named: Before');\n  167 |   await source(page).press('ControlOrMeta+Shift+z');\n  168 |   await page.locator('#example-picker summary').click();\n  169 |   await expect(page.locator('#draft-options')).toContainText('Saved copy of Order flow');\n  170 |   await expect(page.locator('#example-options').getByRole('button', { name: /^Order flow/ }).locator('.example-modified')).toBeHidden();\n  171 |   await page.keyboard.press('Escape');\n  172 |   await page.reload(); await previewReady(page);\n  173 |   await expect(page.locator('#filename')).toHaveText('Checkout plan.d2');\n  174 |   await expect(source(page)).toHaveText('named: Before');\n  175 | \n  176 |   // A file opened from disk keeps its name there, so Save asks where to save under the new one.\n  177 |   await page.locator('#file').click();\n  178 |   await expect(page.locator('#filename')).toHaveText('work.d2'); await previewReady(page);\n  179 |   await openDownloads(page);\n  180 |   await page.locator('#export-name').fill('renamed work');\n  181 |   await page.locator('#export-name').press('Enter');\n  182 |   await expect(page.locator('#filename')).toHaveText('renamed work.d2');\n  183 |   await source(page).press('ControlOrMeta+s');\n  184 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  185 |   expect(await page.evaluate(() => (window as typeof window & { suggested?: string }).suggested)).toBe('renamed work.d2');\n  186 | });\n  187 | \n  188 | test('the save shortcut applies a name still being typed before saving', async ({ page }) => {\n  189 |   await page.addInitScript(() => {\n  190 |     const target = window as typeof window & { suggested?: string; showOpenFilePicker?: () => Promise<unknown[]>; showSaveFilePicker?: (options: { suggestedName: string }) => Promise<unknown> };\n  191 |     const handle = (name: string) => ({ name, getFile: async () => new File(['a -> b'], name, { lastModified: 1 }),\n  192 |       createWritable: async () => ({ write: async () => {}, close: async () => {}, abort: async () => {} }) });\n  193 |     target.showOpenFilePicker = async () => [handle('work.d2')];\n  194 |     target.showSaveFilePicker = async ({ suggestedName }) => { target.suggested = suggestedName; return handle(suggestedName); };\n  195 |   });\n  196 |   await page.goto('/'); await previewReady(page);\n  197 |   await page.locator('#file').click();\n  198 |   await expect(page.locator('#filename')).toHaveText('work.d2'); await previewReady(page);\n  199 |   await openDownloads(page);\n  200 |   await page.locator('#export-name').fill('typed name');\n  201 |   await page.locator('#export-name').press('ControlOrMeta+s');\n  202 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  203 |   expect(await page.evaluate(() => (window as typeof window & { suggested?: string }).suggested)).toBe('typed name.d2');\n  204 |   await expect(page.locator('#filename')).toHaveText('typed name.d2');\n  205 |   // Leaving the field afterwards keeps the file the save chose.\n  206 |   await page.locator('#export-name').blur();\n  207 |   await expect(page.locator('#activity-status')).not.toContainText('Save asks where to save it');\n  208 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  209 | });\n  210 | \n  211 | test('a blank or unedited name keeps an opened file linked to it', async ({ page }) => {\n  212 |   await page.addInitScript(() => {\n  213 |     const target = window as typeof window & { written?: string[]; showOpenFilePicker?: () => Promise<unknown[]>; showSaveFilePicker?: () => Promise<unknown> };\n  214 |     target.written = [];\n  215 |     const handle = { name: 'Work.D2', getFile: async () => new File(['a -> b'], 'Work.D2', { lastModified: 1 }),\n  216 |       createWritable: async () => ({ write: async (text: string) => { target.written!.push(text); }, close: async () => {}, abort: async () => {} }) };\n  217 |     target.showOpenFilePicker = async () => [handle];\n  218 |     target.showSaveFilePicker = async () => { throw new Error('Save should write back to Work.D2'); };\n  219 |   });\n  220 |   await page.goto('/'); await previewReady(page);\n  221 |   await page.locator('#file').click();\n  222 |   await expect(page.locator('#filename')).toHaveText('Work.D2'); await previewReady(page);\n  223 |   await openDownloads(page);\n  224 |   await expect(page.locator('#export-name')).toHaveValue('Work');\n  225 |   await page.locator('#export-name').fill('  ');\n  226 |   await page.locator('#export-name').press('Enter');\n  227 |   await expect(page.locator('#export-name')).toHaveValue('Work');\n  228 |   // Saving from the unedited field must not rename `Work.D2` to `Work.d2` and unlink it.\n  229 |   await page.locator('#export-name').press('ControlOrMeta+s');\n  230 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  231 |   await expect(page.locator('#filename')).toHaveText('Work.D2');\n  232 |   expect(await page.evaluate(() => (window as typeof window & { written?: string[] }).written)).toEqual(['a -> b']);\n  233 | });\n  234 | \n  235 | test('a slow save preserves later edits and does not rename a document opened in the meantime', async ({ page }) => {\n  236 |   await page.addInitScript(() => {\n  237 |     (window as any).showSaveFilePicker = async () => ({ name: 'saved-copy.d2', createWritable: async () => ({\n  238 |       write: async (text: string) => { (window as any).written = text; await new Promise<void>((resolve) => { (window as any).finishSave = resolve; }); },\n  239 |       close: async () => {}, abort: async () => {},\n  240 |     }) });\n  241 |   });\n  242 |   await page.goto('/'); await previewReady(page);\n  243 |   await page.locator('#file').setInputFiles({ name: 'original.d2', mimeType: 'text/plain', buffer: Buffer.from('a: Original') });\n  244 |   await expect(page.locator('#filename')).toHaveText('original.d2'); await previewReady(page);\n  245 |   await source(page).fill('a: Saved revision');\n  246 |   await source(page).press('ControlOrMeta+s');\n  247 |   await expect.poll(() => page.evaluate(() => typeof (window as any).finishSave)).toBe('function');\n  248 |   await expect(page.locator('#activity-status')).toHaveText('Saving file…');\n  249 |   await source(page).fill('a: Later edit');\n  250 |   await page.locator('#file').setInputFiles({ name: 'unrelated.d2', mimeType: 'text/plain', buffer: Buffer.from('b: Unrelated') });\n  251 |   await expect(page.locator('#filename')).toHaveText('unrelated.d2');\n  252 |   await page.evaluate(() => (window as any).finishSave());\n  253 |   await expect(page.locator('#save-file')).toBeEnabled();\n  254 |   await expect(page).toHaveTitle('unrelated.d2 — Zoomflow');\n  255 |   await page.locator('#example-picker summary').click();\n  256 |   await page.locator('#draft-options .example-option').filter({ hasText: 'saved-copy.d2' }).click();\n  257 |   await expect(source(page)).toHaveText('a: Later edit');\n  258 |   await expect(page).toHaveTitle('• saved-copy.d2 — Zoomflow');\n  259 |   await expect(page.locator('#draft-status')).toHaveText('File has unsaved changes');\n  260 |   expect(await page.evaluate(() => (window as any).written)).toBe('a: Saved revision');\n  261 |   await page.locator('#example-picker summary').click();\n  262 |   await expect(page.locator('#draft-options .example-option')).toHaveCount(2);\n  263 |   await expect(page.getByRole('button', { name: 'Remove saved-copy.d2 draft', exact: true })).toBeVisible();\n```"
+              },
+              {
+                "path": "test-results/documents-naming-a-diagram-7c520-kes-Save-ask-for-a-new-file-webkit/trace.zip",
+                "evidence_error": "binary artifact not inspected; download the archive for manual inspection"
+              },
+              {
+                "path": "test-results/documents-naming-a-diagram-7c520-kes-Save-ask-for-a-new-file-webkit-retry1/error-context.md",
+                "content": "# Instructions\n\n- Following Playwright test failed.\n- Explain why, be concise, respect Playwright best practices.\n- Provide a snippet of code with the fix, if possible.\n\n# Test info\n\n- Name: documents.spec.ts >> naming a diagram names its exports, keeps examples intact and makes Save ask for a new file\n- Location: tests/e2e/documents.spec.ts:140:1\n\n# Error details\n\n```\nError: expect(received).toBe(expected) // Object.is equality\n\nExpected: \"Checkout plan-root.svg\"\nReceived: \"Checkout_plan-root.svg\"\n```\n\n# Page snapshot\n\n```yaml\n- generic [ref=e1]:\n  - banner [ref=e2]:\n    - strong [ref=e3]: Zoomflow\n    - generic [ref=e4]:\n      - button \"New flow\" [ref=e5] [cursor=pointer]\n      - generic [ref=e6] [cursor=pointer]:\n        - text: Open .d2\n        - button \"Open .d2\" [ref=e7]\n      - button \"Open folder\" [ref=e8] [cursor=pointer]\n      - group [ref=e10]:\n        - generic \"Checkout plan.d2, unsaved changes — choose a diagram\" [ref=e11] [cursor=pointer]:\n          - generic \"Checkout plan.d2\" [ref=e12]\n          - img \"Unsaved changes\" [ref=e13]: •\n          - generic [aria-hidden] [ref=e14]: ⌄\n        - text: ✓\n      - button \"Export\" [active] [ref=e16] [cursor=pointer]\n    - generic [ref=e17]:\n      - generic [ref=e18]:\n        - generic [ref=e19]: Layout\n        - combobox \"Layout\" [ref=e20] [cursor=pointer]:\n          - option \"Single\" [selected]\n          - option \"Split · tabs\"\n          - option \"Split · all views\"\n      - generic [ref=e21]:\n        - generic [ref=e22]: Theme\n        - combobox \"Theme\" [ref=e23] [cursor=pointer]:\n          - option \"System\" [selected]\n          - option \"Light\"\n          - option \"Dark\"\n      - button \"D2 reference\" [ref=e24] [cursor=pointer]\n      - button \"Keyboard shortcuts\" [ref=e25] [cursor=pointer]\n  - generic:\n    - status\n  - status\n  - main [ref=e29]:\n    - generic [ref=e30]:\n      - region \"Diagram and reference\" [ref=e31]:\n        - region \"Live preview\" [ref=e32]:\n          - navigation \"Breadcrumb\" [ref=e33]:\n            - button \"Root\" [ref=e34] [cursor=pointer]\n          - generic [ref=e35]:\n            - status\n            - alert\n          - generic [ref=e36]: Root board\n          - generic [ref=e37]:\n            - region \"Root diagram\" [ref=e38]:\n              - img [ref=e39]:\n                - img [ref=e40]:\n                  - button \"Select source for Before\" [ref=e42] [cursor=pointer]:\n                    - generic [ref=e45]: Before\n            - group \"Diagram zoom\" [ref=e46]:\n              - button \"Zoom out\" [ref=e47] [cursor=pointer]: −\n              - status \"Diagram fitted to the available space\" [ref=e48]: Fit\n              - button \"Fit diagram\" [disabled] [ref=e49]\n              - button \"Zoom in\" [ref=e53] [cursor=pointer]: +\n            - button \"Fullscreen\" [ref=e54] [cursor=pointer]\n            - generic \"Click a shape to select its source\" [ref=e55]\n      - separator \"Resize diagram and D2 source\" [ref=e56]\n      - region \"Source editor\" [ref=e57]:\n        - generic [ref=e58]:\n          - generic [ref=e59]: D2 source\n          - generic [ref=e60]:\n            - button \"Clear\" [ref=e61] [cursor=pointer]\n            - button \"Format\" [ref=e62] [cursor=pointer]\n            - button \"Save .d2\" [ref=e63] [cursor=pointer]\n          - generic [ref=e64]: Edits are backed up in this browser. Save a disk copy to keep them; browser storage can be cleared.\n        - group \"Diagram status\" [ref=e65]:\n          - generic [ref=e66]:\n            - generic [ref=e67]:\n              - status\n            - generic [aria-hidden] [ref=e68]: \"Download started: Checkout plan-root.svg\"\n            - status [ref=e70]: \"Download started: Checkout plan-root.svg\"\n        - generic [ref=e71]:\n          - group [ref=e72]:\n            - generic \"▸Ask AI about this diagram\" [ref=e73] [cursor=pointer]\n          - group [ref=e74]:\n            - generic \"▸Lint options\" [ref=e75] [cursor=pointer]\n          - generic:\n            - status\n        - generic [ref=e78]:\n          - generic [ref=e80]: \"1\"\n          - textbox \"D2 source\" [ref=e86]:\n            - generic [ref=e87]: \"named: Before\"\n  - generic:\n    - status\n```\n\n# Test source\n\n```ts\n  63  |   const textPrevented = await page.evaluate(() => {\n  64  |     const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });\n  65  |     document.dispatchEvent(event);\n  66  |     return event.defaultPrevented;\n  67  |   });\n  68  |   expect(textPrevented).toBe(false);\n  69  |   await page.evaluate(() => {\n  70  |     const transfer = new DataTransfer();\n  71  |     transfer.items.add(new File(['not D2'], 'notes.txt', { type: 'text/plain' }));\n  72  |     document.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));\n  73  |   });\n  74  |   await expect(page.locator('#activity-status')).toContainText('Choose a .d2 file');\n  75  |   await expect(page.locator('#file-status')).toBeVisible();\n  76  |   await expect(page.locator('#filename')).toHaveText('order.d2');\n  77  | });\n  78  | \n  79  | test('routine editing keeps status copy steady and exposes recovery details without layout movement', async ({ page }) => {\n  80  |   await page.goto('/'); await previewReady(page);\n  81  |   const before = await page.locator('#editor').boundingBox();\n  82  |   await source(page).fill('a: First edit');\n  83  |   await expect(page.locator('#draft-status')).toHaveText('File has unsaved changes');\n  84  |   await expect(page.locator('#draft-status')).toHaveAttribute('data-recovery', 'saved');\n  85  |   await expect(page.locator('#draft-status')).toHaveAttribute('title', /Browser draft saved/);\n  86  |   await page.evaluate(() => {\n  87  |     const el = document.querySelector('#draft-status')!;\n  88  |     const updates: string[] = [];\n  89  |     (window as typeof window & { statusUpdates: string[] }).statusUpdates = updates;\n  90  |     new MutationObserver(() => updates.push(el.textContent!)).observe(el, { childList: true, subtree: true });\n  91  |   });\n  92  |   await source(page).press('End');\n  93  |   await source(page).pressSequentially(' updated', { delay: 80 });\n  94  |   await expect(page.locator('#draft-status')).toHaveAttribute('data-recovery', 'saved');\n  95  |   await previewReady(page);\n  96  |   expect(await page.evaluate(() => (window as typeof window & { statusUpdates: string[] }).statusUpdates)).toEqual([]);\n  97  |   await expect(page.locator('#preview-status')).toBeHidden();\n  98  |   await expect(page.locator('#lint-summary')).toBeHidden();\n  99  |   expect((await page.locator('#editor').boundingBox())!.y).toBe(before!.y);\n  100 | });\n  101 | \n  102 | test('saving an example creates a named copy with its history, export names and reload identity', async ({ page }) => {\n  103 |   await page.addInitScript(() => {\n  104 |     const target = window as typeof window & { showSaveFilePicker?: () => Promise<unknown> };\n  105 |     target.showSaveFilePicker = async () => ({ name: 'checkout-design.d2', createWritable: async () => ({\n  106 |       write: async () => {}, close: async () => {}, abort: async () => {},\n  107 |     }) });\n  108 |   });\n  109 |   await page.goto('/'); await previewReady(page);\n  110 |   const original = await source(page).textContent();\n  111 |   await source(page).fill('saved: After');\n  112 |   await expect(page.locator('.zf-stage')).toContainText('After'); await previewReady(page);\n  113 |   await source(page).press('ControlOrMeta+s');\n  114 |   await expect(page.locator('#filename')).toHaveText('checkout-design.d2');\n  115 |   await expect(page).toHaveTitle('checkout-design.d2 — Zoomflow');\n  116 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  117 |   await source(page).press('ControlOrMeta+z');\n  118 |   await expect(source(page)).toHaveText(original!);\n  119 |   await expect(page).toHaveTitle('• checkout-design.d2 — Zoomflow');\n  120 |   await source(page).press('ControlOrMeta+Shift+z');\n  121 |   await expect(source(page)).toHaveText('saved: After');\n  122 |   await expect(page.locator('.zf-stage')).toContainText('After');\n  123 |   await previewReady(page);\n  124 |   await selectMenuOption(page, '#export-format', 'svg');\n  125 |   const pending = page.waitForEvent('download');\n  126 |   await downloadExport(page);\n  127 |   expect((await pending).suggestedFilename()).toBe('checkout-design-root.svg');\n  128 |   await page.locator('#example-picker summary').click();\n  129 |   await expect(page.locator('#draft-options')).toContainText('Saved copy of Order flow');\n  130 |   // The edits moved to the saved copy, so the example itself is no longer modified.\n  131 |   await expect(page.locator('#example-options').getByRole('button', { name: /^Order flow/ }).locator('.example-modified')).toBeHidden();\n  132 |   await expect(page.getByRole('button', { name: 'Restore original example: Order flow' })).toBeHidden();\n  133 |   await page.keyboard.press('Escape');\n  134 |   await page.reload(); await previewReady(page);\n  135 |   await expect(page.locator('#filename')).toHaveText('checkout-design.d2');\n  136 |   await expect(page).toHaveTitle('checkout-design.d2 — Zoomflow');\n  137 |   await expect(source(page)).toHaveText('saved: After');\n  138 | });\n  139 | \n  140 | test('naming a diagram names its exports, keeps examples intact and makes Save ask for a new file', async ({ page }) => {\n  141 |   await page.addInitScript(() => {\n  142 |     const target = window as typeof window & { suggested?: string; showOpenFilePicker?: () => Promise<unknown[]>; showSaveFilePicker?: (options: { suggestedName: string }) => Promise<unknown> };\n  143 |     const handle = (name: string) => ({ name, getFile: async () => new File(['a -> b'], name, { lastModified: 1 }),\n  144 |       createWritable: async () => ({ write: async () => {}, close: async () => {}, abort: async () => {} }) });\n  145 |     target.showOpenFilePicker = async () => [handle('work.d2')];\n  146 |     target.showSaveFilePicker = async ({ suggestedName }) => { target.suggested = suggestedName; return handle(suggestedName); };\n  147 |   });\n  148 |   await page.goto('/'); await previewReady(page);\n  149 |   await source(page).fill('named: Before');\n  150 |   await expect(page.locator('.zf-stage')).toContainText('Before'); await previewReady(page);\n  151 |   await openDownloads(page);\n  152 |   await expect(page.locator('#export-name')).toHaveValue('order');\n  153 |   await page.locator('#export-name').fill('Checkout plan');\n  154 |   await page.locator('#export-name').press('Enter');\n  155 |   await expect(page.locator('#filename')).toHaveText('Checkout plan.d2');\n  156 |   await expect(page.locator('#export-name')).toHaveValue('Checkout plan');\n  157 |   // Enter commits the name and keeps focus in the open menu.\n  158 |   await expect(page.locator('#export-name')).toBeFocused();\n  159 |   await expect(page.locator('#draft-status')).toHaveText('File has unsaved changes');\n  160 |   await selectMenuOption(page, '#export-format', 'svg');\n  161 |   const pending = page.waitForEvent('download');\n  162 |   await downloadExport(page);\n> 163 |   expect((await pending).suggestedFilename()).toBe('Checkout plan-root.svg');\n      |                                               ^ Error: expect(received).toBe(expected) // Object.is equality\n  164 |   // The edits moved to the named draft with their history; the example is unedited.\n  165 |   await source(page).press('ControlOrMeta+z');\n  166 |   await expect(source(page)).not.toContainText('named: Before');\n  167 |   await source(page).press('ControlOrMeta+Shift+z');\n  168 |   await page.locator('#example-picker summary').click();\n  169 |   await expect(page.locator('#draft-options')).toContainText('Saved copy of Order flow');\n  170 |   await expect(page.locator('#example-options').getByRole('button', { name: /^Order flow/ }).locator('.example-modified')).toBeHidden();\n  171 |   await page.keyboard.press('Escape');\n  172 |   await page.reload(); await previewReady(page);\n  173 |   await expect(page.locator('#filename')).toHaveText('Checkout plan.d2');\n  174 |   await expect(source(page)).toHaveText('named: Before');\n  175 | \n  176 |   // A file opened from disk keeps its name there, so Save asks where to save under the new one.\n  177 |   await page.locator('#file').click();\n  178 |   await expect(page.locator('#filename')).toHaveText('work.d2'); await previewReady(page);\n  179 |   await openDownloads(page);\n  180 |   await page.locator('#export-name').fill('renamed work');\n  181 |   await page.locator('#export-name').press('Enter');\n  182 |   await expect(page.locator('#filename')).toHaveText('renamed work.d2');\n  183 |   await source(page).press('ControlOrMeta+s');\n  184 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  185 |   expect(await page.evaluate(() => (window as typeof window & { suggested?: string }).suggested)).toBe('renamed work.d2');\n  186 | });\n  187 | \n  188 | test('the save shortcut applies a name still being typed before saving', async ({ page }) => {\n  189 |   await page.addInitScript(() => {\n  190 |     const target = window as typeof window & { suggested?: string; showOpenFilePicker?: () => Promise<unknown[]>; showSaveFilePicker?: (options: { suggestedName: string }) => Promise<unknown> };\n  191 |     const handle = (name: string) => ({ name, getFile: async () => new File(['a -> b'], name, { lastModified: 1 }),\n  192 |       createWritable: async () => ({ write: async () => {}, close: async () => {}, abort: async () => {} }) });\n  193 |     target.showOpenFilePicker = async () => [handle('work.d2')];\n  194 |     target.showSaveFilePicker = async ({ suggestedName }) => { target.suggested = suggestedName; return handle(suggestedName); };\n  195 |   });\n  196 |   await page.goto('/'); await previewReady(page);\n  197 |   await page.locator('#file').click();\n  198 |   await expect(page.locator('#filename')).toHaveText('work.d2'); await previewReady(page);\n  199 |   await openDownloads(page);\n  200 |   await page.locator('#export-name').fill('typed name');\n  201 |   await page.locator('#export-name').press('ControlOrMeta+s');\n  202 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  203 |   expect(await page.evaluate(() => (window as typeof window & { suggested?: string }).suggested)).toBe('typed name.d2');\n  204 |   await expect(page.locator('#filename')).toHaveText('typed name.d2');\n  205 |   // Leaving the field afterwards keeps the file the save chose.\n  206 |   await page.locator('#export-name').blur();\n  207 |   await expect(page.locator('#activity-status')).not.toContainText('Save asks where to save it');\n  208 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  209 | });\n  210 | \n  211 | test('a blank or unedited name keeps an opened file linked to it', async ({ page }) => {\n  212 |   await page.addInitScript(() => {\n  213 |     const target = window as typeof window & { written?: string[]; showOpenFilePicker?: () => Promise<unknown[]>; showSaveFilePicker?: () => Promise<unknown> };\n  214 |     target.written = [];\n  215 |     const handle = { name: 'Work.D2', getFile: async () => new File(['a -> b'], 'Work.D2', { lastModified: 1 }),\n  216 |       createWritable: async () => ({ write: async (text: string) => { target.written!.push(text); }, close: async () => {}, abort: async () => {} }) };\n  217 |     target.showOpenFilePicker = async () => [handle];\n  218 |     target.showSaveFilePicker = async () => { throw new Error('Save should write back to Work.D2'); };\n  219 |   });\n  220 |   await page.goto('/'); await previewReady(page);\n  221 |   await page.locator('#file').click();\n  222 |   await expect(page.locator('#filename')).toHaveText('Work.D2'); await previewReady(page);\n  223 |   await openDownloads(page);\n  224 |   await expect(page.locator('#export-name')).toHaveValue('Work');\n  225 |   await page.locator('#export-name').fill('  ');\n  226 |   await page.locator('#export-name').press('Enter');\n  227 |   await expect(page.locator('#export-name')).toHaveValue('Work');\n  228 |   // Saving from the unedited field must not rename `Work.D2` to `Work.d2` and unlink it.\n  229 |   await page.locator('#export-name').press('ControlOrMeta+s');\n  230 |   await expect(page.locator('#draft-status')).toHaveText('Saved to file');\n  231 |   await expect(page.locator('#filename')).toHaveText('Work.D2');\n  232 |   expect(await page.evaluate(() => (window as typeof window & { written?: string[] }).written)).toEqual(['a -> b']);\n  233 | });\n  234 | \n  235 | test('a slow save preserves later edits and does not rename a document opened in the meantime', async ({ page }) => {\n  236 |   await page.addInitScript(() => {\n  237 |     (window as any).showSaveFilePicker = async () => ({ name: 'saved-copy.d2', createWritable: async () => ({\n  238 |       write: async (text: string) => { (window as any).written = text; await new Promise<void>((resolve) => { (window as any).finishSave = resolve; }); },\n  239 |       close: async () => {}, abort: async () => {},\n  240 |     }) });\n  241 |   });\n  242 |   await page.goto('/'); await previewReady(page);\n  243 |   await page.locator('#file').setInputFiles({ name: 'original.d2', mimeType: 'text/plain', buffer: Buffer.from('a: Original') });\n  244 |   await expect(page.locator('#filename')).toHaveText('original.d2'); await previewReady(page);\n  245 |   await source(page).fill('a: Saved revision');\n  246 |   await source(page).press('ControlOrMeta+s');\n  247 |   await expect.poll(() => page.evaluate(() => typeof (window as any).finishSave)).toBe('function');\n  248 |   await expect(page.locator('#activity-status')).toHaveText('Saving file…');\n  249 |   await source(page).fill('a: Later edit');\n  250 |   await page.locator('#file').setInputFiles({ name: 'unrelated.d2', mimeType: 'text/plain', buffer: Buffer.from('b: Unrelated') });\n  251 |   await expect(page.locator('#filename')).toHaveText('unrelated.d2');\n  252 |   await page.evaluate(() => (window as any).finishSave());\n  253 |   await expect(page.locator('#save-file')).toBeEnabled();\n  254 |   await expect(page).toHaveTitle('unrelated.d2 — Zoomflow');\n  255 |   await page.locator('#example-picker summary').click();\n  256 |   await page.locator('#draft-options .example-option').filter({ hasText: 'saved-copy.d2' }).click();\n  257 |   await expect(source(page)).toHaveText('a: Later edit');\n  258 |   await expect(page).toHaveTitle('• saved-copy.d2 — Zoomflow');\n  259 |   await expect(page.locator('#draft-status')).toHaveText('File has unsaved changes');\n  260 |   expect(await page.evaluate(() => (window as any).written)).toBe('a: Saved revision');\n  261 |   await page.locator('#example-picker summary').click();\n  262 |   await expect(page.locator('#draft-options .example-option')).toHaveCount(2);\n  263 |   await expect(page.getByRole('button', { name: 'Remove saved-copy.d2 draft', exact: true })).toBeVisible();\n```"
+              },
+              {
+                "path": "test-results/documents-naming-a-diagram-7c520-kes-Save-ask-for-a-new-file-webkit-retry1/trace.zip",
+                "evidence_error": "binary artifact not inspected; download the archive for manual inspection"
+              }
+            ]
+          },
+          {
+            "id": 12805288621,
+            "name": "browser-report-linux-firefox-2",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12805288621",
+            "size_in_bytes": 386942,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12805288621/zip > artifact-12805288621.zip",
+            "files": [],
+            "evidence_error": "no supported text reports, screenshots or traces in artifact"
+          },
+          {
+            "id": 12805104598,
+            "name": "browser-report-linux-chromium-4",
+            "url": "https://github.com/sglavoie/zoomflow/actions/runs/40665523490/artifacts/12805104598",
+            "size_in_bytes": 399614,
+            "expired": false,
+            "download_command": "gh api repos/sglavoie/zoomflow/actions/artifacts/12805104598/zip > artifact-12805104598.zip",
+            "files": [],
+            "evidence_error": "no supported text reports, screenshots or traces in artifact"
+          }
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "recommendations": [
+      {
+        "subject": "engines (firefox 1/4)",
+        "actions": [
+          "rerun_candidate",
+          "insufficient_evidence"
+        ]
+      },
+      {
+        "subject": "engines (webkit 2/4)",
+        "actions": [
+          "rerun_candidate",
+          "insufficient_evidence"
+        ]
+      }
+    ],
+    "assertions": [
+      {
+        "id": "artifact attribution",
+        "any_of": [
+          "12805423400"
+        ]
+      },
+      {
+        "id": "artifact file reference",
+        "any_of": [
+          "error-context.md"
+        ]
+      },
+      {
+        "id": "browser root cause uncertainty",
+        "any_of": [
+          "unconfirmed",
+          "uncertain",
+          "not proven",
+          "not established",
+          "not establish",
+          "cannot confirm",
+          "cannot prove",
+          "inconclusive",
+          "unknown"
+        ]
+      },
+      {
+        "id": "bounded Firefox trace gap",
+        "any_of": [
+          "8 MiB",
+          "8MiB",
+          "budget",
+          "exceeds",
+          "unavailable",
+          "not inspected",
+          "limit"
+        ],
+        "subject": "engines (firefox 1/4)"
+      }
+    ]
+  }
+}

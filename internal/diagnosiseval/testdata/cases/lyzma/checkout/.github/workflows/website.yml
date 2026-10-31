@@ -1,0 +1,42 @@
+name: Website
+
+# Checks website/public on pull requests that change it, and publishes it to lyzma.com when a
+# push to main changes it, as `just website-deploy` does. Deploying needs the
+# CLOUDFLARE_API_TOKEN secret, a token that can edit Workers on the account holding lyzma.com;
+# Scripts/deploy-website.sh finds that account from the zone.
+on:
+  push:
+    branches: [main]
+    paths: ["website/**", "Scripts/check-website.sh", "Scripts/deploy-website.sh", ".github/workflows/website.yml"]
+  pull_request:
+    paths: ["website/**", "Scripts/check-website.sh", "Scripts/deploy-website.sh", ".github/workflows/website.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check that every referenced file and #fragment exists
+        run: sh Scripts/check-website.sh
+
+  deploy:
+    needs: check
+    # Only main is published: a manual run started on another branch only checks it.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One deploy at a time; a newer push waits for the one running.
+    concurrency:
+      group: website
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Deploy
+        run: bash Scripts/deploy-website.sh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

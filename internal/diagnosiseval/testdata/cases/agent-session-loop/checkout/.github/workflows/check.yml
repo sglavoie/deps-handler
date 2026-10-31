@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Two lanes with different authority. The Linux lane is cheap, fast, and
+# deliberately partial: it gates on the checks that hold on any machine with a
+# Python interpreter. The macOS lane is the one that speaks for a release --
+# it runs the complete suite on the platform the ASL/AgentMux pair is developed,
+# installed, and released against. Nothing the Linux lane skips is left
+# unchecked; it is checked on macOS instead. The macOS lane is one suite dealt
+# across parallel jobs: `--slice K/N` gives each job a disjoint share of the
+# shards, and together the slices run every shard exactly once.
+# Third-party actions are pinned to commit SHAs (the tag they resolved from is
+# in the trailing comment) and both runners to an explicit image, so a moved tag
+# or a runner-image migration cannot change what a commit is checked with. The
+# lint toolchain is pinned in pyproject.toml's `dev` dependency group, the one
+# list both lanes and a developer's machine install from.
+#
+# A failed test job uploads `.cache/run_suite_logs/`, where the shard driver
+# keeps every failed shard's full output; the job log shows only its tail.
+#
+# The token is read-only: nothing here writes to the repository. A newer push to
+# the same pull request cancels the run it supersedes; pushes to main always
+# finish, so every commit on main keeps its verdict.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  linux-portable:
+    name: Linux (portable, Python ${{ matrix.python-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      # A failure on one interpreter must not hide the verdict for the other.
+      fail-fast: false
+      matrix:
+        # The README promises Python 3.14 or later: the floor, and the newest
+        # release, which is what a developer's `python3` tends to be.
+        python-version: ["3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Nothing here pushes, so the token is not left in .git/config.
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          # The tool pins live in pyproject.toml, so it is the cache key.
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # `--group` needs pip 25.1 or later, which the runner's pip may predate.
+      - name: Install Python tooling
+        run: |
+          python3 -m pip install --upgrade "pip>=25.1"
+          python3 -m pip install --group dev
+
+      # ShellCheck ships with the Ubuntu runner image.
+      - name: Lint and type-check
+        run: just lint
+
+      - name: Portable test suite
+        run: just test-portable
+
+      - name: Startup context is not stale
+        run: python3 -m agent_session_loop.startup_context --check --reference-only
+
+      # No model is used and no provider is contacted: the only subprocess this
+      # builds is `<harness> --version`. On a runner with no harness installed
+      # every harness resolves to `unknown`, which is a warning rather than a
+      # failure, so the default (non-strict) mode is what belongs in a
+      # per-commit gate. The strict form is scheduled separately in
+      # harness-compatibility.yml.
+      - name: Harness compatibility policy
+        run: python3 -m agent_session_loop harness-compat --json
+
+      - name: Upload failed shard logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: run-suite-logs-linux-py${{ matrix.python-version }}
+          path: .cache/run_suite_logs/
+          if-no-files-found: ignore
+
+  workbench-portable-py313:
+    name: Linux (portable Workbench, Python 3.13)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Nothing here pushes, so the token is not left in .git/config.
+          persist-credentials: false
+
+      # The portable Workbench is deployed to a host documented at Python 3.13
+      # (see `[tool.ruff.per-file-target-version]` in pyproject.toml), so its
+      # portable lane has to import and pass there, not only on 3.14+.
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      # The exact command the deployment contract names; it needs no tooling
+      # beyond the interpreter.
+      - name: Portable Workbench tests on Python 3.13
+        run: python3.13 -m unittest -q tests.test_workbench_portable
+
+  macos-full:
+    name: macOS (full ${{ matrix.slice }}/4)
+    # What `macos-latest` resolves to today, named so it cannot move under us.
+    runs-on: macos-26
+    timeout-minutes: 25
+    strategy:
+      # A failure in one slice must not hide the verdict for the other three.
+      fail-fast: false
+      matrix:
+        # Keep the count in step with the `/4` in the job name and the suite
+        # step below.
+        slice: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Nothing here pushes, so the token is not left in .git/config.
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+          # The tool pins live in pyproject.toml, so it is the cache key. Only
+          # slice 1 installs anything with pip, so only it uses the cache.
+          cache: ${{ matrix.slice == 1 && 'pip' || '' }}
+          cache-dependency-path: pyproject.toml
+
+      # Only `just lint` needs just; the suite step calls run_suite directly.
+      - name: Install just
+        if: matrix.slice == 1
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # Lint is not sliced, so one job runs it for the whole lane.
+      # `--group` needs pip 25.1 or later, which the runner's pip may predate.
+      - name: Install Python tooling
+        if: matrix.slice == 1
+        run: |
+          python3 -m pip install --upgrade "pip>=25.1"
+          python3 -m pip install --group dev
+
+      - name: Install shellcheck
+        if: matrix.slice == 1
+        run: brew install shellcheck
+
+      - name: Lint
+        if: matrix.slice == 1
+        run: env ASL_CLI_TRACE=0 just lint
+
+      # Recorded shard durations only order a slice's shards (longest first);
+      # they never decide the partition, so a stale or missing file changes
+      # how long a slice takes, not what it runs. Each run saves a new entry
+      # and restores the newest one for its slice.
+      - name: Restore shard timings
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/run_suite_timings.json
+          key: run-suite-timings-macos-${{ matrix.slice }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: run-suite-timings-macos-${{ matrix.slice }}-
+
+      - name: Complete test suite (slice ${{ matrix.slice }}/4)
+        # `just test-all`, one slice of it.
+        run: env ASL_CLI_TRACE=0 python3 -m tests.run_suite --all --slice ${{ matrix.slice }}/4
+
+      - name: Upload failed shard logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: run-suite-logs-macos-${{ matrix.slice }}
+          path: .cache/run_suite_logs/
+          if-no-files-found: ignore
