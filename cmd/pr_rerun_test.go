@@ -67,7 +67,7 @@ func mockRerunCommand(t *testing.T) *commandActionsClient {
 func TestPRRerunPreviewAndApplyWithoutConfigOrAgent(t *testing.T) {
 	for _, apply := range []bool{false, true} {
 		for _, asJSON := range []bool{false, true} {
-			t.Run(strings.Join([]string{map[bool]string{false: "preview", true: "apply"}[apply], map[bool]string{false: "markdown", true: "json"}[asJSON]}, "/"), func(t *testing.T) {
+			t.Run(strings.Join([]string{map[bool]string{false: "preview", true: "apply"}[apply], map[bool]string{false: "table", true: "json"}[asJSON]}, "/"), func(t *testing.T) {
 				c := mockRerunCommand(t)
 				t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 				args := []string{"pr", "rerun", "o/r#7", "--job", "99", "--head", "abc123", "--attempt", "1"}
@@ -89,7 +89,7 @@ func TestPRRerunPreviewAndApplyWithoutConfigOrAgent(t *testing.T) {
 					if err := json.Unmarshal([]byte(out), &result); err != nil || result.Apply != apply || len(result.Runs) != 1 || result.Runs[0].Requested != apply || result.ChecksPassing != apply {
 						t.Fatalf("result=%+v err=%v out=%s", result, err, out)
 					}
-				} else if !strings.Contains(out, "job 99, check 42") {
+				} else if !strings.Contains(out, "│ test │ failed │ 99") || !strings.Contains(out, "│ CHECK ID │") {
 					t.Fatal("lost job identity", out)
 				}
 			})

@@ -253,7 +253,7 @@ func TestDiagnoseIncompatibleMajor(t *testing.T) {
 		testutil.PR(2),
 	))
 	inc := f[FindingIncompatible]
-	if len(inc) != 1 || len(inc[0].Suggestions) != 2 || inc[0].Suggestions[0] != "deps-handler pr diagnose o/r#1 > repair.md" || inc[0].Suggestions[1] != "@dependabot ignore this major version" {
+	if len(inc) != 1 || len(inc[0].Suggestions) != 2 || inc[0].Suggestions[0] != "deps-handler pr diagnose o/r#1 --list > repair.md" || inc[0].Suggestions[1] != "@dependabot ignore this major version" {
 		t.Fatalf("incompatible = %+v", inc)
 	}
 }
@@ -299,7 +299,7 @@ func TestDiagnoseGroupSuggestsPerDependency(t *testing.T) {
 		testutil.PR(2),
 	))
 	inc := f[FindingIncompatible]
-	want := []string{"deps-handler pr diagnose o/r#1 > repair.md", "@dependabot ignore b major version", "@dependabot ignore c major version"}
+	want := []string{"deps-handler pr diagnose o/r#1 --list > repair.md", "@dependabot ignore b major version", "@dependabot ignore c major version"}
 	if len(inc) != 1 || len(inc[0].Suggestions) != len(want) || strings.Join(inc[0].Suggestions, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("incompatible = %+v", inc)
 	}

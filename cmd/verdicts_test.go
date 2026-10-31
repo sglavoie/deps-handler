@@ -94,7 +94,7 @@ func TestVerdictsShowHeadOfRejection(t *testing.T) {
 	if err := cache.Put("o/a#2 x@3.0.0", "fedcba9876543210", "codex", policy.Verdict{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
-	code, out, _ := run("verdicts")
+	code, out, _ := run("verdicts", "--list")
 	if code != 0 || !strings.Contains(out, "HEAD") || !strings.Contains(out, "rejected  claude  0123456") || !strings.Contains(out, "approved  codex   any") {
 		t.Fatalf("code %d:\n%s", code, out)
 	}
@@ -125,7 +125,7 @@ func TestVerdictsShowHeadOfApprovalWithoutVersions(t *testing.T) {
 	if err := cache.Put("o/a#3 actions/checkout@ 0123456789abcdef", "0123456789abcdef", "claude", policy.Verdict{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
-	code, out, _ := run("verdicts")
+	code, out, _ := run("verdicts", "--list")
 	if code != 0 || !strings.Contains(out, "approved  claude  0123456") {
 		t.Fatalf("code %d:\n%s", code, out)
 	}

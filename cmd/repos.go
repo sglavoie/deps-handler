@@ -11,8 +11,8 @@ import (
 )
 
 func newReposCmd() *cobra.Command {
+	var output *outputFormat
 	var (
-		asJSON bool
 		repos  []string
 		owners []string
 	)
@@ -30,6 +30,10 @@ The policy shown is the config's alone: run also reads each repository's
 repository, which can override it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			format, formatErr := output.resolve(cmd)
+			if formatErr != nil {
+				return formatErr
+			}
 			if err := checkSelection(cmd, repos, owners); err != nil {
 				return err
 			}
@@ -41,8 +45,11 @@ repository, which can override it.`,
 			if cfg.Repos, err = cfg.Filter(repos, owners, true); err != nil {
 				return usageError{err}
 			}
-			if asJSON {
+			if format == "json" {
 				return reposJSON(cmd.OutOrStdout(), cfg)
+			}
+			if format == "table" {
+				return reposTable(cmd.OutOrStdout(), cfg)
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "REPO\tMODE\tMERGE\tMAX UPDATE\tREQUIRE CHECKS\tNO-CHECKS MERGE\tAGENT REVIEW\tDEPENDABOT COMMANDS\tSKIP")
@@ -63,7 +70,7 @@ repository, which can override it.`,
 			return err
 		},
 	}
-	c.Flags().BoolVar(&asJSON, "json", false, "print the repositories and the agent as JSON")
+	output = addOutputFlags(c, false)
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only list these repos (owner/name or name; repeatable)")
 	c.Flags().StringSliceVar(&owners, "owner", nil, "only list the configured repos of these owners (repeatable)")
 	keepEmpty(c, "repo", "owner")

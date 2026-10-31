@@ -63,7 +63,7 @@ func (w *failOutput) Write(p []byte) (int, error) {
 }
 
 func TestRunReportsOutputFailure(t *testing.T) {
-	for _, format := range []string{"text", "--markdown", "--json"} {
+	for _, format := range []string{"text", "--table", "--list", "--markdown", "--json"} {
 		t.Run(format, func(t *testing.T) {
 			_, cfg := runFixture(t)
 			args := []string{"dependabot", "-c", cfg}

@@ -298,6 +298,16 @@ func (s *RerunService) confirmChecks(ctx context.Context, p github.PRSnapshot, b
 // RerunMarkdown distinguishes a preview, an unconfirmed request and an
 // observed new attempt, including when an operation stops partway through.
 func RerunMarkdown(w io.Writer, result RerunResult) error {
+	return rerunReport(w, result, false)
+}
+
+// RerunTable writes the rerun report with verified jobs in bordered tables.
+func RerunTable(w io.Writer, result RerunResult) error {
+	return rerunReport(w, result, true)
+}
+
+func rerunReport(w io.Writer, result RerunResult, asTable bool) error {
+	tables := reportTables{destination: w}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# CI rerun: %s\n\nHead: `%s`\n\n", result.Snapshot.Target, result.Snapshot.HeadOID)
 	if !result.Apply {
@@ -309,8 +319,17 @@ func RerunMarkdown(w io.Writer, result RerunResult) error {
 	}
 	for _, r := range result.Runs {
 		fmt.Fprintf(&b, "## Run %d (previous attempt %d)\n\n", r.RunID, r.PreviousAttempt)
-		for _, job := range r.Jobs {
-			fmt.Fprintf(&b, "- %s: job %d, check %d\n", job.Name, job.JobID, job.ID)
+		if asTable && len(r.Jobs) > 0 {
+			rows := make([][]string, 0, len(r.Jobs))
+			for _, job := range r.Jobs {
+				rows = append(rows, []string{job.Name, string(job.State), fmt.Sprint(job.JobID), fmt.Sprint(job.ID)})
+			}
+			// Trusted table rendering is inserted after the prose is cleaned.
+			fmt.Fprintln(&b, tables.add([]string{"JOB", "STATE", "JOB ID", "CHECK ID"}, rows))
+		} else {
+			for _, job := range r.Jobs {
+				fmt.Fprintf(&b, "- %s: job %d, check %d\n", job.Name, job.JobID, job.ID)
+			}
 		}
 		if !result.Apply {
 			for _, job := range r.Jobs {
@@ -338,7 +357,9 @@ func RerunMarkdown(w io.Writer, result RerunResult) error {
 	if result.Error != "" {
 		fmt.Fprintf(&b, "\nOperation stopped: %s\n", result.Error)
 	}
-	_, err := io.WriteString(w, review.Clean(b.String()))
+	output := b.String()
+	output = tables.clean(output)
+	_, err := io.WriteString(w, output)
 	return err
 }
 

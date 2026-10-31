@@ -150,7 +150,7 @@ func run(args ...string) (int, string, string) {
 
 func TestReposListsPolicy(t *testing.T) {
 	cfg := writeConfig(t, "agent:\n  claude:\n    max_budget_usd: 2\nrepos:\n  - o/a\n  - repo: o/b\n    skip: true\n    require_checks: false\n    mode: report\n")
-	code, out, _ := run("repos", "-c", cfg)
+	code, out, _ := run("repos", "-c", cfg, "--list")
 	if code != 0 || !strings.Contains(out, "o/a   merge   squash  minor") || !strings.Contains(out, "o/b   report  squash") {
 		t.Fatalf("code %d, output:\n%s", code, out)
 	}
@@ -228,7 +228,7 @@ func TestVerdicts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	code, out, _ := run("verdicts")
+	code, out, _ := run("verdicts", "--list")
 	if code != 0 || !strings.Contains(out, "o/a#1 lib@2.0.0  approved  claude") || !strings.Contains(out, "o/a#2 x@3.0.0    rejected") {
 		t.Fatalf("list: code %d:\n%s", code, out)
 	}
@@ -281,7 +281,7 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"no parallel":     {[]string{"dependabot", "-c", active, "--parallel", "0"}, 2, "--parallel must be at least 1"},
 		"no review slots": {[]string{"dependabot", "-c", active, "--review", "--review-parallel", "0"}, 2, "--review-parallel must be at least 1"},
 		"slots alone":     {[]string{"dependabot", "-c", active, "--review-parallel", "3"}, 2, "--review-parallel needs --review or --agent"},
-		"two formats":     {[]string{"dependabot", "-c", missing, "--json", "--markdown"}, 2, "--json and --markdown cannot be used together"},
+		"two formats":     {[]string{"dependabot", "-c", missing, "--json", "--markdown"}, 2, "--markdown cannot be used with"},
 		// The command line is checked before the config is read.
 		"limit before config": {[]string{"dependabot", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
 		"repo before config":  {[]string{"dependabot", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},

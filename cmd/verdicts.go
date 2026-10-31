@@ -19,7 +19,7 @@ import (
 const summaryWidth = 70
 
 func newVerdictsCmd() *cobra.Command {
-	var asJSON bool
+	var output *outputFormat
 	c := &cobra.Command{
 		Use:   "verdicts [TARGET...]",
 		Short: "List the agent verdicts kept between runs",
@@ -44,6 +44,10 @@ A target narrows the list to a repository (owner/name) or a pull request
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, targets []string) error {
+			format, formatErr := output.resolve(cmd)
+			if formatErr != nil {
+				return formatErr
+			}
 			cache, err := openVerdicts(cmd)
 			if err != nil {
 				return err
@@ -61,7 +65,7 @@ A target narrows the list to a repository (owner/name) or a pull request
 					return !slices.ContainsFunc(targets, func(t string) bool { return review.Matches(e.Key, t) })
 				})
 			}
-			if err := printVerdicts(cmd, entries, asJSON); err != nil {
+			if err := printVerdictsView(cmd, entries, format); err != nil {
 				return err
 			}
 			if unmatched > 0 {
@@ -70,7 +74,7 @@ A target narrows the list to a repository (owner/name) or a pull request
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&asJSON, "json", false, "print verdicts as JSON, with their concerns")
+	output = addOutputFlags(c, false)
 	c.ValidArgsFunction = completeTargets
 	c.AddCommand(&cobra.Command{
 		Use:   "forget TARGET...",

@@ -116,7 +116,7 @@ deps-handler dependabot --open            # only repos with open Dependabot PRs
 deps-handler dependabot -r Storefront --json  # one repo, machine-readable
 deps-handler dependabot --markdown        # GitHub Markdown, as for an issue body
 deps-handler dependabot --review --apply  # let an AI agent judge bigger updates too
-deps-handler pr diagnose acme/Storefront#123 > repair.md  # AI repair handoff
+deps-handler pr diagnose acme/Storefront#123 --list > repair.md  # AI repair handoff
 deps-handler pr rerun acme/Storefront#123           # preview failed Actions jobs
 deps-handler pr rerun acme/Storefront#123 --apply   # rerun once and watch new attempts
 deps-handler pr fix acme/Storefront#123 --agent codex    # edit and commit locally for review
@@ -133,7 +133,7 @@ configured repositories and PRs opened by someone other than Dependabot:
 ```bash
 # Get a plan to paste into your next coding session; nothing is pushed.
 deps-handler pr diagnose https://github.com/acme/Storefront/pull/123 \
-  --agent codex > repair.md
+  --agent codex --list > repair.md
 
 # Focus on a particular failure, or request structured output.
 deps-handler pr diagnose acme/Storefront#123 --focus 'Linux build failure'
@@ -612,7 +612,20 @@ discarded and cannot become a cached approval for a later run.
 `init`, `repos` and `verdicts` also exit `1` if their output cannot be
 written, including confirmations after a config or cache change.
 
-`dependabot`, `repos` and `verdicts` take `--json`. `dependabot --json` prints
+Report commands (`dependabot`, `repos`, `verdicts`, and `pr diagnose`, `fix`,
+`rerun`, `eval`) default to bordered tables, with colors on a terminal and
+wrapped cells for long values. Use `--list` for the original output or `--json`
+for machine-readable output; `--table` explicitly selects the default.
+`--format table|list|json` selects the same modes. Conflicting output modes
+exit `2` before any work begins.
+
+`pr eval --list` still lists frozen cases without running an agent; use
+`--format list` to select its original output layout, including when listing
+cases. `pr diagnose --list > repair.md` saves the original Markdown handoff
+for `pr fix --plan repair.md`. `dependabot --markdown` remains available and
+cannot be combined with an output mode flag.
+
+`dependabot --json` prints
 `{"apply": bool, "results": [...]}`, one result per repository with its
 policy, a decision per PR, findings, the writes made and warnings. Lists
 are always arrays, never `null`. [Scripting](docs/behaviour.md#scripting)

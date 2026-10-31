@@ -394,6 +394,17 @@ run's review approved without asking the agent again. For
 - `130`: interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`). A second Ctrl-C
   kills deps-handler at once, should the first not stop it.
 
+All report commands default to bordered tables. `--table`, `--list` and
+`--json` select the table view, original layout or JSON respectively;
+`--format table|list|json` selects the same modes. Conflicting selections
+or an unknown format are usage errors (exit `2`), checked before config,
+GitHub access or agent setup. Table cells wrap to the terminal width (140
+columns when redirected), preserving long values and Unicode alignment.
+The original output remains available even when piped by selecting `--list`.
+`pr eval --list` continues to select case discovery; its original layout is
+available through `--format list`. Save diagnosis plans with
+`pr diagnose owner/repo#123 --list > repair.md`.
+
 `--json` prints `{"apply": bool, "results": [...]}` with one result per
 repository: `repo`, `policy`, `config_files` (the policy files read
 from GitHub, as in [Policy files in the repositories](#policy-files-in-the-repositories)), `permission`, `decisions` (one per PR, with
@@ -412,7 +423,7 @@ when the repository could not be read (`interrupted` if the run was
 stopped), or a failed review is no longer present in its latest decisions.
 
 For an incompatible update, `suggestions` offers a copyable
-`deps-handler pr diagnose owner/repo#123 > repair.md` command before any
+`deps-handler pr diagnose owner/repo#123 --list > repair.md` command before any
 Dependabot ignore commands. Terminal reports, Markdown and the App's health
 issues show the same suggestions. Shared CI failures still direct fixes to
 the affected base branch, and required reviews still call for human approval.
@@ -833,7 +844,7 @@ Remaining merge gates are reported independently.
 Reruns never merge, edit code or push commits, and passing a rerun does not
 prove that the original failure was flaky.
 
-Markdown and `--json` distinguish previews, attempted requests, confirmed
+Tables, Markdown (`--list`) and `--json` distinguish previews, attempted requests, confirmed
 requests and observed attempts. JSON contains `snapshot`, `apply`, `runs`,
 `warnings`, `blockers`, `checks_passing` and optional `error`. Each run records
 its `run_id`, optional selected `job_id`, verified `jobs`, `previous_attempt`,

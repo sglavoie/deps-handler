@@ -93,6 +93,14 @@ func header(res runner.RepoResult) string {
 }
 
 func repoBody(w io.Writer, apply bool, res runner.RepoResult, s style) {
+	repoBodyView(w, apply, res, s, false)
+}
+
+func repoBodyTable(w io.Writer, apply bool, res runner.RepoResult, s style) {
+	repoBodyView(w, applies(apply, res), res, s, true)
+}
+
+func repoBodyView(w io.Writer, apply bool, res runner.RepoResult, s style, bordered bool) {
 	if len(res.ConfigFiles) > 0 {
 		fmt.Fprintln(w, "  "+s.paint(dim, "policy from "+strings.Join(res.ConfigFiles, ", ")))
 	}
@@ -118,7 +126,15 @@ func repoBody(w io.Writer, apply bool, res runner.RepoResult, s style) {
 		l := label(d.Action, apply)
 		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", d.Number)}, {text: d.Grade.String(), color: gradeColor(d.Grade)}, {text: l, color: labelColor(l)}, {text: d.Reason}, {text: truncate(d.Title), url: d.URL}})
 	}
-	table(w, s, "  ", rows)
+	if bordered && len(rows) > 0 {
+		values := make([][]string, 0, len(rows))
+		for _, row := range rows {
+			values = append(values, []string{row[0].text, row[1].text, row[2].text, row[3].text, row[4].text})
+		}
+		fmt.Fprintln(w, formatTable(w, s, []string{"PR", "UPDATE", "STATUS", "REASON", "TITLE"}, values))
+	} else {
+		table(w, s, "  ", rows)
+	}
 	for _, warning := range res.Warnings {
 		fmt.Fprintf(w, "  %s %s\n", s.paint(yellow, "warning:"), s.paint("", warning))
 	}

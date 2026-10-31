@@ -56,7 +56,7 @@ func TestPREvalListNeedsNoConfigAgentOrGitHub(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &entries); err != nil || len(entries) != 4 || entries[0].ID != "agent-session-loop" {
 				t.Fatalf("bad listing: %s (%v)", out, err)
 			}
-		} else if !strings.Contains(out, "lyzma\t") || !strings.Contains(out, "zoomflow\t") {
+		} else if !strings.Contains(out, "│ lyzma") || !strings.Contains(out, "│ zoomflow") {
 			t.Fatal("missing case descriptions", out)
 		}
 	}

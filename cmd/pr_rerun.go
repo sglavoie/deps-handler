@@ -20,7 +20,7 @@ var newPRRerunClient = github.NewActionsClient
 
 func newPRRerunCmd() *cobra.Command {
 	var opts pr.RerunOptions
-	var asJSON bool
+	var output *outputFormat
 	var waitTimeout time.Duration
 	c := &cobra.Command{
 		Use:   "rerun <owner/repo#number | PR-URL>",
@@ -39,6 +39,10 @@ Requests are never retried automatically; inspect Actions after an
 unconfirmed response before deciding whether to try again.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			format, formatErr := output.resolve(cmd)
+			if formatErr != nil {
+				return formatErr
+			}
 			target, err := github.ParsePRTarget(args[0])
 			if err != nil {
 				return usageError{err}
@@ -62,7 +66,7 @@ unconfirmed response before deciding whether to try again.`,
 				Progress: func(message string) { fmt.Fprintln(cmd.ErrOrStderr(), review.Clean(message)) },
 			}
 			result, runErr := service.Run(ctx, target, opts)
-			if asJSON {
+			if format == "json" {
 				data, err := json.MarshalIndent(result, "", "  ")
 				if err != nil {
 					return err
@@ -70,8 +74,14 @@ unconfirmed response before deciding whether to try again.`,
 				if _, err := fmt.Fprintln(cmd.OutOrStdout(), review.Clean(string(data))); err != nil {
 					return err
 				}
-			} else if err := pr.RerunMarkdown(cmd.OutOrStdout(), result); err != nil {
-				return err
+			} else {
+				render := pr.RerunTable
+				if format == "list" {
+					render = pr.RerunMarkdown
+				}
+				if err := render(cmd.OutOrStdout(), result); err != nil {
+					return err
+				}
 			}
 			if ctx.Err() != nil {
 				return errInterrupted
@@ -87,6 +97,6 @@ unconfirmed response before deciding whether to try again.`,
 	c.Flags().StringVar(&opts.HeadOID, "head", "", "require the PR head SHA from a saved diagnosis or preview")
 	c.Flags().IntVar(&opts.Attempt, "attempt", 0, "require this previous workflow attempt (requires --job)")
 	c.Flags().DurationVar(&waitTimeout, "wait-timeout", 15*time.Minute, "maximum wait for each new workflow attempt")
-	c.Flags().BoolVar(&asJSON, "json", false, "print verified jobs, requests and observed attempts as JSON")
+	output = addOutputFlags(c, false)
 	return c
 }

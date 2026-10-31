@@ -336,7 +336,7 @@ const maxSuggestions = 5
 func updateSuggestions(repo string, d Decision) []string {
 	var out []string
 	if target, err := github.ParsePRTarget(fmt.Sprintf("%s#%d", repo, d.Number)); err == nil {
-		out = append(out, fmt.Sprintf("deps-handler pr diagnose %s > repair.md", target))
+		out = append(out, fmt.Sprintf("deps-handler pr diagnose %s --list > repair.md", target))
 	}
 	return append(out, ignoreSuggestions(d)...)
 }

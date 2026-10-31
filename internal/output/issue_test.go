@@ -29,7 +29,7 @@ func TestHealthIssueOffersLocalDiagnosis(t *testing.T) {
 	res := runner.RepoResult{Repo: repo.FullName, Policy: config.Builtin, Decisions: decisions,
 		Findings: policy.Diagnose(repo, config.Builtin, decisions)}
 	body := Body(res, false)
-	if !strings.Contains(body, "Suggested: `deps-handler pr diagnose o/r#7 > repair.md`") || strings.Contains(body, "deps-handler pr fix") {
+	if !strings.Contains(body, "Suggested: `deps-handler pr diagnose o/r#7 --list > repair.md`") || strings.Contains(body, "deps-handler pr fix") {
 		t.Fatalf("health issue guidance:\n%s", body)
 	}
 }

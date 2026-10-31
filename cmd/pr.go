@@ -54,8 +54,9 @@ func newPRCmd() *cobra.Command {
 }
 
 func newPRTaskCmd(fix bool) *cobra.Command {
+	var output *outputFormat
 	var agentName, focus, planPath, workingDirectory string
-	var asJSON, push bool
+	var push bool
 	var attempts int
 	var waitTimeout time.Duration
 	verb, short := "diagnose", "Explain merge blockers and produce a reusable AI repair handoff"
@@ -73,6 +74,10 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 		Long: prTaskHelp(fix),
 		Args: targetArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			format, formatErr := output.resolve(cmd)
+			if formatErr != nil {
+				return formatErr
+			}
 			var plan *pr.RepairPlan
 			if fix && cmd.Flags().Changed("plan") {
 				if strings.TrimSpace(planPath) == "" {
@@ -190,7 +195,7 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 			} else if result.Workspace != "" {
 				fmt.Fprintln(cmd.ErrOrStderr(), "Repair checkout kept at", result.Workspace)
 			}
-			if asJSON {
+			if format == "json" {
 				data, marshalErr := json.MarshalIndent(result, "", "  ")
 				if marshalErr != nil {
 					return marshalErr
@@ -199,7 +204,11 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 					return writeErr
 				}
 			} else if result.Snapshot.HeadOID != "" {
-				if writeErr := pr.Markdown(cmd.OutOrStdout(), result); writeErr != nil {
+				render := pr.Table
+				if format == "list" {
+					render = pr.Markdown
+				}
+				if writeErr := render(cmd.OutOrStdout(), result); writeErr != nil {
 					return writeErr
 				}
 			}
@@ -214,7 +223,7 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 	}
 	c.Flags().StringVar(&agentName, "agent", "", "agent: "+config.AgentList()+" (default from config, otherwise claude)")
 	c.Flags().StringVar(&focus, "focus", "", "failure or area to investigate")
-	c.Flags().BoolVar(&asJSON, "json", false, "print the structured report as JSON")
+	output = addOutputFlags(c, false)
 	if fix {
 		c.Flags().BoolVar(&push, "push", false, "push repair commits to the PR branch and verify GitHub CI")
 		c.Flags().StringVar(&workingDirectory, "working-directory", "", "edit a clean checkout at or ahead of the PR head; include local commits and preserve dependencies")
@@ -252,6 +261,7 @@ Accepts a github.com PR URL or owner/repo#number, for any PR author.
 Agent settings come from your config when present; a configured repository
 or config file is not required. Without a config, Claude is the default.
 --agent overrides that choice. --focus selects a failure or area to examine.
+Tables are the default; --list prints the original Markdown handoff and
 --json prints a structured report. Invalid arguments exit 2; interrupts exit 130.`
 	if fix {
 		return `Repair the selected PR in a private checkout by default. Without --push,
@@ -299,7 +309,7 @@ code repair, rerun candidate, human action or insufficient evidence, with
 supporting reasons and concrete next steps. JSON includes these under
 analysis.recommendations. Reruns and external actions are suggestions only.
 
-Prints Markdown you can save or paste into a coding session. The checkout
+Use --list to save or paste the Markdown handoff into a coding session. The checkout
 is read-only to the agent and nothing is pushed. Supports Claude, Codex or
 the API agent. When a code repair is supported, the report includes a pr fix --plan
 command to run after saving and reviewing the Markdown report. JSON exposes

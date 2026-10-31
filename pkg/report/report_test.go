@@ -22,7 +22,7 @@ func TestFailingUpdateOffersDiagnosisInEveryFormat(t *testing.T) {
 	decisions := policy.Evaluate(repo, config.Builtin, "me", nil)
 	res := runner.RepoResult{Repo: repo.FullName, Policy: config.Builtin, Decisions: decisions,
 		Findings: policy.Diagnose(repo, config.Builtin, decisions)}
-	command := "deps-handler pr diagnose acme/Storefront#123 > repair.md"
+	command := "deps-handler pr diagnose acme/Storefront#123 --list > repair.md"
 	var out bytes.Buffer
 	if err := Repo(&out, false, res); err != nil || !strings.Contains(out.String(), "suggest: "+command) {
 		t.Fatalf("terminal: %v\n%s", err, &out)

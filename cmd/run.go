@@ -25,9 +25,9 @@ import (
 )
 
 func newDependabotCmd() *cobra.Command {
+	var output *outputFormat
 	var (
 		apply      bool
-		asJSON     bool
 		markdown   bool
 		repos      []string
 		owners     []string
@@ -77,6 +77,10 @@ wrong, including a --repo the config does not list or an --owner it has
 no repository of; and 130 when interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			format, formatErr := output.resolve(cmd)
+			if formatErr != nil {
+				return formatErr
+			}
 			// Flags first: a mistake in the command line is reported
 			// before anything in the config.
 			// An empty --agent, as an unset variable gives, must not turn
@@ -85,9 +89,6 @@ no repository of; and 130 when interrupted.`,
 				return usageError{errors.New("--agent needs an agent name")}
 			}
 			wantReviews := reviews || agentName != ""
-			if asJSON && markdown {
-				return usageError{errors.New("--json and --markdown cannot be used together")}
-			}
 			if cmd.Flags().Changed("max-reviews") && !wantReviews {
 				return usageError{errors.New("--max-reviews needs --review or --agent")}
 			}
@@ -169,10 +170,14 @@ no repository of; and 130 when interrupted.`,
 						outputErr = report.Markdown(out, apply, r)
 					}
 				}
-			} else if !asJSON {
+			} else if format != "json" {
 				progress = func(r runner.RepoResult) {
 					if outputErr == nil && (!open || report.HasPRs(r)) {
-						outputErr = report.Repo(out, apply, r)
+						if format == "list" {
+							outputErr = report.Repo(out, apply, r)
+						} else {
+							outputErr = report.RepoTable(out, apply, r)
+						}
 					}
 				}
 			} else if f, ok := errOut.(*os.File); ok && term.IsTerminal(f) {
@@ -201,7 +206,7 @@ no repository of; and 130 when interrupted.`,
 				shown = slices.DeleteFunc(slices.Clone(results), func(r runner.RepoResult) bool { return !report.HasPRs(r) })
 			}
 			switch {
-			case asJSON:
+			case format == "json":
 				if err := report.JSON(out, apply, shown); err != nil {
 					return err
 				}
@@ -222,7 +227,7 @@ no repository of; and 130 when interrupted.`,
 		},
 	}
 	c.Flags().BoolVar(&apply, "apply", false, "merge safe PRs and request rebases (default is a dry run)")
-	c.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
+	output = addOutputFlags(c, false)
 	c.Flags().BoolVar(&markdown, "markdown", false, "print each repository's section as GitHub Markdown")
 	c.Flags().StringSliceVarP(&repos, "repo", "r", nil, "only handle these repos (owner/name or name; repeatable)")
 	c.Flags().StringSliceVar(&owners, "owner", nil, "only handle the configured repos of these owners (repeatable)")

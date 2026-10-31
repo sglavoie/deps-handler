@@ -9,6 +9,16 @@ import (
 
 // Markdown writes a standalone handoff with the precise PR and commit.
 func Markdown(w io.Writer, r Result) error {
+	return handoff(w, r, false)
+}
+
+// Table writes the complete handoff with checks and recommendations in tables.
+func Table(w io.Writer, r Result) error {
+	return handoff(w, r, true)
+}
+
+func handoff(w io.Writer, r Result, asTable bool) error {
+	tables := reportTables{destination: w}
 	// Build before writing so the writer's first error is preserved.
 	text := fmt.Sprintf("# %s: %s\n\nPR: %s\nHead: `%s`\nBase: `%s` (`%s`)\n\n", r.Snapshot.Target, review.Clean(r.Snapshot.Title), r.Snapshot.URL, r.Snapshot.HeadOID, r.Snapshot.BaseRef, r.Snapshot.BaseOID)
 	if r.StartingHeadOID != "" && r.StartingHeadOID != r.Snapshot.HeadOID {
@@ -28,15 +38,27 @@ func Markdown(w io.Writer, r Result) error {
 	if len(r.Snapshot.Checks) == 0 {
 		text += "No checks reported.\n\n"
 	}
-	for _, c := range r.Snapshot.Checks {
-		text += fmt.Sprintf("- %s: %s", review.Clean(c.Name), c.State)
-		if c.URL != "" {
-			text += " (" + c.URL + ")"
+	if asTable && len(r.Snapshot.Checks) > 0 {
+		rows := make([][]string, 0, len(r.Snapshot.Checks))
+		for _, c := range r.Snapshot.Checks {
+			identity := ""
+			if c.RunID > 0 && c.JobID > 0 && c.RunAttempt > 0 {
+				identity = fmt.Sprintf("run %d, attempt %d, job %d", c.RunID, c.RunAttempt, c.JobID)
+			}
+			rows = append(rows, []string{c.Name, string(c.State), identity, c.URL})
 		}
-		if c.RunID > 0 && c.JobID > 0 && c.RunAttempt > 0 {
-			text += fmt.Sprintf(" — run %d, attempt %d, job %d", c.RunID, c.RunAttempt, c.JobID)
+		text += tables.add([]string{"CHECK", "STATE", "ACTIONS JOB", "URL"}, rows) + "\n"
+	} else {
+		for _, c := range r.Snapshot.Checks {
+			text += fmt.Sprintf("- %s: %s", review.Clean(c.Name), c.State)
+			if c.URL != "" {
+				text += " (" + c.URL + ")"
+			}
+			if c.RunID > 0 && c.JobID > 0 && c.RunAttempt > 0 {
+				text += fmt.Sprintf(" — run %d, attempt %d, job %d", c.RunID, c.RunAttempt, c.JobID)
+			}
+			text += "\n"
 		}
-		text += "\n"
 	}
 	text += "\n"
 	if r.BaseComparison != nil {
@@ -54,8 +76,16 @@ func Markdown(w io.Writer, r Result) error {
 	}
 	if len(r.Analysis.Recommendations) > 0 {
 		text += "## Recommended actions\n\n"
-		for i, recommendation := range r.Analysis.Recommendations {
-			text += fmt.Sprintf("%d. **%s — %s**: %s\n\n   Next action: %s\n\n", i+1, recommendation.Subject, recommendation.Action.label(), recommendation.Reason, recommendation.NextStep)
+		if asTable {
+			rows := make([][]string, 0, len(r.Analysis.Recommendations))
+			for _, rec := range r.Analysis.Recommendations {
+				rows = append(rows, []string{rec.Subject, rec.Action.label(), rec.Reason, rec.NextStep})
+			}
+			text += tables.add([]string{"SUBJECT", "ACTION", "REASON", "NEXT ACTION"}, rows) + "\n\n"
+		} else {
+			for i, recommendation := range r.Analysis.Recommendations {
+				text += fmt.Sprintf("%d. **%s — %s**: %s\n\n   Next action: %s\n\n", i+1, recommendation.Subject, recommendation.Action.label(), recommendation.Reason, recommendation.NextStep)
+			}
 		}
 		text += "Recommendations describe supported next actions; CI reruns and external changes are not performed automatically.\n\n"
 	}
@@ -76,7 +106,12 @@ func Markdown(w io.Writer, r Result) error {
 		}
 	}
 	if r.RepairCommand != "" {
-		text += "## Next step\n\nSave this Markdown report as `repair.md` and review or edit its repair steps and validation commands. Then run:\n\n```sh\n" + r.RepairCommand + "\n```\n\n"
+		if asTable {
+			text += "## Next step\n\nRun diagnosis with `--list > repair.md` to save a reusable Markdown plan. Review or edit its repair steps and validation commands. Then run:\n\n"
+		} else {
+			text += "## Next step\n\nSave this Markdown report as `repair.md` and review or edit its repair steps and validation commands. Then run:\n\n"
+		}
+		text += "```sh\n" + r.RepairCommand + "\n```\n\n"
 		text += "Use the path where you saved this report in place of `repair.md`. Choose an installed repair agent (`codex` or `claude`); API models support diagnosis only. This command edits and commits locally for inspection. Add `--push` to publish the repair and verify GitHub CI. Review and merge the repaired PR yourself after its checks and remaining gates pass.\n\n"
 	}
 	if len(r.LocalCommits) > 0 {
@@ -105,6 +140,7 @@ func Markdown(w io.Writer, r Result) error {
 	if r.Error != "" {
 		text += "Operation stopped: " + r.Error + "\n"
 	}
-	_, err := io.WriteString(w, review.Clean(text))
+	text = tables.clean(text)
+	_, err := io.WriteString(w, text)
 	return err
 }

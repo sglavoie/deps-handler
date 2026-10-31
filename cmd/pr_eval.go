@@ -12,13 +12,15 @@ import (
 
 	"github.com/sglavoie/deps-handler/internal/diagnosiseval"
 	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/report"
 	"github.com/sglavoie/deps-handler/pkg/review"
 	"github.com/spf13/cobra"
 )
 
 func newPREvalCmd() *cobra.Command {
+	var output *outputFormat
 	var agentName string
-	var asJSON, list bool
+	var list bool
 	var timeout time.Duration
 	c := &cobra.Command{
 		Use: "eval [case ...]", Short: "Evaluate diagnosis against frozen real-world PR cases",
@@ -36,6 +38,10 @@ of causal reasoning. JSON includes each diagnosis for human review.
 Exit 0 means every selected case passed, 1 means a case failed or errored,
 2 means invalid usage, and 130 means interrupted.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			format, formatErr := output.resolve(cmd)
+			if formatErr != nil {
+				return formatErr
+			}
 			cases, err := diagnosiseval.Load()
 			if err != nil {
 				return err
@@ -77,8 +83,15 @@ Exit 0 means every selected case passed, 1 means a case failed or errored,
 				for _, c := range cases {
 					entries = append(entries, entry{c.ID, c.Description})
 				}
-				if asJSON {
+				if format == "json" {
 					return json.NewEncoder(cmd.OutOrStdout()).Encode(entries)
+				}
+				if format == "table" {
+					rows := make([][]string, 0, len(entries))
+					for _, entry := range entries {
+						rows = append(rows, []string{entry.ID, entry.Description})
+					}
+					return report.Table(cmd.OutOrStdout(), []string{"CASE", "DESCRIPTION"}, rows)
 				}
 				for _, entry := range entries {
 					if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", entry.ID, entry.Description); err != nil {
@@ -114,7 +127,7 @@ Exit 0 means every selected case passed, 1 means a case failed or errored,
 			defer stop()
 			report := diagnosiseval.Run(ctx, agent, cases, diagnosiseval.Options{Timeout: timeout, Model: model, Version: versionString(),
 				Progress: func(message string) { fmt.Fprintln(cmd.ErrOrStderr(), message) }})
-			if asJSON {
+			if format == "json" {
 				data, err := json.MarshalIndent(report, "", "  ")
 				if err != nil {
 					return err
@@ -123,7 +136,7 @@ Exit 0 means every selected case passed, 1 means a case failed or errored,
 					return err
 				}
 			} else {
-				if err := writeEvalReport(cmd, report); err != nil {
+				if err := writeEvalView(cmd, report, format); err != nil {
 					return err
 				}
 			}
@@ -137,7 +150,7 @@ Exit 0 means every selected case passed, 1 means a case failed or errored,
 		},
 	}
 	c.Flags().StringVar(&agentName, "agent", "", "agent: "+config.AgentList()+" (default from config, otherwise claude)")
-	c.Flags().BoolVar(&asJSON, "json", false, "print scores and full diagnoses as JSON")
+	output = addOutputFlags(c, true)
 	c.Flags().BoolVar(&list, "list", false, "list frozen cases without running an agent")
 	c.Flags().DurationVar(&timeout, "timeout", 0, "maximum time per case (default agent timeout from config)")
 	return c
