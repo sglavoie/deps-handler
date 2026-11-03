@@ -662,6 +662,14 @@ start a repair or authorize writes. A failed or stale diagnosis has no repair
 command. The suggested command prepares the repair locally unless `--push`
 is added. A prepared repair prints a separate publication continuation.
 
+`pr list` reads all open PRs across repositories accessible to the GitHub
+account, independently of the configured Dependabot repositories. It includes
+drafts and Dependabot PRs. `--owner` accepts one owner; repeated `--repo`
+values select repository names or owner/name references. Together they narrow
+the result to repositories matching both filters. Repository and PR listings
+are paginated; incomplete listings fail without printing partial results.
+Table, list and JSON output are available.
+
 `pr fix` explicitly authorizes local repair work for the selected PR, including
 non-bot PRs. It requires write permission, an open PR and an existing head
 branch, and refuses a repair targeting the PR's base branch. It uses fresh

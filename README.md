@@ -117,6 +117,8 @@ deps-handler dependabot --open            # only repos with open Dependabot PRs
 deps-handler dependabot -r Storefront --json  # one repo, machine-readable
 deps-handler dependabot --markdown        # GitHub Markdown, as for an issue body
 deps-handler dependabot --review --apply  # let an AI agent judge bigger updates too
+deps-handler pr list                       # open PRs across accessible repos
+deps-handler pr list --owner acme --repo Storefront --repo API --json
 deps-handler pr handle acme/Storefront#123 --agent claude  # review any non-Dependabot PR
 deps-handler pr handle --repo acme/Storefront --agent claude --apply  # review, repair and merge
 deps-handler pr diagnose acme/Storefront#123 --list > repair.md  # AI repair handoff
@@ -127,6 +129,15 @@ deps-handler pr fix acme/Storefront#123 --agent codex --push  # publish and veri
 deps-handler verdicts              # the agent's cached verdicts
 deps-handler verdicts acme/Storefront --json  # one repo's, with concerns
 ```
+
+### List open PRs
+
+`dh pr list` lists open PRs in every repository available to your GitHub
+account, including drafts and Dependabot PRs. It does not need a config file.
+Use one `--owner` to narrow to an owner, and repeat `--repo` to select multiple
+repositories. `--repo owner/name` works without `--owner`; `--repo name` selects
+matching repository names across owners, or that owner's repository when
+`--owner` is set. The filters combine, and `--json` emits structured results.
 
 ### Review, repair and merge non-Dependabot PRs
 

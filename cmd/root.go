@@ -38,7 +38,8 @@ Use pr handle with specific PR references or --repo owner/name to review
 non-Dependabot PRs; --apply authorizes repairs, CI reruns and merging.
 Dependabot PRs are always excluded from this separate workflow.
 
-Use pr diagnose for a repair handoff or pr fix to prepare local fixes to
+Use pr list to see open PRs across accessible repositories. Use pr diagnose
+for a repair handoff or pr fix to prepare local fixes to
 a selected PR; add --push to publish them and verify CI. Use pr rerun to
 preview failed Actions jobs; --apply reruns them and watches the new attempt.`,
 		Version:       versionString(),
