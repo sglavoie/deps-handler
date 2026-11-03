@@ -12,7 +12,8 @@ type execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-// RunSnapshot is the repository and PR evidence collected by one run.
+// RunSnapshot is the repository and PR evidence collected by one run. At is
+// when the run resolved its policy; each PR carries its own read time.
 // GitHub reads finish before this snapshot is committed, so no network
 // request holds SQLite's write lock.
 type RunSnapshot struct {
@@ -25,10 +26,12 @@ type RunSnapshot struct {
 }
 
 // PRObservation is a PR the run saw open, including one it later merged.
+// SeenAt is when GitHub returned this PR, independent of when the run ends.
 type PRObservation struct {
 	Number   int
 	Title    string
 	OpenedAt time.Time
+	SeenAt   time.Time
 }
 
 // PRClosure is the confirmed outcome of a PR no longer open.
@@ -65,7 +68,11 @@ func (s *Store) RecordRunSnapshot(ctx context.Context, runID int64, snapshot Run
 		}
 	}
 	for _, pr := range snapshot.PRs {
-		if err := seenPR(ctx, tx, installation, repo, pr.Number, pr.Title, pr.OpenedAt, snapshot.At); err != nil {
+		seenAt := pr.SeenAt
+		if seenAt.IsZero() {
+			seenAt = snapshot.At
+		}
+		if err := seenPR(ctx, tx, installation, repo, pr.Number, pr.Title, pr.OpenedAt, seenAt); err != nil {
 			return false, fmt.Errorf("track PR #%d: %w", pr.Number, err)
 		}
 	}

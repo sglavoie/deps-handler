@@ -81,6 +81,27 @@ func TestLoadReviewBackends(t *testing.T) {
 	}
 }
 
+func TestLoadEnvRejectsMalformedRepoFilter(t *testing.T) {
+	t.Setenv("DMC_APP_ID", "1")
+	t.Setenv("DMC_PRIVATE_KEY", "test key")
+	t.Setenv("DMC_PRIVATE_KEY_FILE", "")
+	t.Setenv("DMC_REVIEW_AGENT", "api")
+	t.Setenv("DMC_REVIEW_URL", "")
+	t.Setenv("DMC_REVIEW_MODEL", "")
+	for _, name := range []string{"o/r/extra", "o/.git", "/repo", "owner/"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("DMC_REPOS", name)
+			if _, err := loadEnv(true); err == nil || !strings.Contains(err.Error(), "DMC_REPOS") {
+				t.Fatalf("DMC_REPOS=%q: error = %v", name, err)
+			}
+		})
+	}
+	t.Setenv("DMC_REPOS", "Owner/Repo, other/repo_2")
+	if cfg, err := loadEnv(true); err != nil || len(cfg.repos) != 2 {
+		t.Fatalf("valid DMC_REPOS: config = %+v, error = %v", cfg, err)
+	}
+}
+
 func TestLoadReviewBackendValidation(t *testing.T) {
 	t.Setenv("DMC_REVIEW_URL", "")
 	t.Setenv("DMC_REVIEW_MODEL", "")

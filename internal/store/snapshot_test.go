@@ -51,7 +51,7 @@ func TestRunSnapshotRespectsCleanupAndSuspension(t *testing.T) {
 			snapshot := RunSnapshot{Mode: "merge", Merging: true, Complete: true, At: t0.Add(3 * time.Minute),
 				PRs: []PRObservation{
 					{Number: 1, Title: "old title", OpenedAt: t0},
-					{Number: 2, Title: "merged update", OpenedAt: t0},
+					{Number: 2, Title: "merged update", OpenedAt: t0, SeenAt: t0.Add(2 * time.Minute)},
 				}, Closed: []PRClosure{{Number: 2, Outcome: PRMergedByApp, At: t0.Add(time.Minute)}}}
 			if recorded, err := s.RecordRunSnapshot(ctx, runID, snapshot); err != nil || recorded == forgotten {
 				t.Fatalf("recorded = %t, err = %v; forgotten = %t", recorded, err, forgotten)
@@ -239,6 +239,61 @@ func TestLateSnapshotCannotDowngradeConfirmedMerge(t *testing.T) {
 				t.Fatalf("late snapshot replaced confirmed merge: outcome = %q, closed = %s", outcome, closed)
 			}
 		})
+	}
+}
+
+func TestLateSnapshotCannotRestoreOlderPRAndRepositoryState(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	older, err := s.StartRun(ctx, 1, "o/r", "older", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := s.StartRun(ctx, 1, "o/r", "newer", t0.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeenPR(ctx, 1, "o/r", 7, "original", t0, t0); err != nil {
+		t.Fatal(err)
+	}
+	current := RunSnapshot{Mode: "report", Complete: true, At: t0.Add(2 * time.Minute),
+		Closed: []PRClosure{{Number: 7, Outcome: PRClosed, At: t0.Add(2 * time.Minute)}}}
+	if recorded, err := s.RecordRunSnapshot(ctx, newer, current); err != nil || !recorded {
+		t.Fatalf("newer snapshot: recorded = %t, err = %v", recorded, err)
+	}
+	// The older run did not finish until later, but its GitHub read preceded
+	// the closure and the newer policy observation.
+	stale := RunSnapshot{Mode: "merge", Merging: true, Complete: true, At: t0.Add(time.Minute),
+		PRs: []PRObservation{{Number: 7, Title: "stale title", OpenedAt: t0, SeenAt: t0.Add(30 * time.Second)}}}
+	if recorded, err := s.RecordRunSnapshot(ctx, older, stale); err != nil || !recorded {
+		t.Fatalf("older snapshot: recorded = %t, err = %v", recorded, err)
+	}
+	open, err := s.OpenPRs(ctx, "o/r")
+	if err != nil || len(open) != 0 {
+		t.Fatalf("stale snapshot reopened PR: %v, %v", open, err)
+	}
+	var outcome, title, mode string
+	var merging bool
+	var mergeSince time.Time
+	if err := s.db.QueryRowContext(ctx, `SELECT outcome, title FROM prs WHERE repo = 'o/r' AND number = 7`).Scan(&outcome, &title); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT mode, merging, merge_since FROM repos WHERE repo = 'o/r'`).Scan(&mode, &merging, &mergeSince); err != nil {
+		t.Fatal(err)
+	}
+	if outcome != PRClosed || title != "original" || mode != "report" || merging || !mergeSince.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("stale snapshot changed current state: outcome=%q title=%q mode=%q merging=%t merge_since=%s", outcome, title, mode, merging, mergeSince)
+	}
+	if err := s.SeenPR(ctx, 1, "o/r", 7, "reopened", t0, t0.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if open, err := s.OpenPRs(ctx, "o/r"); err != nil || len(open) != 1 || open[0] != 7 {
+		t.Fatalf("fresh reopen was lost: %v, %v", open, err)
+	}
+	if err := s.ClosePR(ctx, "o/r", 7, PRClosed, t0.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if open, err := s.OpenPRs(ctx, "o/r"); err != nil || len(open) != 1 || open[0] != 7 {
+		t.Fatalf("stale closure overrode reopen: %v, %v", open, err)
 	}
 }
 

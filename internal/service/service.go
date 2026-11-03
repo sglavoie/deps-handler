@@ -506,7 +506,9 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 			releaseReview()
 		}
 	}()
+	policyAt := started
 	res := r.RunRepoWithSetup(ctx, config.NewRepo(owner, name, Base()), func(rc config.Repo) error {
+		policyAt = time.Now() // The effective policy has just been read.
 		if s.Review != nil && rc.Policy.AgentReview {
 			// The in-memory installation gate covers only this Service.
 			// Keep another server or -once process out of the checkout and
@@ -581,7 +583,7 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 	// What a failed or interrupted run read and merged happened all the
 	// same: it is recorded, past the run's end if need be.
 	complete := res.Error == "" && ctx.Err() == nil
-	recorded, err := s.track(context.WithoutCancel(ctx), log, client, runID, repo, res, client.seen, client.merged, repoMerges, complete)
+	recorded, err := s.track(context.WithoutCancel(ctx), log, client, runID, repo, res, client.seen, client.merged, repoMerges, complete, policyAt)
 	if err != nil {
 		runErr = errors.Join(runErr, err)
 	}
@@ -681,9 +683,9 @@ func (s *Service) RunRepo(ctx context.Context, installation int64, repo, trigger
 // App's. Only a complete run records the mode or judges which PRs left,
 // and none when the PRs read were cut short (over 100). Evidence is saved
 // atomically after the reads; recorded is false if cleanup deleted the run.
-func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Client, runID int64, repo string, res runner.RepoResult, read map[int]github.PullRequest, mergedAt map[int]time.Time, merging, complete bool) (recorded bool, trackErr error) {
+func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Client, runID int64, repo string, res runner.RepoResult, read map[int]observedPR, mergedAt map[int]time.Time, merging, complete bool, policyAt time.Time) (recorded bool, trackErr error) {
 	now := time.Now()
-	snapshot := store.RunSnapshot{Mode: res.Policy.Mode, Merging: merging, Complete: complete, At: now}
+	snapshot := store.RunSnapshot{Mode: res.Policy.Mode, Merging: merging, Complete: complete, At: policyAt}
 	defer func() {
 		var err error
 		recorded, err = s.Store.RecordRunSnapshot(ctx, runID, snapshot)
@@ -709,7 +711,7 @@ func (s *Service) track(ctx context.Context, log *slog.Logger, engine github.Cli
 		if opened.IsZero() {
 			opened = now
 		}
-		snapshot.PRs = append(snapshot.PRs, store.PRObservation{Number: pr.Number, Title: pr.Title, OpenedAt: opened})
+		snapshot.PRs = append(snapshot.PRs, store.PRObservation{Number: pr.Number, Title: pr.Title, OpenedAt: opened, SeenAt: pr.seenAt})
 	}
 	seen := map[int]bool{}
 	for _, d := range res.Decisions {
@@ -799,11 +801,16 @@ type guarded struct {
 
 	mu sync.Mutex
 	// seen are the Dependabot PRs the run read, by number.
-	seen map[int]github.PullRequest
+	seen map[int]observedPR
 	// merged are when the run merged each PR it merged: a review can make
 	// a run last long after.
 	merged   map[int]time.Time
 	auditErr error
+}
+
+type observedPR struct {
+	github.PullRequest
+	seenAt time.Time
 }
 
 func (g *guarded) record(ctx context.Context, w store.Write) {
@@ -827,12 +834,13 @@ func (g *guarded) FetchRepo(ctx context.Context, owner, name string) (*github.Re
 	r, err := g.Client.FetchRepo(ctx, owner, name)
 	g.gate.observeRateLimit(err)
 	if r != nil {
+		seenAt := time.Now()
 		g.mu.Lock()
 		if g.seen == nil {
-			g.seen = map[int]github.PullRequest{}
+			g.seen = map[int]observedPR{}
 		}
 		for _, pr := range r.PullRequests {
-			g.seen[pr.Number] = pr
+			g.seen[pr.Number] = observedPR{PullRequest: pr, seenAt: seenAt}
 		}
 		g.mu.Unlock()
 	}

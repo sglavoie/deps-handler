@@ -431,9 +431,9 @@ const (
 	PRClosed      = "closed" // without merging
 )
 
-// SeenPR records a Dependabot PR open in repo at seen. A PR recorded
-// merged stays so: a merge is final, and the read that saw it open is
-// older than the one that saw it merged.
+// SeenPR records a Dependabot PR open in repo at seen. An older read cannot
+// reopen a closed PR or replace a newer title; a genuinely later read can
+// record a reopened PR. A confirmed merge is final.
 func (s *Store) SeenPR(ctx context.Context, installation int64, repo string, number int, title string, opened, seen time.Time) error {
 	return seenPR(ctx, s.db, installation, repo, number, title, opened, seen)
 }
@@ -446,13 +446,16 @@ ON CONFLICT (repo, number) DO UPDATE SET installation_id = excluded.installation
 	title = excluded.title, last_seen_at = excluded.last_seen_at,
 	first_seen_at = CASE WHEN prs.installation_id = excluded.installation_id THEN prs.first_seen_at ELSE excluded.first_seen_at END,
 	outcome = 'open', closed_at = NULL
-WHERE prs.outcome NOT IN ('merged', 'merged-by-app')`, installation, repo, number, title, opened.UTC(), seen.UTC(), seen.UTC())
+	WHERE prs.outcome NOT IN ('merged', 'merged-by-app')
+		AND prs.last_seen_at < excluded.last_seen_at
+		AND (prs.closed_at IS NULL OR prs.closed_at < excluded.last_seen_at)`, installation, repo, number, title, opened.UTC(), seen.UTC(), seen.UTC())
 	return err
 }
 
 // ClosePR records how a PR left: one of the PR outcomes other than open.
-// A confirmed merge is final. Later evidence can attribute it to the App,
-// but overlapping runs cannot downgrade it or replace its recorded time.
+// An older closure cannot undo a newer reopen. A confirmed merge is final;
+// later evidence can attribute it to the App, including its earlier merge
+// time, without letting another run downgrade it.
 func (s *Store) ClosePR(ctx context.Context, repo string, number int, outcome string, at time.Time) error {
 	return closePR(ctx, s.db, repo, number, outcome, at)
 }
@@ -460,7 +463,9 @@ func (s *Store) ClosePR(ctx context.Context, repo string, number int, outcome st
 func closePR(ctx context.Context, db execer, repo string, number int, outcome string, at time.Time) error {
 	_, err := db.ExecContext(ctx, `
 UPDATE prs SET outcome = ?1, closed_at = ?2 WHERE repo = ?3 AND number = ?4
-AND (outcome NOT IN ('merged', 'merged-by-app') OR (outcome = 'merged' AND ?1 = 'merged-by-app'))`,
+	AND (last_seen_at <= ?2 OR ?1 = 'merged-by-app')
+	AND (closed_at IS NULL OR closed_at <= ?2 OR ?1 IN ('merged', 'merged-by-app'))
+	AND (outcome NOT IN ('merged', 'merged-by-app') OR (outcome = 'merged' AND ?1 = 'merged-by-app'))`,
 		outcome, at.UTC(), repoKey(repo), number)
 	return err
 }
@@ -498,7 +503,8 @@ func (s *Store) OpenPRs(ctx context.Context, repo string) ([]int, error) {
 }
 
 // SeenRepo records the mode repo ran in, and whether the App could merge
-// there. merge_since keeps when merging was first on.
+// there. Older policy observations cannot replace newer mode or permission
+// state. merge_since keeps the earliest time merging was on.
 func (s *Store) SeenRepo(ctx context.Context, installation int64, repo, mode string, merging bool, at time.Time) error {
 	return seenRepo(ctx, s.db, installation, repo, mode, merging, at)
 }
@@ -511,10 +517,19 @@ func seenRepo(ctx context.Context, db execer, installation int64, repo, mode str
 	}
 	_, err := db.ExecContext(ctx, `
 INSERT INTO repos (repo, installation_id, mode, merging, first_seen_at, merge_since, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (repo) DO UPDATE SET installation_id = excluded.installation_id, mode = excluded.mode, merging = excluded.merging,
-	first_seen_at = CASE WHEN repos.installation_id = excluded.installation_id THEN repos.first_seen_at ELSE excluded.first_seen_at END,
-	merge_since = CASE WHEN repos.installation_id = excluded.installation_id THEN COALESCE(repos.merge_since, excluded.merge_since) ELSE excluded.merge_since END,
-	updated_at = excluded.updated_at`,
+	ON CONFLICT (repo) DO UPDATE SET
+		installation_id = CASE WHEN repos.updated_at <= excluded.updated_at THEN excluded.installation_id ELSE repos.installation_id END,
+		mode = CASE WHEN repos.updated_at <= excluded.updated_at THEN excluded.mode ELSE repos.mode END,
+		merging = CASE WHEN repos.updated_at <= excluded.updated_at THEN excluded.merging ELSE repos.merging END,
+		first_seen_at = CASE WHEN repos.installation_id = excluded.installation_id
+			THEN MIN(repos.first_seen_at, excluded.first_seen_at)
+			WHEN repos.updated_at <= excluded.updated_at THEN excluded.first_seen_at ELSE repos.first_seen_at END,
+		merge_since = CASE WHEN repos.installation_id != excluded.installation_id
+			THEN CASE WHEN repos.updated_at <= excluded.updated_at THEN excluded.merge_since ELSE repos.merge_since END
+			WHEN repos.merge_since IS NULL THEN excluded.merge_since
+			WHEN excluded.merge_since IS NULL THEN repos.merge_since
+			ELSE MIN(repos.merge_since, excluded.merge_since) END,
+		updated_at = MAX(repos.updated_at, excluded.updated_at)`,
 		repo, installation, mode, merging, at.UTC(), since, at.UTC())
 	return err
 }

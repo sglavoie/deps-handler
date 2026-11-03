@@ -62,6 +62,7 @@ import (
 	"github.com/sglavoie/deps-handler/internal/service"
 	"github.com/sglavoie/deps-handler/internal/store"
 	"github.com/sglavoie/deps-handler/internal/webhook"
+	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
@@ -214,8 +215,8 @@ func loadEnv(once bool) (env, error) {
 	}
 	for r := range strings.SplitSeq(os.Getenv("DMC_REPOS"), ",") {
 		if r = strings.TrimSpace(r); r != "" {
-			if o, n, ok := strings.Cut(r, "/"); !ok || o == "" || n == "" {
-				return e, fmt.Errorf("DMC_REPOS: %q is not owner/name", r)
+			if _, _, err := github.ParseRepository(r); err != nil {
+				return e, fmt.Errorf("DMC_REPOS: %w", err)
 			}
 			e.repos = append(e.repos, r)
 		}
