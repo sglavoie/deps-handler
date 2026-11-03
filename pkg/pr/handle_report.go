@@ -42,6 +42,9 @@ func HandleReport(w io.Writer, results []HandleResult, apply, list bool) error {
 			}
 		}
 		for _, repair := range r.Repairs {
+			if repair.ValidationStatus != "" {
+				fmt.Fprintf(&b, "- Repair validation status: %s\n", repair.ValidationStatus)
+			}
 			for _, validation := range repair.Validation {
 				fmt.Fprintf(&b, "- Repair validation: %s\n", validation)
 			}

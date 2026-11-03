@@ -243,7 +243,7 @@ const fetchResponse = `{"data": {
     {"number": 8, "state": "MERGED"},
     {"number": 7, "state": "CLOSED"},
     {"number": 5, "state": "OPEN", "title": "bump lib", "url": "u", "isDraft": false,
-     "createdAt": "2026-10-01T12:00:00Z", "headRefOid": "abc", "baseRefName": "main",
+     "createdAt": "2026-10-01T12:00:00Z", "headRefOid": "abc", "baseRefName": "main", "baseRefOid": "base",
      "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN", "reviewDecision": null,
      "baseRef": {"target": {"committedDate": "2026-10-01T14:00:00Z"}},
      "author": {"login": "dependabot"},
@@ -278,7 +278,7 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 		t.Fatalf("want only the open PR, got %+v", r.PullRequests)
 	}
 	pr := r.PullRequests[0]
-	if pr.Number != 5 || pr.Author != "dependabot" || pr.HeadOID != "abc" || pr.ChecksOID != "abc" || pr.MergeState != "CLEAN" || pr.CheckCount != 120 ||
+	if pr.Number != 5 || pr.Author != "dependabot" || pr.HeadOID != "abc" || pr.BaseOID != "base" || pr.ChecksOID != "abc" || pr.MergeState != "CLEAN" || pr.CheckCount != 120 ||
 		!pr.BaseMovedAt.Equal(time.Date(2026, 10, 1, 14, 0, 0, 0, time.UTC)) {
 		t.Fatalf("pr = %+v", pr)
 	}
@@ -301,6 +301,13 @@ func TestFetchRepoMapsResponse(t *testing.T) {
 	}
 	if len(pr.Comments) != 1 || pr.Comments[0].Author != "me" || pr.CommentCount != 64 {
 		t.Fatalf("comments = %+v of %d", pr.Comments, pr.CommentCount)
+	}
+}
+
+func TestFetchRepoRejectsMissingBaseCommit(t *testing.T) {
+	resp := strings.Replace(fetchResponse, `"baseRefOid": "base"`, `"baseRefOid": null`, 1)
+	if _, err := gqlClient(t, canned(resp)).FetchRepo(context.Background(), "o", "r"); err == nil || !strings.Contains(err.Error(), "baseRefOid") {
+		t.Fatalf("missing base commit: %v", err)
 	}
 }
 
@@ -887,7 +894,7 @@ func TestFetchRepoAcceptsExplicitEmptyPRConnections(t *testing.T) {
 		t.Run(strconv.Itoa(count), func(t *testing.T) {
 			connection := fmt.Sprintf(`{"totalCount":%d,"nodes":[]}`, count)
 			body := `{"data":{"repository":{"nameWithOwner":"o/r","isArchived":false},"search":{"issueCount":1,"nodes":[{
-				"number":5,"state":"OPEN","isDraft":false,"commits":` + connection + `,"comments":` + connection + `,
+				"number":5,"state":"OPEN","isDraft":false,"baseRefOid":"base","commits":` + connection + `,"comments":` + connection + `,
 				"last":{"nodes":[{"commit":{"oid":"abc","statusCheckRollup":{"contexts":` + connection + `}}}]}
 			}]}}}`
 			r, err := gqlClient(t, canned(body)).FetchRepo(context.Background(), "o", "r")

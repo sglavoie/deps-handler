@@ -22,7 +22,7 @@ import (
 
 func request() Request {
 	return Request{
-		Owner: "o", Name: "r", Number: 7, Title: "bump lib from 1.2.0 to 2.0.0", HeadOID: "abc123", BaseRef: "main",
+		Owner: "o", Name: "r", Number: 7, Title: "bump lib from 1.2.0 to 2.0.0", HeadOID: "abc123", BaseRef: "main", BaseOID: "base123",
 		Grade: config.UpdateMajor, Limit: config.UpdateMinor, Reason: "major update exceeds limit (minor)",
 		Dependencies: []dependabot.Dependency{{Name: "lib", Version: "2.0.0", Type: "direct:production", UpdateType: config.UpdateMajor}},
 		Checks:       []github.Check{{Name: "build", State: github.CheckPassed}},
@@ -62,12 +62,16 @@ func TestNewRequest(t *testing.T) {
 func TestKey(t *testing.T) {
 	a, b := request(), request()
 	b.HeadOID = "rebased"
-	if a.Key() != b.Key() || a.Key() != `o/r#7 v3 base="main" "lib"@"2.0.0"` {
-		t.Errorf("a rebase should keep the key: %q vs %q", a.Key(), b.Key())
+	if a.Key() == b.Key() || a.Key() != `o/r#7 v4 base="main" base_oid="base123" "lib"@"2.0.0" abc123` {
+		t.Errorf("a new head must change the key: %q vs %q", a.Key(), b.Key())
 	}
 	b.Owner, b.Name = "O", "R"
-	if a.Key() != b.Key() {
-		t.Errorf("the repository's case must not change the key: %q vs %q", a.Key(), b.Key())
+	if b.Key() != `o/r#7 v4 base="main" base_oid="base123" "lib"@"2.0.0" rebased` {
+		t.Errorf("repository case changed the key: %q", b.Key())
+	}
+	b.BaseOID = "new-base"
+	if a.Key() == b.Key() {
+		t.Error("a new base commit needs a new review")
 	}
 	b.Dependencies = []dependabot.Dependency{{Name: "lib", Version: "2.0.1"}}
 	if a.Key() == b.Key() {
@@ -82,7 +86,7 @@ func TestKey(t *testing.T) {
 		t.Errorf("a commit without metadata must pin the head commit: %q", b.Key())
 	}
 	b.Dependencies, b.Unread = nil, false
-	if b.Key() != `o/r#7 v3 base="main" rebased` {
+	if b.Key() != `o/r#7 v4 base="main" base_oid="new-base" rebased` {
 		t.Errorf("key without dependencies = %q", b.Key())
 	}
 }
@@ -867,8 +871,8 @@ func TestCacheNormalisesRepositoryCase(t *testing.T) {
 	recent := time.Now().UTC().Format(time.RFC3339)
 	// Keys as written before the repository was lower-cased in them.
 	data := `{
-  "Acme/Repo#1 Lib@2.0.0": {"verdict": {"approved": true, "summary": "old"}, "reviewed_at": "` + old + `"},
-  "acme/repo#1 Lib@2.0.0": {"verdict": {"approved": true, "summary": "new"}, "reviewed_at": "` + recent + `"}
+  "Acme/Repo#1 Lib@2.0.0": {"verdict": {"approved": true, "summary": "old"}, "head_oid":"sha", "reviewed_at": "` + old + `"},
+  "acme/repo#1 Lib@2.0.0": {"verdict": {"approved": true, "summary": "new"}, "head_oid":"sha", "reviewed_at": "` + recent + `"}
 }`
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
@@ -965,8 +969,8 @@ func TestEntryPinsHead(t *testing.T) {
 	versioned := Entry{Key: req.Key(), HeadOID: req.HeadOID}
 	req.Dependencies = []dependabot.Dependency{{Name: "actions/checkout"}}
 	unversioned := Entry{Key: req.Key(), HeadOID: req.HeadOID}
-	if versioned.PinsHead() || !unversioned.PinsHead() || (Entry{Key: "o/r#1 x@1"}).PinsHead() {
-		t.Fatalf("PinsHead = %t, %t; only a key without versions holds the head", versioned.PinsHead(), unversioned.PinsHead())
+	if !versioned.PinsHead() || !unversioned.PinsHead() || (Entry{Key: "o/r#1 x@1"}).PinsHead() {
+		t.Fatalf("PinsHead = %t, %t; both keys must hold the head", versioned.PinsHead(), unversioned.PinsHead())
 	}
 }
 
@@ -1009,7 +1013,7 @@ func TestCacheRejectionHoldsForItsHeadOnly(t *testing.T) {
 	if c.Get("rejected", "sha1") == nil || c.Get("rejected", "sha2") != nil {
 		t.Error("a rejection must hold for its head and lapse on a new one")
 	}
-	if c.Get("approved", "sha2") == nil {
-		t.Error("an approval must survive a rebase")
+	if c.Get("approved", "sha2") != nil {
+		t.Error("an approval must not survive a changed head")
 	}
 }

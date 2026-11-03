@@ -38,9 +38,7 @@ type Cache struct {
 type cacheEntry struct {
 	Verdict policy.Verdict `json:"verdict"`
 	Agent   string         `json:"agent"`
-	// HeadOID is the commit reviewed. A rejection holds for that commit
-	// only: once Dependabot rebases the PR, the base it now sits on may
-	// have dealt with what the agent objected to.
+	// HeadOID is the commit reviewed. Every verdict holds for that commit.
 	HeadOID    string    `json:"head_oid,omitempty"`
 	ReviewedAt time.Time `json:"reviewed_at"`
 }
@@ -49,7 +47,7 @@ type cacheEntry struct {
 type Entry struct {
 	Key   string
 	Agent string
-	// HeadOID is the commit reviewed; a rejection holds for it only.
+	// HeadOID is the commit reviewed; every verdict holds for it only.
 	HeadOID    string
 	ReviewedAt time.Time
 	// Expires is when the verdict stops being reused.
@@ -57,10 +55,7 @@ type Entry struct {
 	Verdict policy.Verdict
 }
 
-// PinsHead reports whether the key of e holds the head commit reviewed, as
-// for an update without versions, such as a Docker digest or an action
-// pinned by commit: its verdict, even an approval, then holds for that
-// head only, since a rebase changes the key.
+// PinsHead reports whether the key holds the reviewed head commit.
 func (e Entry) PinsHead() bool {
 	return e.HeadOID != "" && strings.HasSuffix(e.Key, " "+e.HeadOID)
 }
@@ -165,13 +160,12 @@ func normKey(key string) string {
 	return strings.ToLower(key[:i]) + key[i:]
 }
 
-// Get returns the verdict stored under key for the PR at head, unless it
-// has expired or is a rejection of another head.
+// Get returns the verdict stored under key for the PR at head only.
 func (c *Cache) Get(key, head string) *policy.Verdict {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.entries[normKey(key)]
-	if !ok || c.expired(e) || !e.Verdict.Approved && e.HeadOID != "" && e.HeadOID != head {
+	if !ok || c.expired(e) || e.HeadOID == "" || e.HeadOID != head {
 		return nil
 	}
 	e.Verdict.Concerns = slices.Clone(e.Verdict.Concerns)

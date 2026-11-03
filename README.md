@@ -178,7 +178,9 @@ With `--apply`, supported repairs are made in a private checkout, validated and
 pushed to the PR's head branch. The command waits for CI and reviews the new
 head again before considering a merge. It can also rerun an identified GitHub
 Actions job when the review cites evidence of a transient failure, at most once
-per workflow per head. It never reruns external or unidentified checks. Repairs
+per workflow per head. A repair whose local validation fails or cannot finish
+stays in its checkout without a push. The command never reruns external or
+unidentified checks. Repairs
 and reruns share `--max-attempts` (3 by default), followed by a final review.
 `--wait-timeout` defaults to 15 minutes per CI wait. A failed apply keeps its
 checkout and reports its path for recovery; successful runs clean theirs up.
@@ -364,8 +366,9 @@ read-only inspection without starting an editing task. The report records that
 local validation commands were not run in that case.
 
 With `--push`, `fix` publishes to the PR's head branch and verifies the new
-commit's CI, retrying failures up to `--max-attempts` (3 by default). An already
-passing PR needs no code repair unless it has merge conflicts or is behind its
+commit's CI, retrying failures up to `--max-attempts` (3 by default). An agent
+repair with failed or incomplete local validation stays in the checkout. An
+already passing PR needs no code repair unless it has merge conflicts or is behind its
 base, or the checkout has unpublished local commits. API models
 support `diagnose` only. Agent selection, model, budget and per-task timeout
 come from your existing `agent:` config; `--agent` overrides the selection.
@@ -607,12 +610,11 @@ merges, four at a time (`--review-parallel`), at most 10 per run
 (`--max-reviews`). Verdicts
 are cached for 14 days in `~/.local/state/deps-handler/verdicts.json`, so a
 scheduled run does not pay twice for the same update; a new version or a
-change of target branch is always reviewed again, and a rejection lasts
-only until Dependabot rebases the PR. `deps-handler verdicts` lists them and
-`deps-handler verdicts forget acme/Storefront#42` drops them. Set
+change of head, base commit or target branch is always reviewed again.
+`deps-handler verdicts` lists them and `deps-handler verdicts forget
+acme/Storefront#42` drops them. Set
 `agent_review: false` on a repo to keep the agent out of it.
-Missing or whitespace-only dependency versions pin the verdict to the
-reviewed commit, so a changed head requires a fresh review.
+Every verdict is pinned to the reviewed head and base commits.
 
 Overlapping review runs cannot share checkouts, even when they use different
 state directories for their verdict caches.

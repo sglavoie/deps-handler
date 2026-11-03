@@ -151,6 +151,34 @@ func TestHandleRepairsGreenCodeAndReviewsTheNewHead(t *testing.T) {
 	if fmt.Sprint(a.writable) != "[false true false]" || len(got.Commits) != 1 {
 		t.Fatal(a.writable, got.Commits)
 	}
+	if !strings.Contains(a.prompt, `"repair_assessment"`) || !strings.Contains(a.prompt, "Fixed empty-input guard") {
+		t.Fatalf("follow-up review did not receive the repair report: %s", a.prompt)
+	}
+}
+
+func TestHandleKeepsRepairLocalWhenValidationIsNotPassed(t *testing.T) {
+	for _, status := range []string{"failed", "incomplete", "unreported"} {
+		t.Run(status, func(t *testing.T) {
+			s, c, a, w := handleFixture()
+			repair := `{"summary":"Validation did not pass","causes":[],"steps":["Edited guard"],"validation":["go test ./... failed"],"remaining":[],"recommendations":[]}`
+			if status != "unreported" {
+				repair = strings.TrimSuffix(repair, "}") + `,"validation_status":"` + status + `"}`
+			} else {
+				a.omitValidationStatus = true
+			}
+			a.raws = []string{handleAnswer("repair", handleCodeRepair), repair}
+			got, err := s.Run(context.Background(), c.state.Snapshot.Target, HandleOptions{Apply: true})
+			if err == nil || w.pushes != 0 || c.merges != 0 || got.Workspace == "" {
+				t.Fatalf("status=%s result=%+v err=%v pushes=%d merges=%d", status, got, err, w.pushes, c.merges)
+			}
+			if status != "unreported" {
+				var out strings.Builder
+				if reportErr := HandleReport(&out, []HandleResult{got}, true, false); reportErr != nil || !strings.Contains(out.String(), "Repair validation status: "+status) {
+					t.Fatalf("report = %s, %v", out.String(), reportErr)
+				}
+			}
+		})
+	}
 }
 
 func TestHandlePreviewDoesNotEditRepairablePR(t *testing.T) {

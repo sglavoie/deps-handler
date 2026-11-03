@@ -109,6 +109,7 @@ type PullRequest struct {
 	CreatedAt      time.Time `json:"created_at"`
 	HeadOID        string    `json:"head_oid"`
 	BaseRef        string    `json:"base_ref"`
+	BaseOID        string    `json:"base_oid"`
 	Mergeable      string    `json:"mergeable"`       // MERGEABLE, CONFLICTING, UNKNOWN
 	MergeState     string    `json:"merge_state"`     // CLEAN, BEHIND, BLOCKED, DIRTY, ...
 	ReviewDecision string    `json:"review_decision"` // APPROVED, REVIEW_REQUIRED, ...
@@ -367,7 +368,7 @@ query($owner: String!, $name: String!, $search: String!) {
     issueCount
     nodes {
       ... on PullRequest {
-        number state title url isDraft createdAt headRefOid baseRefName
+        number state title url isDraft createdAt headRefOid baseRefName baseRefOid
         mergeable mergeStateStatus reviewDecision
         baseRef { target { ... on Commit { committedDate } } }
         author { login }
@@ -441,6 +442,7 @@ type gqlRepo struct {
 			CreatedAt        time.Time
 			HeadRefOid       string
 			BaseRefName      string
+			BaseRefOid       string
 			Mergeable        string
 			MergeStateStatus string
 			ReviewDecision   string
@@ -545,6 +547,9 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 		if n.IsDraft == nil {
 			return nil, fmt.Errorf("%s/%s#%d: incomplete pull request: missing isDraft", owner, name, n.Number)
 		}
+		if n.BaseRefOid == "" {
+			return nil, fmt.Errorf("%s/%s#%d: incomplete pull request: missing baseRefOid", owner, name, n.Number)
+		}
 		// Counts establish whether every commit and check was fetched, and
 		// whether an earlier rebase request may be hidden in unread comments.
 		// Missing fields must not become zero and imply a complete list.
@@ -562,6 +567,7 @@ func (c *client) FetchRepo(ctx context.Context, owner, name string) (*Repo, erro
 			CreatedAt:      n.CreatedAt,
 			HeadOID:        n.HeadRefOid,
 			BaseRef:        n.BaseRefName,
+			BaseOID:        n.BaseRefOid,
 			Mergeable:      n.Mergeable,
 			MergeState:     n.MergeStateStatus,
 			ReviewDecision: n.ReviewDecision,

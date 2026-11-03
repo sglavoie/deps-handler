@@ -40,12 +40,13 @@ func (c *testClient) Evidence(context.Context, github.PRSnapshot) (github.PREvid
 }
 
 type testAgent struct {
-	calls    int
-	writable []bool
-	prompt   string
-	raws     []string
-	err      error
-	raw      string
+	calls                int
+	writable             []bool
+	prompt               string
+	raws                 []string
+	err                  error
+	raw                  string
+	omitValidationStatus bool
 }
 
 func (*testAgent) Name() string { return "fake" }
@@ -53,13 +54,31 @@ func (a *testAgent) Task(_ context.Context, _, prompt, _ string, writable bool) 
 	a.calls++
 	a.writable = append(a.writable, writable)
 	a.prompt = prompt
+	raw := a.raw
 	if len(a.raws) > 0 {
-		return json.RawMessage(a.raws[min(a.calls-1, len(a.raws)-1)]), a.err
+		raw = a.raws[min(a.calls-1, len(a.raws)-1)]
 	}
 	if a.raw == "" {
 		a.raw = `{"summary":"Update removed API usage in src/app.go","causes":["removed API"],"steps":["replace old call"],"validation":["go test ./...: passed"],"remaining":[],"recommendations":[{"subject":"test","action":"code_repair","reason":"Replace removed API in src/app.go","next_step":"Edit src/app.go and run tests"}]}`
 	}
-	return json.RawMessage(a.raw), a.err
+	if raw == "" {
+		raw = a.raw
+	}
+	if writable && !a.omitValidationStatus {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal([]byte(raw), &fields) == nil && fields["validation_status"] == nil {
+			if _, err := analysisObject([]byte(raw), "summary", "causes", "steps", "validation", "remaining", "recommendations"); err != nil {
+				return json.RawMessage(raw), a.err
+			}
+			fields["validation_status"] = json.RawMessage(`"passed"`)
+			encoded, err := json.Marshal(fields)
+			if err != nil {
+				return nil, err
+			}
+			raw = string(encoded)
+		}
+	}
+	return json.RawMessage(raw), a.err
 }
 
 type testWorkspace struct {
@@ -90,6 +109,25 @@ func snapshot(state github.CheckState) github.PRSnapshot {
 func service(states ...github.PRSnapshot) (*Service, *testClient, *testAgent, *testWorkspace) {
 	c, a, w := &testClient{snapshots: states}, &testAgent{}, &testWorkspace{}
 	return &Service{Client: c, Agent: a, Workspace: w, AgentTimeout: time.Second, WaitTimeout: time.Second, PollInterval: time.Millisecond, MaxAttempts: 2, Push: true}, c, a, w
+}
+
+func TestFixDoesNotPushFailedOrIncompleteValidation(t *testing.T) {
+	for _, status := range []string{"failed", "incomplete", "unreported"} {
+		t.Run(status, func(t *testing.T) {
+			p := snapshot(github.CheckFailed)
+			s, _, a, w := service(p)
+			a.raw = `{"summary":"Repair attempted","causes":[],"steps":["Edited code"],"validation":["go test ./... failed"],"remaining":[],"recommendations":[{"subject":"test","action":"code_repair","reason":"Fix src/app.go","next_step":"Edit src/app.go"}]}`
+			if status != "unreported" {
+				a.raw = strings.TrimSuffix(a.raw, "}") + `,"validation_status":"` + status + `"}`
+			} else {
+				a.omitValidationStatus = true
+			}
+			got, err := s.Fix(context.Background(), p.Target, "")
+			if err == nil || w.pushes != 0 || got.Workspace == "" {
+				t.Fatalf("status=%s result=%+v err=%v pushes=%d", status, got, err, w.pushes)
+			}
+		})
+	}
 }
 
 type namedTaskAgent struct {
@@ -415,6 +453,11 @@ func TestMarkdownIsStandaloneAndReportsWriterErrors(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %s: %s", want, out.String())
 		}
+	}
+	result.Analysis.ValidationStatus = "incomplete"
+	out.Reset()
+	if err := Markdown(&out, result); err != nil || !strings.Contains(out.String(), "Local validation status: **incomplete**") {
+		t.Fatalf("validation status missing from handoff: %s, %v", out.String(), err)
 	}
 	if err := Markdown(brokenWriter{}, result); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatal(err)

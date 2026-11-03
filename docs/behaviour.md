@@ -295,8 +295,8 @@ This applies to cached verdicts too, including those produced by a dry
 run. Dry runs and report-mode repositories never post these comments.
 
 An identical explanation by the current GitHub user in the latest 50 PR
-comments suppresses another post. The comment identifies the update and
-target branch; rejections also identify the head, so a new review after
+comments suppresses another post. The comment identifies the update,
+target branch, and reviewed head and base commits, so a new review after
 a rebase can post another explanation. Comments posted during the run
 are remembered even if GitHub has not returned them yet. Older comments
 outside the fetched window cannot suppress a new post.
@@ -316,18 +316,14 @@ Reviews run after their repository's other merges, four at a time
 repository reviews its PRs one after another, so more reviews than
 `--parallel` never run at once. Verdicts are kept for 14 days in
 `~/.local/state/deps-handler/verdicts.json`, keyed by the PR (ignoring the
-case of `owner/name`), the target branch (case-sensitive), and the versions
-it moves to: a new version or a change of target branch is always reviewed
-again. Keys carry a `v3` marker and quote each dependency name and version,
+case of `owner/name`), the target branch (case-sensitive), the reviewed head
+and base commits, and the versions it moves to. Keys carry a `v4` marker and
+quote each dependency name and version,
 so embedded separators cannot identify a different update. Older cached
 verdicts are not reused: each update needs one fresh review after upgrading.
 The key leaves out the agent, so a verdict one agent gave is
-reused when another runs. An approval survives a rebase; a
-rejection does not, since the base branch the PR now sits on may have
-dealt with what the agent objected to. The exception is an update whose
-versions Dependabot does not record (a Docker digest, an action pinned by
-commit), or records as whitespace only: the head commit stands in for
-them in the key, so a rebase has it reviewed again even once approved.
+reused when another runs on the same code. Both approvals and rejections
+need a fresh review when the head or base commit changes.
 A verdict that cannot be saved is
 reported as a warning (and under `warnings` in `--json`); a verdict file
 that cannot be read is moved aside to `verdicts.json.corrupt-TIMESTAMP`
@@ -337,8 +333,7 @@ run starts (the warning then comes with the first repository's result,
 which `--open` does not hide) or when it saves a verdict. `deps-handler verdicts` lists
 them, optionally only for some repositories or PRs (exiting 1 when one
 matches nothing), with `--json` for their concerns; its `HEAD` column
-(`head_oid` in `--json`) is the commit a rejection, or an approval of an
-update without versions, holds for, and `any` for other approvals; an
+(`head_oid` in `--json`) is the commit each verdict holds for; an
 expired verdict is neither listed nor forgotten. `deps-handler verdicts forget acme/Storefront#42` (or a whole
 `owner/name`, or one update as `verdicts` lists it) has those updates
 reviewed again on the next run; anything else is a usage error (exit 2).
@@ -449,8 +444,7 @@ empty `model` for the agent's default.
 
 `deps-handler verdicts --json` prints `{"verdicts": [...]}`: each verdict's
 `update` (its cache key), `verdict` (`approved` or `rejected`),
-`approved`, `agent`, `head_oid` (the commit a rejection, or an
-approval of an update without versions, holds for, or `any`), `reviewed_at`, `expires`, `summary` and `concerns`.
+`approved`, `agent`, `head_oid` (the reviewed commit), `reviewed_at`, `expires`, `summary` and `concerns`.
 
 `dependabot --markdown` prints each repository's section as GitHub Markdown, as
 an issue body or a GitHub Actions job summary would hold it: a heading,

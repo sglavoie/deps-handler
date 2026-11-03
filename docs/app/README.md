@@ -87,7 +87,9 @@ Accepted webhook and sweep jobs are saved in the SQLite database before
 they are queued. Pending jobs, including a run interrupted by a restart,
 resume when the server starts again. Failed runs retry after 30 seconds,
 two minutes, and ten minutes; after those attempts, the next sweep is the
-fallback.
+fallback. When only some repositories fail during an installation sweep,
+the retry jobs contain only those repositories; successful ones are not run
+again for that failure.
 Rate-limit cooldowns apply to the whole installation, across repositories
 and queued retries. Repository listings (including access webhook lookups),
 merge requests, review comments, health issue requests and best-effort issue

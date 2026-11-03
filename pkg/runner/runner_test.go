@@ -800,6 +800,33 @@ func TestAgentVerdictsAreCached(t *testing.T) {
 	}
 }
 
+func TestCachedApprovalRequiresSameHeadAndBaseCommits(t *testing.T) {
+	cache, err := review.OpenCache(t.TempDir() + "/verdicts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr := testutil.PR(1, "lib:major")
+	pr.BaseOID = "base-one"
+	rv := &fakeReviewer{}
+	for i, step := range []string{"initial", "unchanged", "new head", "new base"} {
+		switch step {
+		case "new head":
+			pr.HeadOID, pr.ChecksOID, pr.Commits[0].OID = "new-head", "new-head", "new-head"
+		case "new base":
+			pr.BaseOID = "base-two"
+		}
+		r := reviewRunner(&fakeClient{repo: testutil.Repo(pr)}, rv, false)
+		r.Verdicts = cache
+		if res := r.RunRepo(context.Background(), repoCfg); res.Failed() {
+			t.Fatalf("%s: %+v", step, res)
+		}
+		want := []int{1, 1, 2, 3}[i]
+		if len(rv.calls) != want {
+			t.Fatalf("%s: reviews = %d, want %d", step, len(rv.calls), want)
+		}
+	}
+}
+
 func TestRetargetedPRNeedsAnotherReview(t *testing.T) {
 	for _, cached := range []bool{false, true} {
 		t.Run(fmt.Sprintf("cached=%t", cached), func(t *testing.T) {

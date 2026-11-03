@@ -22,6 +22,27 @@ func journal(t *testing.T) *store.Store {
 	return s
 }
 
+func TestReplaceJobsDoesNotRestoreRemovedInstallationJob(t *testing.T) {
+	s := journal(t)
+	ctx := context.Background()
+	old := jobs.Job{Installation: 11, Trigger: "sweep"}
+	id, err := s.AppendJob(ctx, old, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteJobs(ctx, []int64{id}); err != nil {
+		t.Fatal(err)
+	}
+	replacement := jobs.SavedJob{Job: jobs.Job{Installation: 11, Repo: "o/failing", Trigger: "sweep"}, Due: time.Now().Add(time.Minute)}
+	ids, err := s.ReplaceJobs(ctx, []int64{id}, []jobs.SavedJob{replacement})
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("replacement after cleanup = %v, %v", ids, err)
+	}
+	if pending, err := s.PendingJobs(ctx); err != nil || len(pending) != 0 {
+		t.Fatalf("removed installation has pending jobs: %v, %v", pending, err)
+	}
+}
+
 func receive(t *testing.T, ch <-chan jobs.Job) jobs.Job {
 	t.Helper()
 	select {
@@ -231,5 +252,62 @@ func TestFailedRunUsesBoundedRetriesAndAcknowledgesAfterExhaustion(t *testing.T)
 	q.Wait()
 	if calls.Load() != 2 {
 		t.Fatalf("runs = %d, want initial and one retry", calls.Load())
+	}
+}
+
+func TestPartialFailureReplacementSurvivesRestart(t *testing.T) {
+	s := journal(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	q := &jobs.Queues{Journal: s, RetryDelays: []time.Duration{time.Hour}, Run: func(_ context.Context, job jobs.Job) error {
+		if job.Repo != "" {
+			t.Errorf("unexpected repository retry before restart: %+v", job)
+		}
+		return &jobs.PartialFailure{Failed: []jobs.Job{{Installation: 1, Repo: "o/b", Trigger: job.Trigger}}, Err: errors.New("o/b failed")}
+	}}
+	if err := q.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.Enqueue(jobs.Job{Installation: 1, Trigger: "schedule"}); err != nil {
+		t.Fatal(err)
+	}
+	var saved []jobs.SavedJob
+	for deadline := time.Now().Add(time.Second); ; time.Sleep(time.Millisecond) {
+		var err error
+		saved, err = s.PendingJobs(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(saved) == 1 && saved[0].Job.Repo == "o/b" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("partial retry was not saved: %+v", saved)
+		}
+	}
+	cancel()
+	q.Wait()
+	var ran []jobs.Job
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	q2 := &jobs.Queues{Journal: s, Now: func() time.Time { return time.Now().Add(2 * time.Hour) },
+		Run: func(_ context.Context, job jobs.Job) error { ran = append(ran, job); return nil }}
+	if err := q2.Start(ctx2); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(time.Second); ; time.Sleep(time.Millisecond) {
+		remaining, err := s.PendingJobs(ctx2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(remaining) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("replacement not acknowledged: %+v", remaining)
+		}
+	}
+	cancel2()
+	q2.Wait()
+	if len(ran) != 1 || ran[0].Repo != "o/b" {
+		t.Fatalf("replayed jobs = %+v, want only o/b", ran)
 	}
 }

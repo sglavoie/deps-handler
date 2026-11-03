@@ -33,6 +33,7 @@ type Request struct {
 	URL          string
 	HeadOID      string
 	BaseRef      string
+	BaseOID      string
 	Grade        config.UpdateType
 	Limit        config.UpdateType
 	Reason       string
@@ -59,43 +60,33 @@ func NewRequest(rc config.Repo, d policy.Decision) Request {
 	}
 	return Request{
 		Owner: rc.Owner, Name: rc.Name, Number: d.Number, Title: d.Title, URL: d.URL,
-		HeadOID: d.PR.HeadOID, BaseRef: d.PR.BaseRef, Grade: d.Grade, Limit: rc.Policy.MaxUpdateType,
+		HeadOID: d.PR.HeadOID, BaseRef: d.PR.BaseRef, BaseOID: d.PR.BaseOID, Grade: d.Grade, Limit: rc.Policy.MaxUpdateType,
 		Reason: strings.TrimSuffix(d.Reason, policy.AwaitingReview), Dependencies: d.Dependencies, Checks: policy.LatestChecks(d.PR.Checks),
 		NoChecks: noChecks, Unread: unread,
 	}
 }
 
-// Key identifies the update under review: the PR, its target branch and
-// the versions it moves to. Retargeting a PR requires a fresh review. A
-// rebase changes the head commit but not the update, so an approval
-// still holds (the cache drops a rejection then); when Dependabot does not
-// record versions, or a commit records no dependencies at all, the head
-// commit stands in for them, so not even an approval survives a rebase
-// (see Entry.PinsHead). The repository is lower-cased, as GitHub ignores
-// its case, and the agent is left out: a verdict from one agent is reused
-// by another.
+// Key identifies the exact code reviewed: the PR, target branch, base and
+// head commits, and dependency versions. Both approvals and rejections need
+// another review when either commit moves. The repository is lower-cased,
+// as GitHub ignores its case, and the agent is left out so another agent
+// can reuse a verdict on the same code.
 func (r Request) Key() string {
 	deps := make([]string, 0, len(r.Dependencies))
-	versioned := len(r.Dependencies) > 0 && !r.Unread
 	for _, d := range r.Dependencies {
 		// Quote each component so separators inside names or versions
 		// cannot impersonate another dependency or its version boundary.
 		deps = append(deps, fmt.Sprintf("%q@%q", d.Name, d.Version))
-		// A blank version establishes no update identity, just as an
-		// omitted version does. Pin it to the reviewed head instead.
-		versioned = versioned && strings.TrimSpace(d.Version) != ""
 	}
 	slices.Sort(deps)
 	// Older keys could be created against hosts other than github.com,
 	// before the client rejected those; the earliest also did not escape
 	// dependencies. Neither can safely establish approval for this update.
-	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number), "v3", fmt.Sprintf("base=%q", r.BaseRef)}
+	parts := []string{fmt.Sprintf("%s/%s#%d", strings.ToLower(r.Owner), strings.ToLower(r.Name), r.Number), "v4", fmt.Sprintf("base=%q", r.BaseRef), fmt.Sprintf("base_oid=%q", r.BaseOID)}
 	if len(deps) > 0 {
 		parts = append(parts, strings.Join(deps, ","))
 	}
-	if !versioned {
-		parts = append(parts, r.HeadOID)
-	}
+	parts = append(parts, r.HeadOID)
 	return strings.Join(parts, " ")
 }
 

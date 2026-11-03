@@ -28,12 +28,31 @@ type SavedJob struct {
 	Due time.Time
 }
 
+// PartialFailure means an installation-wide run reached every repository,
+// but only Failed needs another attempt. Err retains the underlying causes.
+type PartialFailure struct {
+	Failed []Job
+	Err    error
+}
+
+func (e *PartialFailure) Error() string {
+	if e.Err == nil {
+		return "partial installation failure"
+	}
+	return e.Err.Error()
+}
+func (e *PartialFailure) Unwrap() error { return e.Err }
+
 // Journal keeps accepted events across process restarts. Append must commit
 // before it returns: the webhook acknowledges a delivery only afterwards.
 type Journal interface {
 	AppendJob(context.Context, Job, time.Time) (int64, error)
 	PendingJobs(context.Context) ([]SavedJob, error)
 	DeleteJobs(context.Context, []int64) error
+	// ReplaceJobs atomically acknowledges an all-repository job and saves
+	// its failed repository jobs. An empty result means cleanup removed the
+	// original job before replacement could commit.
+	ReplaceJobs(context.Context, []int64, []SavedJob) ([]int64, error)
 }
 
 // Queues runs jobs through Run, one at a time per installation.
@@ -237,6 +256,64 @@ func (q *Queues) retry(w *worker, p pendingJob) {
 	q.wake(w)
 }
 
+func (q *Queues) retryFailed(w *worker, p pendingJob, failed []Job) error {
+	if q.ctx.Err() != nil {
+		return nil // The original journal entry replays after restart.
+	}
+	if p.attempts >= len(q.RetryDelays) {
+		return q.acknowledge(p)
+	}
+	due := q.Now().Add(q.RetryDelays[p.attempts])
+	entries := make([]SavedJob, len(failed))
+	for i, job := range failed {
+		if job.Installation != p.job.Installation || job.Repo == "" {
+			return errors.New("partial failure contains an invalid repository job")
+		}
+		entries[i] = SavedJob{Job: job, Due: due}
+	}
+	if q.Journal != nil {
+		ids, err := q.Journal.ReplaceJobs(q.ctx, p.ids, entries)
+		if err != nil {
+			return fmt.Errorf("replace failed installation job: %w", err)
+		}
+		if len(ids) == 0 {
+			return nil // Installation cleanup removed the original job.
+		}
+		if len(ids) != len(entries) {
+			return errors.New("journal returned incomplete replacement jobs")
+		}
+		for i := range entries {
+			entries[i].ID = ids[i]
+		}
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, entry := range entries {
+		key := strings.ToLower(entry.Job.Repo)
+		if all, ok := w.pending[""]; ok {
+			if entry.ID != 0 {
+				all.ids = append(all.ids, entry.ID)
+				w.pending[""] = all
+			}
+			continue
+		}
+		if current, ok := w.pending[key]; ok {
+			if entry.ID != 0 {
+				current.ids = append(current.ids, entry.ID)
+				w.pending[key] = current
+			}
+			continue
+		}
+		next := pendingJob{job: entry.Job, due: entry.Due, attempts: p.attempts + 1}
+		if entry.ID != 0 {
+			next.ids = []int64{entry.ID}
+		}
+		w.pending[key] = next
+	}
+	q.wake(w)
+	return nil
+}
+
 func (q *Queues) acknowledge(p pendingJob) error {
 	if q.Journal == nil || len(p.ids) == 0 || q.ctx.Err() != nil {
 		return nil
@@ -304,6 +381,14 @@ func (q *Queues) work(id int64, w *worker) {
 				}
 			}
 			if err != nil {
+				var partial *PartialFailure
+				if next.job.Repo == "" && errors.As(err, &partial) && len(partial.Failed) > 0 {
+					if replacementErr := q.retryFailed(w, *next, partial.Failed); replacementErr != nil {
+						q.report(replacementErr)
+						q.retry(w, *next)
+					}
+					continue
+				}
 				if next.attempts >= len(q.RetryDelays) {
 					if aerr := q.acknowledge(*next); aerr != nil {
 						q.report(aerr)

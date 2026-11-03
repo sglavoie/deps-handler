@@ -74,6 +74,9 @@ func handoff(w io.Writer, r Result, asTable bool) error {
 	if r.Analysis.Summary != "" {
 		text += "## Assessment\n\n" + r.Analysis.Summary + "\n\n"
 	}
+	if r.Analysis.ValidationStatus != "" {
+		text += "Local validation status: **" + r.Analysis.ValidationStatus + "**.\n\n"
+	}
 	if len(r.Analysis.Recommendations) > 0 {
 		text += "## Recommended actions\n\n"
 		if asTable {

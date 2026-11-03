@@ -125,7 +125,17 @@ func analysisObject(data []byte, keys ...string) (map[string]json.RawMessage, er
 }
 
 func decodeAnalysis(data []byte) (Analysis, error) {
-	fields, err := analysisObject(data, "summary", "causes", "steps", "validation", "remaining", "recommendations")
+	keys := []string{"summary", "causes", "steps", "validation", "remaining", "recommendations"}
+	// Read-only analyses omit validation_status; writable repair responses
+	// include it. analysisObject still rejects duplicates and other fields.
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return Analysis{}, fmt.Errorf("invalid analysis: %w", err)
+	}
+	if _, present := probe["validation_status"]; present {
+		keys = append(keys, "validation_status")
+	}
+	fields, err := analysisObject(data, keys...)
 	if err != nil {
 		return Analysis{}, fmt.Errorf("invalid analysis: %w", err)
 	}
@@ -135,6 +145,13 @@ func decodeAnalysis(data []byte) (Analysis, error) {
 	}
 	if strings.TrimSpace(a.Summary) == "" {
 		return Analysis{}, errors.New("analysis requires a non-empty summary")
+	}
+	if _, present := fields["validation_status"]; present {
+		switch a.ValidationStatus {
+		case "passed", "failed", "incomplete":
+		default:
+			return Analysis{}, fmt.Errorf("invalid validation_status %q", a.ValidationStatus)
+		}
 	}
 	for _, field := range []string{"causes", "steps", "validation", "remaining"} {
 		var items []json.RawMessage
@@ -167,4 +184,17 @@ func decodeAnalysis(data []byte) (Analysis, error) {
 		}
 	}
 	return a, nil
+}
+
+// A failed or incomplete local validation cannot authorize publication.
+// The caller retains the checkout so the reported failure can be repaired.
+func (a Analysis) requirePassedValidation() error {
+	if a.ValidationStatus != "passed" {
+		status := a.ValidationStatus
+		if status == "" {
+			status = "unreported"
+		}
+		return fmt.Errorf("repair validation is %s; edits kept locally, nothing pushed", status)
+	}
+	return nil
 }

@@ -407,6 +407,7 @@ func (s *Service) Run(ctx context.Context, j jobs.Job) error {
 		return fmt.Errorf("reconcile repositories: %w", err)
 	}
 	var failures []error
+	var failedJobs []jobs.Job
 	for _, r := range repos {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -415,10 +416,14 @@ func (s *Service) Run(ctx context.Context, j jobs.Job) error {
 			if err := s.RunRepo(ctx, j.Installation, r, j.Trigger); err != nil {
 				s.Log.Error("run repository", "repo", r, "err", err)
 				failures = append(failures, fmt.Errorf("%s: %w", r, err))
+				failedJobs = append(failedJobs, jobs.Job{Installation: j.Installation, Repo: r, Trigger: j.Trigger})
 			}
 		}
 	}
-	return errors.Join(failures...)
+	if len(failedJobs) > 0 {
+		return &jobs.PartialFailure{Failed: failedJobs, Err: errors.Join(failures...)}
+	}
+	return nil
 }
 
 // RunRepo runs the engine on one repository and brings its issue up to

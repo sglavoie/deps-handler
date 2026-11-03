@@ -878,3 +878,17 @@ func TestQueuedJobReturnsRepositoryFailureForRetry(t *testing.T) {
 		t.Fatalf("queued run error = %v", err)
 	}
 }
+
+func TestInstallationSweepReturnsOnlyFailedRepositoriesForRetry(t *testing.T) {
+	s, p := setup(t, false, "", pr(1))
+	p.repos = []string{"o/r", "o/other"}
+	// The issue fake serves o/r. o/other fails reporting, after o/r succeeds.
+	err := s.Run(context.Background(), jobs.Job{Installation: 1, Trigger: "schedule"})
+	var partial *jobs.PartialFailure
+	if !errors.As(err, &partial) || len(partial.Failed) != 1 || partial.Failed[0].Repo != "o/other" || partial.Failed[0].Trigger != "schedule" {
+		t.Fatalf("partial sweep failure = %+v, %v", partial, err)
+	}
+	if p.issues.Len() != 1 {
+		t.Fatalf("healthy repository report was not completed: issues=%d", p.issues.Len())
+	}
+}

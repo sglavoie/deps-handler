@@ -28,7 +28,7 @@ type commandTaskAgent struct{ err error }
 
 func (commandTaskAgent) Name() string { return "fake" }
 func (a commandTaskAgent) Task(context.Context, string, string, string, bool) (json.RawMessage, error) {
-	return json.RawMessage(`{"summary":"Repair plan","causes":["old API"],"steps":["edit src/app.go"],"validation":["run tests"],"remaining":[],"recommendations":[{"subject":"test","action":"code_repair","reason":"Replace removed API in src/app.go","next_step":"Edit src/app.go and run tests"}]}`), a.err
+	return json.RawMessage(`{"summary":"Repair plan","causes":["old API"],"steps":["edit src/app.go"],"validation":["run tests"],"validation_status":"passed","remaining":[],"recommendations":[{"subject":"test","action":"code_repair","reason":"Replace removed API in src/app.go","next_step":"Edit src/app.go and run tests"}]}`), a.err
 }
 
 type commandWorkspace struct{ root string }

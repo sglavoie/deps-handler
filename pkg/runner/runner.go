@@ -457,9 +457,8 @@ func (r *Runner) RunRepoWithSetup(ctx context.Context, rc config.Repo, setup fun
 	if r.Reviewer != nil || r.Verdicts != nil {
 		judge = func(d policy.Decision) *policy.Verdict {
 			key := review.NewRequest(rc, d).Key()
-			// As in the cache, a rejection holds only for the head it was
-			// given on: Dependabot may have rebased onto a fix since.
-			if v, ok := rv.verdicts[key]; ok && (v.Approved || v.head == d.PR.HeadOID) {
+			// A verdict is valid only for the exact code the agent reviewed.
+			if v, ok := rv.verdicts[key]; ok && v.head == d.PR.HeadOID {
 				return v.Verdict
 			}
 			if r.Verdicts != nil {

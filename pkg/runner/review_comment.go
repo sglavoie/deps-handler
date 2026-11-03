@@ -17,14 +17,10 @@ import (
 const ReviewCommentPrefix = "<!-- deps-handler-review:"
 
 // reviewComment explains the verdict without claiming that a merge has
-// already happened. Its identity follows the verdict's cache lifetime:
-// approvals survive rebases, while rejections and failures pin the head.
+// already happened. Its identity follows the reviewed head and base commits.
 func (r *Runner) reviewComment(rc config.Repo, d policy.Decision) string {
 	v := d.Verdict
 	key := review.NewRequest(rc, d).Key()
-	if !v.Approved || v.Error != "" {
-		key += "\n" + d.PR.HeadOID
-	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s%x -->\n\n## deps-handler agent review\n\n", ReviewCommentPrefix, sha256.Sum256([]byte(key)))
 	switch {

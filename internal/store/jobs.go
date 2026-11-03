@@ -53,3 +53,49 @@ func (s *Store) DeleteJobs(ctx context.Context, ids []int64) error {
 	}
 	return tx.Commit()
 }
+
+// ReplaceJobs atomically narrows a completed installation sweep to only
+// the repositories that failed. A cleanup that removed the original job
+// wins, so a late sweep cannot recreate jobs for an uninstalled App.
+func (s *Store) ReplaceJobs(ctx context.Context, ids []int64, replacements []jobs.SavedJob) ([]int64, error) {
+	if len(ids) == 0 || len(replacements) == 0 {
+		return nil, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	removed := int64(0)
+	for _, id := range ids {
+		result, err := tx.ExecContext(ctx, `DELETE FROM queued_jobs WHERE id = ?`, id)
+		if err != nil {
+			return nil, err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		removed += n
+	}
+	if removed == 0 {
+		return nil, nil
+	}
+	newIDs := make([]int64, 0, len(replacements))
+	for _, entry := range replacements {
+		result, err := tx.ExecContext(ctx, `INSERT INTO queued_jobs (installation_id, repo, trigger, due_at) VALUES (?, ?, ?, ?)`,
+			entry.Job.Installation, entry.Job.Repo, entry.Job.Trigger, entry.Due.UTC())
+		if err != nil {
+			return nil, err
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		newIDs = append(newIDs, id)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return newIDs, nil
+}

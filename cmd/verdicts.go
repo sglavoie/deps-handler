@@ -23,15 +23,12 @@ func newVerdictsCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "verdicts [TARGET...]",
 		Short: "List the agent verdicts kept between runs",
-		Long: `List the agent verdicts kept between runs, one per update. An approval is
-reused for 14 days, until the PR moves to new versions; a rejection only
-until Dependabot rebases the PR. Use "verdicts forget" to have an update
-reviewed again.
+		Long: `List the agent verdicts kept between runs, one per reviewed update.
+Verdicts are reused for up to 14 days while the update and its head and base
+commits stay the same. Use "verdicts forget" to have an update reviewed again.
 
-HEAD is the commit a rejection was given for: it holds for that commit
-only. An approval holds for any head, unless Dependabot records no
-versions for the update (a Docker digest, an action pinned by commit):
-its key then holds the commit reviewed, which HEAD shows.
+HEAD is the commit the verdict was given for. Both approvals and rejections
+require a fresh review when the head or base commit changes.
 
 A target narrows the list to a repository (owner/name) or a pull request
 (owner/name#7). Exits 1 if a target matched nothing.`,
@@ -174,16 +171,13 @@ func printVerdicts(cmd *cobra.Command, entries []review.Entry, asJSON bool) erro
 	return tw.Flush()
 }
 
-// heldFor is the head a verdict holds for, shortened: a rejection holds
-// for the commit reviewed only.
+// heldFor is the head a verdict holds for, shortened.
 func heldFor(e review.Entry) string { return fmt.Sprintf("%.7s", heldForOID(e)) }
 
-// heldForOID is the head a verdict holds for: the commit a rejection was
-// given for, or "any" for an approval, which survives a rebase unless the
-// update has no versions and its key holds the head.
+// heldForOID is the head a verdict holds for.
 func heldForOID(e review.Entry) string {
-	if e.Verdict.Approved && !e.PinsHead() || e.HeadOID == "" {
-		return "any"
+	if e.HeadOID == "" {
+		return "unknown"
 	}
 	return e.HeadOID
 }

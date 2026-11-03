@@ -95,7 +95,7 @@ func TestVerdictsShowHeadOfRejection(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, _ := run("verdicts", "--list")
-	if code != 0 || !strings.Contains(out, "HEAD") || !strings.Contains(out, "rejected  claude  0123456") || !strings.Contains(out, "approved  codex   any") {
+	if code != 0 || !strings.Contains(out, "HEAD") || !strings.Contains(out, "rejected  claude  0123456") || !strings.Contains(out, "approved  codex   fedcba9") {
 		t.Fatalf("code %d:\n%s", code, out)
 	}
 	code, out, _ = run("verdicts", "--json")
@@ -112,17 +112,15 @@ func TestVerdictsShowHeadOfRejection(t *testing.T) {
 	if got[0].Approved || !got[1].Approved {
 		t.Fatalf("approved = %t, %t", got[0].Approved, got[1].Approved)
 	}
-	// An approval survives a rebase: it holds for any head.
-	if got[0].HeadOID != "0123456789abcdef" || got[1].HeadOID != "any" {
-		t.Fatalf("head_oid = %q, %q; want the rejected commit, then any", got[0].HeadOID, got[1].HeadOID)
+	if got[0].HeadOID != "0123456789abcdef" || got[1].HeadOID != "fedcba9876543210" {
+		t.Fatalf("head_oid = %q, %q; want each reviewed commit", got[0].HeadOID, got[1].HeadOID)
 	}
 }
 
 func TestVerdictsShowHeadOfApprovalWithoutVersions(t *testing.T) {
 	cache, _ := verdictsState(t)
-	// The key of an update without versions, as review.Request.Key makes
-	// it: the head stands in for them, so the approval is for that head.
-	if err := cache.Put("o/a#3 actions/checkout@ 0123456789abcdef", "0123456789abcdef", "claude", policy.Verdict{Approved: true}); err != nil {
+	// An update without versions still names the exact reviewed commits.
+	if err := cache.Put(`o/a#3 v4 base="main" base_oid="base" "actions/checkout"@"" 0123456789abcdef`, "0123456789abcdef", "claude", policy.Verdict{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
 	code, out, _ := run("verdicts", "--list")

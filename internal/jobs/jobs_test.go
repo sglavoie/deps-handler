@@ -193,6 +193,57 @@ func TestFailedJobHasBoundedRetries(t *testing.T) {
 	}
 }
 
+func TestPartialFailureRetriesOnlyFailedRepository(t *testing.T) {
+	var all, failed atomic.Int32
+	q := &Queues{Debounce: 0, RetryDelays: []time.Duration{time.Millisecond}, Run: func(_ context.Context, job Job) error {
+		if job.Repo == "" {
+			all.Add(1)
+			return &PartialFailure{Failed: []Job{{Installation: job.Installation, Repo: "o/b", Trigger: job.Trigger}}, Err: errors.New("o/b failed")}
+		}
+		if job.Repo != "o/b" {
+			t.Errorf("unexpected retry of %s", job.Repo)
+		}
+		failed.Add(1)
+		return nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := q.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cancel(); q.Wait() })
+	if err := q.Enqueue(Job{Installation: 1, Trigger: "schedule"}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "failed repository retry", func() bool { return failed.Load() == 1 && q.Pending() == 0 })
+	if all.Load() != 1 {
+		t.Fatalf("installation-wide runs = %d, want one", all.Load())
+	}
+}
+
+func TestPartialFailureKeepsRetryLimit(t *testing.T) {
+	var all, failed atomic.Int32
+	q := &Queues{Debounce: 0, RetryDelays: []time.Duration{time.Millisecond}, Run: func(_ context.Context, job Job) error {
+		if job.Repo == "" {
+			all.Add(1)
+			return &PartialFailure{Failed: []Job{{Installation: job.Installation, Repo: "o/b"}}, Err: errors.New("o/b failed")}
+		}
+		failed.Add(1)
+		return errors.New("still failing")
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := q.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cancel(); q.Wait() })
+	if err := q.Enqueue(Job{Installation: 1}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "bounded repository retry", func() bool { return failed.Load() == 1 && q.Pending() == 0 })
+	if all.Load() != 1 {
+		t.Fatalf("installation-wide runs = %d, want one", all.Load())
+	}
+}
+
 func TestFreshEventAdvancesPendingRetry(t *testing.T) {
 	var calls atomic.Int32
 	q := &Queues{Debounce: 0, RetryDelays: []time.Duration{time.Hour},
