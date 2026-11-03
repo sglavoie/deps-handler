@@ -175,6 +175,17 @@ func TestHandleHumanDecisionIsActionableAndNeverEdits(t *testing.T) {
 	}
 }
 
+func TestHandleDoesNotRepairWhileHumanDecisionIsPending(t *testing.T) {
+	for _, apply := range []bool{false, true} {
+		s, c, a, w := handleFixture()
+		a.raw = handleAnswer("repair", handleCodeRepair+","+handleHumanAction)
+		got, err := s.Run(context.Background(), c.state.Snapshot.Target, HandleOptions{Apply: apply})
+		if err != nil || got.Status != "blocked" || a.calls != 1 || w.pushes != 0 || c.merges != 0 {
+			t.Fatalf("apply=%t got=%+v err=%v", apply, got, err)
+		}
+	}
+}
+
 func TestHandlePreservesGitHubGatesDespiteAIApproval(t *testing.T) {
 	for _, gate := range []string{"review", "discussion", "merge-state", "mergeability", "permission", "method", "incomplete-discussions", "author", "archive"} {
 		t.Run(gate, func(t *testing.T) {

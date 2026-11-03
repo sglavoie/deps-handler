@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
 	"slices"
@@ -118,6 +119,7 @@ func selectPRListRepositories(ctx context.Context, client github.PRListClient, o
 	selected := []string{}
 	seen := map[string]bool{}
 	bare := map[string]bool{}
+	matched := map[string]bool{}
 	for _, repo := range repos {
 		full := repo
 		if !strings.Contains(repo, "/") {
@@ -140,13 +142,20 @@ func selectPRListRepositories(ctx context.Context, client github.PRListClient, o
 		}
 		for _, full := range available {
 			_, name, _ := github.ParseRepository(full)
-			if len(repos) > 0 && !bare[strings.ToLower(name)] {
+			keyName := strings.ToLower(name)
+			if len(repos) > 0 && !bare[keyName] {
 				continue
 			}
+			matched[keyName] = true
 			key := strings.ToLower(full)
 			if !seen[key] {
 				selected = append(selected, full)
 				seen[key] = true
+			}
+		}
+		for _, name := range slices.Sorted(maps.Keys(bare)) {
+			if !matched[name] {
+				return nil, usageError{fmt.Errorf("no accessible repository matches --repo %q", name)}
 			}
 		}
 	}

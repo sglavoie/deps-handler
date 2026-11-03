@@ -231,6 +231,10 @@ func (s *HandleService) Run(ctx context.Context, target github.PRTarget, opts Ha
 			result.Status = "merged"
 			return result, nil
 		}
+		if hasHumanBlocker(verdict.Analysis) {
+			result.Summary += " A human decision or more evidence is required before taking action."
+			return result, nil
+		}
 		if !opts.Apply {
 			if verdict.Decision == "repair" {
 				result.Status = "would_repair"

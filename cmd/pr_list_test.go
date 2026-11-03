@@ -126,6 +126,14 @@ func TestPRListErrorsDoNotPrintPartialResults(t *testing.T) {
 	}
 }
 
+func TestPRListUnknownBareRepositoryIsAnError(t *testing.T) {
+	c := mockPRListCommand(t)
+	code, out, stderr := run("pr", "list", "--repo", "missing", "--json")
+	if code != 2 || out != "" || !strings.Contains(stderr, `no accessible repository matches --repo "missing"`) || c.repoCalls != 1 || len(c.listed) != 0 {
+		t.Fatal(code, out, stderr, c)
+	}
+}
+
 func TestPRListDemoCannotReachGitHub(t *testing.T) {
 	c := mockPRListCommand(t)
 	prCommandsAvailable = false
