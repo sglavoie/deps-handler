@@ -90,7 +90,7 @@ func (w *Workspace) commitRepair(ctx context.Context, dir, localHead, remoteHead
 		if err := w.git(ctx, dir, "add", "--all"); err != nil {
 			return "", err
 		}
-		if err := w.git(ctx, dir, "-c", "user.name=deps-handler", "-c", "user.email=deps-handler@users.noreply.github.com", "-c", "commit.gpgSign=false", "commit", "-qm", "fix: address pull request checks"); err != nil {
+		if err := w.git(ctx, dir, "-c", "user.name=deps-handler", "-c", "user.email=deps-handler@users.noreply.github.com", "-c", "commit.gpgSign=false", "commit", "-qm", "fix: address pull request findings"); err != nil {
 			return "", err
 		}
 	}

@@ -4,8 +4,9 @@
 [![Release](https://img.shields.io/github/v/release/sglavoie/deps-handler)](https://github.com/sglavoie/deps-handler/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Manages Dependabot updates across a list of repositories and diagnoses or
-repairs any explicitly selected pull request. It uses your `gh` login.
+Manages Dependabot updates across a list of repositories and reviews, repairs
+and merges explicitly selected non-Dependabot pull requests. It also diagnoses
+or repairs any selected PR independently. It uses your `gh` login.
 
 The same repository also contains a free GitHub App server. It
 reports into a Dependency health issue and merges only in repositories
@@ -116,6 +117,8 @@ deps-handler dependabot --open            # only repos with open Dependabot PRs
 deps-handler dependabot -r Storefront --json  # one repo, machine-readable
 deps-handler dependabot --markdown        # GitHub Markdown, as for an issue body
 deps-handler dependabot --review --apply  # let an AI agent judge bigger updates too
+deps-handler pr handle acme/Storefront#123 --agent claude  # review any non-Dependabot PR
+deps-handler pr handle --repo acme/Storefront --agent claude --apply  # review, repair and merge
 deps-handler pr diagnose acme/Storefront#123 --list > repair.md  # AI repair handoff
 deps-handler pr rerun acme/Storefront#123           # preview failed Actions jobs
 deps-handler pr rerun acme/Storefront#123 --apply   # rerun once and watch new attempts
@@ -124,6 +127,83 @@ deps-handler pr fix acme/Storefront#123 --agent codex --push  # publish and veri
 deps-handler verdicts              # the agent's cached verdicts
 deps-handler verdicts acme/Storefront --json  # one repo's, with concerns
 ```
+
+### Review, repair and merge non-Dependabot PRs
+
+`pr handle` is a separate workflow from `dependabot`. It always excludes PRs
+originally opened by Dependabot, including explicitly named PRs and those
+someone later repaired. PRs from other bots are eligible. It does not use the
+Dependabot repository list or dependency update policy.
+
+```bash
+# Preview a code review and proposed actions for one or more selected PRs
+dh pr handle acme/Storefront#123 acme/Storefront#125 --agent claude
+
+# Authorize repairs, pushes, supported CI reruns and merging for those PRs
+dh pr handle acme/Storefront#123 acme/Storefront#125 --agent claude --apply
+
+# Preview every open PR in one explicitly named repository
+dh pr handle --repo acme/Storefront --agent codex
+
+# Handle that repository's PRs, requiring squash merges
+dh pr handle --repo acme/Storefront --agent codex --apply --merge-method squash
+```
+
+Supply PR references (GitHub URLs also work) or `--repo owner/name`, exclusively.
+Repository discovery completes before processing starts, oldest PR first.
+Processing is serial and refreshes each PR against the current base, so a
+preceding merge cannot leave the next review based on older code. New PRs
+are not discovered during processing. Explicit PR references run in the order
+given. Drafts, closed PRs and Dependabot PRs are reported as skipped.
+
+The agent reviews the description, full change, relevant source and tests,
+CI evidence and review discussions, even when CI is already green. Its verdict
+is to approve, propose concrete repairs, or identify a blocker. Unclear intent
+produces a specific question in the recommendations instead of speculative
+changes. A preview only reads code and evidence; it does not execute tests or
+publish anything. Agent execution can incur the selected provider's normal costs.
+
+With `--apply`, supported repairs are made in a private checkout, validated and
+pushed to the PR's head branch. The command waits for CI and reviews the new
+head again before considering a merge. It can also rerun an identified GitHub
+Actions job when the review cites evidence of a transient failure, at most once
+per workflow per head. It never reruns external or unidentified checks. Repairs
+and reruns share `--max-attempts` (3 by default), followed by a final review.
+`--wait-timeout` defaults to 15 minutes per CI wait. A failed apply keeps its
+checkout and reports its path for recovery; successful runs clean theirs up.
+
+Approval is an internal AI verdict, not a GitHub approval. Merging requires
+passing CI with at least one check that ran, complete check and discussion
+evidence, resolved review discussions, write permission and GitHub reporting
+the PR mergeable and clean with its review requirements satisfied. No required
+approvals are fabricated, discussions resolved or branch rules bypassed.
+The discussion read is bounded to 100 issue comments, reviews, review threads
+and comments per thread; a larger or incomplete list blocks handling and is
+reported. Code, base or discussion changes during review invalidate the result;
+changes during editing keep the edits local without pushing them.
+
+Merges pin the reviewed head SHA. A merge request with an uncertain response
+is reconciled by reading the PR's state and is never automatically retried.
+The default method prefers squash, then merge or rebase according to what the
+repository allows; `--merge-method` requires the specified method instead.
+The command does not post GitHub reviews or comments, mark drafts ready, or
+perform account or service configuration changes.
+
+Agent settings come from config when available; no config or configured
+repository is required. Claude is the default. Claude and Codex support
+`--apply`; the API agent supports preview only. `--json` returns an array of
+per-PR results, including review history, repair validation, pushed heads,
+reruns, merge attempts, blockers and retained checkout paths. `--list` prints
+a Markdown report. Text reports include each PR's outcome and next actions.
+
+A preview exits 0 when all reviews completed, even if they identified blockers.
+With `--apply`, exit 0 means every eligible PR merged; skipped PRs do not fail
+the run. An error or an eligible PR left blocked exits 1. Other selected PRs
+are still processed. Invalid arguments exit 2 and interruption exits 130.
+
+`pr fix --push` remains repair-only and accepts any PR author. A repaired
+Dependabot PR still requires manual merging: `dependabot` excludes it under
+its authorship policy and `pr handle` excludes its original author.
 
 ### Diagnose or repair a specific PR
 
@@ -449,8 +529,16 @@ agent judges those:
 deps-handler dependabot --review                # dry run: review, merge nothing
 deps-handler dependabot --review --apply
 deps-handler dependabot --agent codex --apply   # another agent; implies --review
+dh dependabot --agent claude --apply --owner sglavoie --repo deps-handler --allow-major
 deps-handler dependabot --agent api --review --review-parallel 1   # a local model
 ```
+
+`--allow-major` explicitly requests agent review of major updates and also
+works without `--review` or `--agent` (using the configured agent). An approved
+major update can merge with `--apply` after the usual checks. `--agent` and
+`--review` already request the same review path for major updates, so the flag
+is optional with either one. A repository with `agent_review: false` still
+excludes its updates from agent review.
 
 The agent reads a shallow checkout of the PR, its release notes and its
 diff, and answers `approve` or `reject` with its reasons. It runs

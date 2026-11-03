@@ -33,6 +33,7 @@ func newDependabotCmd() *cobra.Command {
 		owners     []string
 		allRepos   bool
 		reviews    bool
+		allowMajor bool
 		agentName  string
 		maxReviews int
 		open       bool
@@ -50,14 +51,16 @@ safe PRs one at a time per repository and comments "@dependabot rebase" on
 safe PRs that are behind their base branch. Up to --parallel repositories
 are processed at once; the report keeps the config order.
 
-With --review (or --agent), an AI agent judges the PRs the policy alone
+With --review, --agent, or --allow-major, an AI agent judges the PRs the policy alone
 would not merge because of their size: updates over max_update_type and
 updates of unknown size, once everything else about them is safe. The
 agent only reads a checkout of the PR; an update it approves is merged
 like any other, after every check has been made again. Verdicts are
 cached, so a scheduled run does not pay twice for the same update. A dry
 run reviews too, and shows what would be merged. Up to --review-parallel
-agents run at once.
+agents run at once. --allow-major is an explicit way to request this review
+path for major updates; it never bypasses agent approval, agent_review: false,
+or the other merge checks.
 
 With --repo and --owner, only the named repositories and the repositories
 of the named owners run; --owner leaves out repositories set to skip: true,
@@ -88,15 +91,15 @@ no repository of; and 130 when interrupted.`,
 			if cmd.Flags().Changed("agent") && strings.TrimSpace(agentName) == "" {
 				return usageError{errors.New("--agent needs an agent name")}
 			}
-			wantReviews := reviews || agentName != ""
+			wantReviews := reviews || agentName != "" || allowMajor
 			if cmd.Flags().Changed("max-reviews") && !wantReviews {
-				return usageError{errors.New("--max-reviews needs --review or --agent")}
+				return usageError{errors.New("--max-reviews needs --review, --agent, or --allow-major")}
 			}
 			if maxReviews < 0 {
 				return usageError{errors.New("--max-reviews must not be negative")}
 			}
 			if cmd.Flags().Changed("review-parallel") && !wantReviews {
-				return usageError{errors.New("--review-parallel needs --review or --agent")}
+				return usageError{errors.New("--review-parallel needs --review, --agent, or --allow-major")}
 			}
 			if parallel < 1 {
 				return usageError{errors.New("--parallel must be at least 1")}
@@ -234,6 +237,7 @@ no repository of; and 130 when interrupted.`,
 	keepEmpty(c, "repo", "owner")
 	c.Flags().BoolVar(&allRepos, "include-skipped", false, "also handle repos set to skip: true")
 	c.Flags().BoolVar(&reviews, "review", false, "let an AI agent judge updates over max_update_type and of unknown size")
+	c.Flags().BoolVar(&allowMajor, "allow-major", false, "let an AI agent approve major updates (implies --review; --apply merges approved PRs)")
 	c.Flags().StringVar(&agentName, "agent", "", "agent to review with: "+config.AgentList()+" (default from config; implies --review)")
 	c.Flags().BoolVar(&open, "open", false, "only report repos with open Dependabot PRs")
 	c.Flags().IntVar(&maxReviews, "max-reviews", 10, "most agent reviews in one run (0 for no limit)")

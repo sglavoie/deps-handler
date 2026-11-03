@@ -25,14 +25,18 @@ var configPath string
 func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "deps-handler",
-		Short: "Manage Dependabot updates and diagnose or repair pull requests",
+		Short: "Manage Dependabot updates and review, repair or merge pull requests",
 		Long: `deps-handler manages Dependabot updates across repositories and helps
-diagnose or repair any explicitly selected pull request.
+review, repair and merge selected non-Dependabot pull requests.
 
 Use dependabot to evaluate open Dependabot PRs in configured repositories
 and, with --apply, merge those that are green and within policy. PRs not
 opened by Dependabot, or touched by anyone else, are never changed by
 this command.
+
+Use pr handle with specific PR references or --repo owner/name to review
+non-Dependabot PRs; --apply authorizes repairs, CI reruns and merging.
+Dependabot PRs are always excluded from this separate workflow.
 
 Use pr diagnose for a repair handoff or pr fix to prepare local fixes to
 a selected PR; add --push to publish them and verify CI. Use pr rerun to

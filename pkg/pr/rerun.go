@@ -19,6 +19,11 @@ type RerunOptions struct {
 	Attempt int
 }
 
+// Handling may reassess a confirmed failed rerun or other remaining failures.
+// Transport, identity and timeout errors must still stop the workflow.
+var errRerunFailed = errors.New("rerun attempt failed")
+var errRerunRemainingChecks = errors.New("rerun completed, but PR checks are not confirmed passing; run pr diagnose for the remaining failures or evidence gaps")
+
 // Rerun records one write per workflow run. JobID is zero when all failed
 // jobs in that run are selected; Jobs lists the verified failed jobs.
 type Rerun struct {
@@ -231,7 +236,7 @@ func (s *RerunService) wait(ctx context.Context, p github.PRSnapshot, baseline g
 		}
 		if run.Attempt == baseline.Attempt+1 && run.Status == "completed" {
 			if run.Conclusion != "success" {
-				return fmt.Errorf("run %d attempt %d finished with %s; run pr diagnose for current evidence", r.RunID, run.Attempt, run.Conclusion)
+				return fmt.Errorf("run %d attempt %d finished with %s; run pr diagnose for current evidence: %w", r.RunID, run.Attempt, run.Conclusion, errRerunFailed)
 			}
 			return nil
 		}
@@ -286,7 +291,7 @@ func (s *RerunService) confirmChecks(ctx context.Context, p github.PRSnapshot, b
 				continue
 			}
 			if !oldChecks[check.ID] || check.State == github.CheckUnknown {
-				return errors.New("rerun completed, but PR checks are not confirmed passing; run pr diagnose for the remaining failures or evidence gaps")
+				return errRerunRemainingChecks
 			}
 		}
 		if err := github.Sleep(ctx, s.PollInterval); err != nil {

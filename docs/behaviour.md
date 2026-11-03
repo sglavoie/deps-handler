@@ -146,14 +146,20 @@ Some updates are safe in every way the policy can check but their size:
 a bump over `max_update_type` (a major one, or a minor one under
 `max_update_type: patch`), or an update whose size Dependabot does not
 record as semver (a GitHub Action pinned by commit, a Docker
-digest). With `--review`, deps-handler asks an AI agent about those, once
-everything else about them would let them merge or rebase:
+digest). With `--review`, `--agent`, or `--allow-major`, deps-handler asks
+an AI agent about those, once everything else about them would let them
+merge or rebase:
 
 ```bash
 deps-handler dependabot --review                # dry run: review, merge nothing
 deps-handler dependabot --review --apply
 deps-handler dependabot --agent codex --apply   # another agent; implies --review
+deps-handler dependabot --allow-major --apply   # configured agent reviews major updates
 ```
+
+`--allow-major` makes the major update review path explicit and implies
+`--review`; `--agent` and `--review` already include major updates. The flag
+does not override `agent_review: false` or any other merge check.
 
 The agent gets a shallow checkout of the PR's head commit (kept under
 `~/.cache/deps-handler/checkouts`, readable by you alone, and reused), the PR description with
@@ -361,8 +367,8 @@ in the example, the agent gets whichever your environment sets. Set
 `agent_review: false` on a repo to keep the agent out of it; its report
 header then says `no agent review`. When every repo a run selects sets it,
 `--review` says so and runs without the agent, which need not be
-installed. `--max-reviews` or `--review-parallel` without `--review` or
-`--agent` is an error.
+installed. `--max-reviews` or `--review-parallel` without `--review`,
+`--agent`, or `--allow-major` is an error.
 
 ## Scripting
 

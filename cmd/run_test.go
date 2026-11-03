@@ -10,8 +10,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sglavoie/deps-handler/internal/testutil"
+	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/policy"
 	"github.com/sglavoie/deps-handler/pkg/review"
@@ -102,6 +104,48 @@ func TestRunApply(t *testing.T) {
 	code, out, _ := run("dependabot", "-c", cfg, "--apply", "-r", " busy ")
 	if code != 0 || len(fc.merges) != 1 || fc.merges[0] != 1 || !strings.Contains(out, "1 repo: 1 merged, 1 skipped") {
 		t.Fatalf("code %d, merges %v:\n%s", code, fc.merges, out)
+	}
+}
+
+type approvingMajorReviewer struct{ calls []int }
+
+func (r *approvingMajorReviewer) Review(_ context.Context, req review.Request) (policy.Verdict, error) {
+	r.calls = append(r.calls, req.Number)
+	return policy.Verdict{Approved: true, Summary: "major update is safe"}, nil
+}
+
+func TestRunAllowMajorAppliesAgentApprovedUpdate(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"explicit agent", []string{"--agent", "claude", "--apply", "--owner", "sglavoie", "--repo", "deps-handler", "--allow-major"}},
+		{"configured agent", []string{"--allow-major", "--apply", "--owner", "sglavoie", "--repo", "deps-handler", "--max-reviews", "1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fc := &fakeClient{repos: map[string]*github.Repo{
+				"sglavoie/deps-handler": testutil.Repo(testutil.PR(1, "lib:major")),
+			}}
+			useClient(t, fc)
+			cfg := writeConfig(t, "repos:\n  - sglavoie/deps-handler\n")
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			t.Setenv("XDG_CACHE_HOME", t.TempDir())
+			oldAgent, oldReviewer := newAgent, newReviewer
+			t.Cleanup(func() { newAgent, newReviewer = oldAgent, oldReviewer })
+			newAgent = func(cfg config.Agent, name string) (review.Agent, error) {
+				if name != "claude" && !(name == "" && cfg.Use == "claude") {
+					t.Errorf("agent = %q, configured = %q; want claude", name, cfg.Use)
+				}
+				return review.Claude{}, nil
+			}
+			rv := &approvingMajorReviewer{}
+			newReviewer = func(review.Agent, github.Client, *review.Workspace, time.Duration) review.Reviewer { return rv }
+
+			code, out, stderr := run(append([]string{"dependabot", "-c", cfg}, tc.args...)...)
+			if code != 0 || !slices.Equal(rv.calls, []int{1}) || !slices.Equal(fc.merges, []int{1}) || !strings.Contains(out, "approved by claude") {
+				t.Fatalf("code %d, reviews %v, merges %v, stderr %q:\n%s", code, rv.calls, fc.merges, stderr, out)
+			}
+		})
 	}
 }
 

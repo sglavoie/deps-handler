@@ -1,4 +1,4 @@
-// Package pr investigates and repairs an explicitly selected pull request.
+// Package pr reviews, repairs and handles explicitly selected pull requests.
 // These opt-in operations are separate from automatic Dependabot merging.
 package pr
 

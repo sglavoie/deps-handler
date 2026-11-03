@@ -114,7 +114,7 @@ type PRSnapshot struct {
 }
 
 // PRClient deliberately has no merge operation. Fixes update the selected
-// head branch; merging remains a separate user action.
+// head branch. The separate HandleClient exposes orchestrated merging.
 type PRClient interface {
 	Snapshot(context.Context, PRTarget) (PRSnapshot, error)
 	Evidence(context.Context, PRSnapshot) (PREvidence, error)

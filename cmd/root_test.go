@@ -277,13 +277,13 @@ func TestRunErrorsExitCodes(t *testing.T) {
 		"missing arg":     {[]string{"verdicts", "forget"}, 2, "requires at least 1 arg"},
 		"unknown agent":   {[]string{"dependabot", "-c", active, "--agent", "gemini"}, 2, `unknown agent "gemini" (want claude, codex or api)`},
 		"bad limit":       {[]string{"dependabot", "-c", active, "--review", "--max-reviews", "-1"}, 2, "--max-reviews must not be negative"},
-		"limit alone":     {[]string{"dependabot", "-c", active, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
+		"limit alone":     {[]string{"dependabot", "-c", active, "--max-reviews", "3"}, 2, "--max-reviews needs --review, --agent, or --allow-major"},
 		"no parallel":     {[]string{"dependabot", "-c", active, "--parallel", "0"}, 2, "--parallel must be at least 1"},
 		"no review slots": {[]string{"dependabot", "-c", active, "--review", "--review-parallel", "0"}, 2, "--review-parallel must be at least 1"},
-		"slots alone":     {[]string{"dependabot", "-c", active, "--review-parallel", "3"}, 2, "--review-parallel needs --review or --agent"},
+		"slots alone":     {[]string{"dependabot", "-c", active, "--review-parallel", "3"}, 2, "--review-parallel needs --review, --agent, or --allow-major"},
 		"two formats":     {[]string{"dependabot", "-c", missing, "--json", "--markdown"}, 2, "--markdown cannot be used with"},
 		// The command line is checked before the config is read.
-		"limit before config": {[]string{"dependabot", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review or --agent"},
+		"limit before config": {[]string{"dependabot", "-c", missing, "--max-reviews", "3"}, 2, "--max-reviews needs --review, --agent, or --allow-major"},
 		"repo before config":  {[]string{"dependabot", "-c", missing, "-r", ""}, 2, "--repo needs a repo name"},
 		"owner before config": {[]string{"dependabot", "-c", missing, "--owner", ""}, 2, "--owner needs an owner name"},
 		// pflag drops an empty value given beside others.
