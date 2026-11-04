@@ -214,6 +214,19 @@ func TestHandleDoesNotRepairWhileHumanDecisionIsPending(t *testing.T) {
 	}
 }
 
+func TestHandleDoesNotRepairAmbiguousFailedChecks(t *testing.T) {
+	s, c, a, w := handleFixture()
+	c.state.Snapshot.Checks = []github.PRCheck{
+		{Check: github.Check{Name: "test", State: github.CheckFailed, App: 1, Workflow: 2, Event: "pull_request", Suite: 3}},
+		{Check: github.Check{Name: "test", State: github.CheckFailed, App: 2, Workflow: 3, Event: "pull_request", Suite: 4}},
+	}
+	a.raw = handleAnswer("repair", `{"subject":"test","action":"code_repair","reason":"One workflow has a source failure","next_step":"Fix the source failure"}`)
+	got, err := s.Run(context.Background(), c.state.Snapshot.Target, HandleOptions{Apply: true})
+	if err != nil || got.Status != "blocked" || a.calls != 1 || w.pushes != 0 || c.merges != 0 || !strings.Contains(got.Summary, "human decision or more evidence") {
+		t.Fatalf("ambiguous failures triggered repair: result=%+v err=%v calls=%d pushes=%d merges=%d", got, err, a.calls, w.pushes, c.merges)
+	}
+}
+
 func TestHandlePreservesGitHubGatesDespiteAIApproval(t *testing.T) {
 	for _, gate := range []string{"review", "discussion", "merge-state", "mergeability", "permission", "method", "incomplete-discussions", "author", "archive"} {
 		t.Run(gate, func(t *testing.T) {
@@ -395,6 +408,9 @@ func TestHandleCanceledAgentCannotAuthorizeMerge(t *testing.T) {
 
 func TestHandleWaitsForPendingChecksBeforeReview(t *testing.T) {
 	s, c, a, w := handleFixture()
+	// The fixture's 30 ms deadline can expire before the second simulated
+	// state read when other packages run concurrently in the full suite.
+	s.WaitTimeout = 500 * time.Millisecond
 	pending := c.state.Snapshot
 	pending.Checks = []github.PRCheck{{Check: github.Check{Name: "test", State: github.CheckPending}}}
 	c.snapshots = []github.PRSnapshot{pending, c.state.Snapshot}

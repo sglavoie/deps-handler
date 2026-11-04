@@ -62,6 +62,26 @@ func (a *Analysis) completeRecommendations(p github.PRSnapshot) {
 	for _, r := range a.Recommendations {
 		covered[r.Subject] = true
 	}
+	// Recommendations identify checks by name. If several unresolved checks
+	// share one name, a recommendation for that name cannot classify each
+	// producer independently, even if the agent supplied several of them.
+	unresolved := make(map[string]int)
+	for _, c := range p.Checks {
+		if c.State != github.CheckPassed && c.State != github.CheckSkipped {
+			unresolved[c.Name]++
+		}
+	}
+	ambiguous := make(map[string]bool)
+	for _, c := range p.Checks {
+		if unresolved[c.Name] <= 1 || ambiguous[c.Name] {
+			continue
+		}
+		ambiguous[c.Name] = true
+		covered[c.Name] = true
+		a.Recommendations = append(a.Recommendations, Recommendation{c.Name, InsufficientEvidence,
+			"Several unresolved checks share this name; a name-only recommendation cannot identify each producer.",
+			"Inspect each check's workflow and URL, repair the failures explicitly with pr fix, then run handle again."})
+	}
 	allSkipped := true
 	for _, c := range p.Checks {
 		allSkipped = allSkipped && c.State == github.CheckSkipped

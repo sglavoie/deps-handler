@@ -177,6 +177,17 @@ func TestUnclassifiedFailuresStayUncertain(t *testing.T) {
 	}
 }
 
+func TestAmbiguousFailedCheckNamesRequireSeparateEvidence(t *testing.T) {
+	p := snapshot(github.CheckFailed)
+	p.Checks = append(p.Checks, github.PRCheck{Check: github.Check{Name: "test", State: github.CheckFailed, App: 2, Workflow: 3, Event: "pull_request", Suite: 4}})
+	p.Checks[0].App, p.Checks[0].Workflow, p.Checks[0].Event, p.Checks[0].Suite = 1, 2, "pull_request", 3
+	a := Analysis{Recommendations: []Recommendation{{Subject: "test", Action: CodeRepair, Reason: "First workflow has a source failure.", NextStep: "Fix the source failure."}}}
+	a.completeRecommendations(p)
+	if !hasHumanBlocker(a) {
+		t.Fatalf("one name-only recommendation covered two failed producers: %+v", a.Recommendations)
+	}
+}
+
 func TestObservedBaseRepairDoesNotDependOnAgentClassification(t *testing.T) {
 	p := snapshot(github.CheckPassed)
 	p.MergeState, p.Mergeable = "DIRTY", "CONFLICTING"
