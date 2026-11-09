@@ -5,8 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Manages Dependabot updates across a list of repositories and reviews, repairs
-and merges explicitly selected non-Dependabot pull requests. It also diagnoses
-or repairs any selected PR independently. It uses your `gh` login.
+and merges explicitly selected non-Dependabot pull requests. It also diagnoses,
+repairs or directly merges PRs from any author across owners and repositories.
+It uses your `gh` login.
 
 The same repository also contains a free GitHub App server. It
 reports into a Dependency health issue and merges only in repositories
@@ -119,6 +120,8 @@ deps-handler dependabot --markdown        # GitHub Markdown, as for an issue bod
 deps-handler dependabot --review --apply  # let an AI agent judge bigger updates too
 deps-handler pr list                       # open PRs across accessible repos
 deps-handler pr list --owner acme --repo Storefront --repo API --json
+deps-handler pr merge --owner acme --repo Storefront --repo API  # preview eligible merges
+deps-handler pr merge acme/Storefront#123 --apply  # merge a PR from any author
 deps-handler pr handle acme/Storefront#123 --agent claude  # review any non-Dependabot PR
 deps-handler pr handle --repo acme/Storefront --agent claude --apply  # review, repair and merge
 deps-handler pr diagnose acme/Storefront#123 --list > repair.md  # AI repair handoff
@@ -138,6 +141,46 @@ Use one `--owner` to narrow to an owner, and repeat `--repo` to select multiple
 repositories. `--repo owner/name` works without `--owner`; `--repo name` selects
 matching repository names across owners, or that owner's repository when
 `--owner` is set. The filters combine, and `--json` emits structured results.
+
+### Merge PRs from any author
+
+`dh pr merge` previews eligible merges across accessible repositories, with
+the same `--owner` and repeatable `--repo` / `-r` filters as `pr list`.
+It accepts any PR author, including Dependabot and PRs repaired by someone
+else. No project config, AI agent or local checkout is required.
+
+```sh
+dh pr merge --owner acme --repo Storefront --repo API
+dh pr merge --owner acme --repo Storefront --repo API --apply
+dh pr merge acme/Storefront#123 https://github.com/other/API/pull/42 --apply
+dh pr merge 123 --owner acme --repo Storefront --apply --merge-method squash
+dh pr merge --repo acme/Storefront --json
+```
+
+Explicit PR references and repository filters are separate selection modes.
+PR numbers can be used with one `--repo owner/name`, or one bare `--repo`
+and `--owner`. Without references or filters, all accessible repositories
+are selected. Discovery completes before any writes; discovered PRs are
+processed oldest first, with fresh state for each merge.
+
+Preview is the default; add `--apply` to merge. Drafts and closed PRs are
+skipped. Merging requires write access, clean GitHub mergeability, satisfied
+review requirements and passing checks. A confirmed empty check list is
+allowed; pending, failed or incomplete checks block merging. The command
+does not run an AI review, repair code, rerun CI or bypass branch protection.
+Use `pr handle` below when you want code review and repair before merging.
+
+The merge method defaults to squash, then merge or rebase if unavailable.
+`--merge-method` requires that method to be enabled. Every merge pins the
+current head SHA. An uncertain response is reconciled by reading GitHub's
+PR state, never by automatically repeating the merge request.
+
+Tables are the default; `--list` prints plain rows and `--json` emits an
+array with each target, snapshot, outcome, blockers and merge attempt.
+Blocked or errored PRs do not prevent processing the rest. A completed
+preview exits 0 even with blockers; an operational error or an apply with
+blocked PRs exits 1. Skipped PRs do not fail the run. Invalid arguments exit 2
+and interruption exits 130.
 
 ### Review, repair and merge non-Dependabot PRs
 
@@ -215,8 +258,8 @@ the run. An error or an eligible PR left blocked exits 1. Other selected PRs
 are still processed. Invalid arguments exit 2 and interruption exits 130.
 
 `pr fix --push` remains repair-only and accepts any PR author. A repaired
-Dependabot PR still requires manual merging: `dependabot` excludes it under
-its authorship policy and `pr handle` excludes its original author.
+Dependabot PR can be merged with `pr merge --apply`: `dependabot` excludes
+it under its authorship policy and `pr handle` excludes its original author.
 
 ### Diagnose or repair a specific PR
 

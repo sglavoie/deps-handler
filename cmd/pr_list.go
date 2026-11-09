@@ -39,31 +39,9 @@ With neither filter, all accessible repositories are read.
 			if err != nil {
 				return err
 			}
-			if err := checkSelection(cmd, repos, owners); err != nil {
+			owner, err := validatePRSelection(cmd, repos, owners)
+			if err != nil {
 				return err
-			}
-			if len(owners) > 1 {
-				return usageError{errors.New("--owner accepts one value only")}
-			}
-			owner := ""
-			if len(owners) == 1 {
-				owner = owners[0]
-				if _, _, err := github.ParseRepository(owner + "/valid"); err != nil {
-					return usageError{fmt.Errorf("invalid owner %q", owner)}
-				}
-			}
-			for _, repo := range repos {
-				if strings.Contains(repo, "/") {
-					o, _, err := github.ParseRepository(repo)
-					if err != nil {
-						return usageError{err}
-					}
-					if owner != "" && !strings.EqualFold(o, owner) {
-						return usageError{fmt.Errorf("--repo %q is outside --owner %q", repo, owner)}
-					}
-				} else if _, _, err := github.ParseRepository("valid/" + repo); err != nil {
-					return usageError{fmt.Errorf("invalid repository name %q", repo)}
-				}
 			}
 			if !prCommandsAvailable {
 				return errors.New("pr commands are unavailable in the demo build")
@@ -192,4 +170,35 @@ func writePRList(cmd *cobra.Command, prs []github.ListedPR, format string) error
 		fmt.Fprintln(tw, strings.Join(row, "\t"))
 	}
 	return tw.Flush()
+}
+
+// validatePRSelection keeps repository filters identical across list and merge.
+func validatePRSelection(cmd *cobra.Command, repos, owners []string) (string, error) {
+	if err := checkSelection(cmd, repos, owners); err != nil {
+		return "", err
+	}
+	if len(owners) > 1 {
+		return "", usageError{errors.New("--owner accepts one value only")}
+	}
+	owner := ""
+	if len(owners) == 1 {
+		owner = owners[0]
+		if _, _, err := github.ParseRepository(owner + "/valid"); err != nil {
+			return "", usageError{fmt.Errorf("invalid owner %q", owner)}
+		}
+	}
+	for _, repo := range repos {
+		if strings.Contains(repo, "/") {
+			o, _, err := github.ParseRepository(repo)
+			if err != nil {
+				return "", usageError{err}
+			}
+			if owner != "" && !strings.EqualFold(o, owner) {
+				return "", usageError{fmt.Errorf("--repo %q is outside --owner %q", repo, owner)}
+			}
+		} else if _, _, err := github.ParseRepository("valid/" + repo); err != nil {
+			return "", usageError{fmt.Errorf("invalid repository name %q", repo)}
+		}
+	}
+	return owner, nil
 }

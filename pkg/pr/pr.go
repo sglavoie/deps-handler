@@ -130,6 +130,10 @@ func needsBaseRepair(p github.PRSnapshot) bool {
 
 // Blockers describes GitHub merge readiness independently of agent opinion.
 func Blockers(p github.PRSnapshot) []string {
+	return mergeBlockers(p, true)
+}
+
+func mergeBlockers(p github.PRSnapshot, requireChecks bool) []string {
 	out := []string{}
 	if p.State != "OPEN" {
 		out = append(out, "PR is not open ("+p.State+")")
@@ -153,7 +157,7 @@ func Blockers(p github.PRSnapshot) []string {
 		out = append(out, "review: "+p.ReviewDecision)
 	}
 	passing, _ := CheckState(p)
-	if !passing {
+	if !passing && (requireChecks || len(p.Checks) > 0) {
 		out = append(out, "checks are not confirmed passing")
 	}
 	if !p.ChecksComplete {
