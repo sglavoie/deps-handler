@@ -57,6 +57,9 @@ With neither filter, all accessible repositories are read.
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			status := report.NewStatus(ctx, cmd.ErrOrStderr())
+			defer status.Close()
+			status.Set("discovering repositories")
 			selected, err := selectPRListRepositories(ctx, client, owner, repos)
 			if err != nil {
 				if ctx.Err() != nil {
@@ -64,7 +67,10 @@ With neither filter, all accessible repositories are read.
 				}
 				return err
 			}
-			prs, err := listPRRepositories(ctx, client, selected)
+			status.Set(fmt.Sprintf("reading repositories · 0/%d", len(selected)))
+			prs, err := listPRRepositories(ctx, client, selected, func(done int) {
+				status.Set(fmt.Sprintf("reading repositories · %d/%d", done, len(selected)))
+			})
 			if err != nil {
 				if ctx.Err() != nil {
 					return errInterrupted
@@ -83,6 +89,7 @@ With neither filter, all accessible repositories are read.
 				}
 				return a.Number - b.Number
 			})
+			status.Close()
 			return writePRList(cmd, prs, format)
 		},
 	}
@@ -95,12 +102,14 @@ With neither filter, all accessible repositories are read.
 
 // listPRRepositories bounds active reads and cancels all in-flight work on the
 // first error. Workers finish before returning, and partial results never escape.
-func listPRRepositories(ctx context.Context, client github.PRListClient, repositories []string) ([]github.ListedPR, error) {
+func listPRRepositories(ctx context.Context, client github.PRListClient, repositories []string, progress ...func(int)) ([]github.ListedPR, error) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	jobs := make(chan int)
 	results := make([][]github.ListedPR, len(repositories))
 	var workers sync.WaitGroup
+	var progressMu sync.Mutex
+	completed := 0
 	for range min(runner.DefaultParallel, len(repositories)) {
 		workers.Go(func() {
 			for i := range jobs {
@@ -114,6 +123,12 @@ func listPRRepositories(ctx context.Context, client github.PRListClient, reposit
 					return
 				}
 				results[i] = prs
+				progressMu.Lock()
+				completed++
+				for _, notify := range progress {
+					notify(completed)
+				}
+				progressMu.Unlock()
 			}
 		})
 	}

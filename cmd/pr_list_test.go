@@ -84,6 +84,43 @@ func TestPRListAcrossRepositoriesAndFormats(t *testing.T) {
 	}
 }
 
+func TestPRListProgressCountsCompletedReads(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	release := make(chan struct{})
+	c := &commandPRListClient{list: func(ctx context.Context, repository string) ([]github.ListedPR, error) {
+		if repository == "o/slow" {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		return []github.ListedPR{}, nil
+	}}
+	counts := make(chan int, 2)
+	done := make(chan error, 1)
+	go func() {
+		_, err := listPRRepositories(ctx, c, []string{"o/slow", "o/fast"}, func(n int) { counts <- n })
+		done <- err
+	}()
+	select {
+	case n := <-counts:
+		if n != 1 {
+			t.Error(n)
+		}
+	case <-ctx.Done():
+		t.Error("completed repository did not report progress")
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if n := <-counts; n != 2 {
+		t.Fatal(n)
+	}
+}
+
 func TestPRListFiltersAndSingleOwner(t *testing.T) {
 	for _, tc := range []struct {
 		args  []string

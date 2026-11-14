@@ -15,6 +15,7 @@ import (
 	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/pr"
+	"github.com/sglavoie/deps-handler/pkg/report"
 	"github.com/sglavoie/deps-handler/pkg/review"
 	"github.com/spf13/cobra"
 )
@@ -139,6 +140,9 @@ do not fail the run. Invalid arguments exit 2; interruption exits 130.`,
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			status := report.NewStatus(ctx, cmd.ErrOrStderr())
+			defer status.Close()
+			status.Set("reading pull requests")
 			context.AfterFunc(ctx, stop)
 			if owner != "" {
 				targets, err = client.OpenPRs(ctx, owner, name)
@@ -156,6 +160,7 @@ do not fail the run. Invalid arguments exit 2; interruption exits 130.`,
 				if ctx.Err() != nil {
 					break
 				}
+				status.Set("handling " + target.String())
 				// Every PR has its own private checkout, including failed repairs.
 				result, runErr := func() (pr.HandleResult, error) {
 					root, err := os.MkdirTemp("", "deps-handler-handle-")
@@ -164,11 +169,14 @@ do not fail the run. Invalid arguments exit 2; interruption exits 130.`,
 					}
 					service := pr.HandleService{Client: client, Agent: agent, Workspace: newPRWorkspace(filepath.Join(root, "checkout")),
 						AgentTimeout: cfg.Timeout, WaitTimeout: waitTimeout, PollInterval: 10 * time.Second, MaxAttempts: attempts,
-						Progress: func(message string) { fmt.Fprintln(cmd.ErrOrStderr(), review.Clean(message)) },
+						Progress: func(message string) { status.Progress(review.Clean(message)) },
 					}
 					result, runErr := service.Run(ctx, target, opts)
 					if opts.Apply && (runErr != nil || result.Status == "blocked") && result.Workspace != "" {
-						fmt.Fprintln(cmd.ErrOrStderr(), "Repair checkout kept at", result.Workspace)
+						status.WithOutput(func() error {
+							_, err := fmt.Fprintln(cmd.ErrOrStderr(), "Repair checkout kept at", result.Workspace)
+							return err
+						})
 					} else {
 						_ = os.RemoveAll(root)
 						result.Workspace = ""
@@ -178,6 +186,7 @@ do not fail the run. Invalid arguments exit 2; interruption exits 130.`,
 				results = append(results, result)
 				failed = failed || runErr != nil || (opts.Apply && result.Status != "merged" && result.Status != "skipped")
 			}
+			status.Close()
 			if format == "json" {
 				data, err := json.MarshalIndent(results, "", "  ")
 				if err != nil {

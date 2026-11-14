@@ -593,6 +593,12 @@ the cached verdict. Dry runs and repositories in report mode post no comments.
 Reviewer text is escaped so Markdown images, links and bare URLs cannot
 publish external resources; mentions and bot commands are neutralized too.
 
+On a terminal, a live status line on stderr shows the active repository or
+agent review, completed repository count and elapsed time. PR discovery
+shows repositories read so far; agent and CI waits keep animating beneath
+the existing progress messages. Redirect stderr to disable animation.
+Tables, lists, Markdown and JSON on stdout keep their usual format.
+
 The agent never merges anything: an approved PR goes through every check
 again before it merges. Reviews run after their repository's other
 merges, four at a time (`--review-parallel`), at most 10 per run

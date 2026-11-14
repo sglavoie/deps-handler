@@ -534,8 +534,21 @@ The text report of a repository that failed part way still lists
 the writes made and warnings raised before it failed. Durations such as `policy.merge_without_checks_after` are written
 as in the config (`"45m"`, `"0s"`), and give the value in effect: at least
 `30m`, and `"0s"` where checks are not required. Lists are always arrays, never `null`. When stderr is a terminal,
-a line per repository reports progress there while the JSON waits for the
-end.
+a single animated status line shows the active repository or agent review,
+completed repository count and elapsed time. Reviews waiting for an agent
+slot are distinguished from running reviews. Counts advance as repositories
+finish, even when the report is waiting for an earlier repository in config
+order. This status line also accompanies JSON output, replacing the old
+per-repository `done` lines; the JSON document is still written at the end.
+
+`pr list` and `pr merge` show completed repository reads during discovery.
+`pr handle`, `pr fix`, `pr rerun` and `pr eval` retain their permanent stderr
+progress messages and animate the current activity while waiting on agents
+or CI (`pr diagnose` shares the same display as `pr fix`). The line clears
+before report output and on completion, error or interruption. Long activity
+text is clipped to keep the status on one terminal line. Redirected stderr
+has no animation or cursor controls, even with `CLICOLOR_FORCE`; stdout and
+its table, list, Markdown and JSON formats are unchanged.
 
 `deps-handler repos --json` prints `{"repos": [...], "agent": {...}}`: each
 repository's `repo`, `policy` (as in `dependabot --json`) and `skip`, and the

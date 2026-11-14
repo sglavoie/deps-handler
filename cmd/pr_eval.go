@@ -128,8 +128,12 @@ Exit 0 means every selected case passed, 1 means a case failed or errored,
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			status := report.NewStatus(ctx, cmd.ErrOrStderr())
+			defer status.Close()
+			status.Set("preparing evaluation")
 			report := diagnosiseval.Run(ctx, agent, cases, diagnosiseval.Options{Timeout: timeout, Model: model, Version: versionString(),
-				Progress: func(message string) { fmt.Fprintln(cmd.ErrOrStderr(), message) }})
+				Progress: func(message string) { status.Progress(message) }})
+			status.Close()
 			if format == "json" {
 				data, err := json.MarshalIndent(report, "", "  ")
 				if err != nil {

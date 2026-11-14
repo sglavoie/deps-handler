@@ -112,6 +112,9 @@ type Runner struct {
 	Client github.Client
 	Viewer string
 	Apply  bool
+	// Activity reports live work independently of ordered result output. It may
+	// be called concurrently and must return promptly. Set it before running.
+	Activity func(Activity)
 
 	// PollAttempts and PollInterval bound how long to wait for GitHub to
 	// recompute mergeability after a merge. Sleep waits for a duration
@@ -155,6 +158,20 @@ type Runner struct {
 	// orgFiles reads each owner's config.OrgFile once per run.
 	orgFilesMu sync.Mutex
 	orgFiles   map[string]func() ([]byte, error)
+}
+
+// Activity identifies a repository or review transition. A queued review has
+// not acquired an agent slot yet; finished is emitted even on failure.
+type Activity struct {
+	Repo  string
+	PR    int
+	Phase string
+}
+
+func (r *Runner) activity(repo string, pr int, phase string) {
+	if r.Activity != nil {
+		r.Activity(Activity{Repo: repo, PR: pr, Phase: phase})
+	}
 }
 
 // Warn adds a warning about the run as a whole, such as a verdict cache
@@ -215,7 +232,9 @@ func (r *Runner) Run(ctx context.Context, repos []config.Repo, progress func(Rep
 				return
 			}
 			go func() {
+				r.activity(rc.FullName(), 0, "repository-started")
 				results[i] = r.RunRepo(ctx, rc)
+				r.activity(rc.FullName(), 0, "repository-finished")
 				<-slots
 				started[i] <- true
 			}()
@@ -882,6 +901,9 @@ func (r *Runner) endReview() {
 }
 
 func (r *Runner) review(ctx context.Context, req review.Request) (policy.Verdict, error) {
+	repo := req.Owner + "/" + req.Name
+	r.activity(repo, req.Number, "review-queued")
+	defer r.activity(repo, req.Number, "review-finished")
 	r.reviewsOnce.Do(func() { r.reviewSlots = make(chan struct{}, max(1, r.ReviewParallel)) })
 	select {
 	case r.reviewSlots <- struct{}{}:
@@ -893,6 +915,7 @@ func (r *Runner) review(ctx context.Context, req review.Request) (policy.Verdict
 	if err := ctx.Err(); err != nil {
 		return policy.Verdict{}, err
 	}
+	r.activity(repo, req.Number, "review-started")
 	v, err := r.Reviewer.Review(ctx, req)
 	// Custom reviewers may return an answer after cancellation. Never
 	// persist that answer as an approval for a later run.

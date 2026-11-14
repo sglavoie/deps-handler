@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/auth"
-	"github.com/cli/go-gh/v2/pkg/term"
 	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/report"
@@ -157,6 +156,10 @@ no repository of; and 130 when interrupted.`,
 			// process should that stop hang.
 			context.AfterFunc(ctx, stop)
 
+			status := report.NewStatus(ctx, cmd.ErrOrStderr())
+			defer status.Close()
+			status.Set("connecting to GitHub")
+
 			client, err := newClient()
 			if err != nil {
 				return err
@@ -169,29 +172,25 @@ no repository of; and 130 when interrupted.`,
 				return err
 			}
 
-			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
+			out := cmd.OutOrStdout()
 			var outputErr error
 			var progress func(runner.RepoResult)
 			if markdown {
 				progress = func(r runner.RepoResult) {
 					if outputErr == nil && (!open || report.HasPRs(r)) {
-						outputErr = report.Markdown(out, apply, r)
+						outputErr = status.WithOutput(func() error { return report.Markdown(out, apply, r) })
 					}
 				}
 			} else if format != "json" {
 				progress = func(r runner.RepoResult) {
 					if outputErr == nil && (!open || report.HasPRs(r)) {
 						if format == "list" {
-							outputErr = report.Repo(out, apply, r)
+							outputErr = status.WithOutput(func() error { return report.Repo(out, apply, r) })
 						} else {
-							outputErr = report.RepoTable(out, apply, r)
+							outputErr = status.WithOutput(func() error { return report.RepoTable(out, apply, r) })
 						}
 					}
 				}
-			} else if f, ok := errOut.(*os.File); ok && term.IsTerminal(f) {
-				// JSON comes at the end; say what is happening meanwhile,
-				// unless stderr is captured along with it.
-				progress = func(r runner.RepoResult) { report.Progress(errOut, r) }
 			}
 			r := runner.New(client, viewer, apply)
 			r.Parallel, r.ReviewParallel = parallel, reviewPar
@@ -205,7 +204,10 @@ no repository of; and 130 when interrupted.`,
 					r.Warn(msg)
 				}
 			}
+			r.Activity = runnerActivity(status, len(selected), r.AgentName)
+			status.Set(fmt.Sprintf("processing repositories · 0/%d repos", len(selected)))
 			results := r.Run(ctx, selected, progress)
+			status.Close()
 			if outputErr != nil {
 				return outputErr
 			}

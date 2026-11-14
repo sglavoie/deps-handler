@@ -96,6 +96,9 @@ error or blocked apply; invalid arguments exit 2 and interrupts exit 130.`,
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			status := report.NewStatus(ctx, cmd.ErrOrStderr())
+			defer status.Close()
+			status.Set("discovering repositories")
 			if len(args) == 0 {
 				selected, err := selectPRListRepositories(ctx, client, owner, repos)
 				if err != nil {
@@ -105,7 +108,8 @@ error or blocked apply; invalid arguments exit 2 and interrupts exit 130.`,
 					return err
 				}
 				listed := []github.ListedPR{}
-				for _, repository := range selected {
+				status.Set(fmt.Sprintf("reading repositories · 0/%d", len(selected)))
+				for i, repository := range selected {
 					o, name, _ := github.ParseRepository(repository)
 					prs, err := client.ListOpenPRs(ctx, o, name)
 					if err != nil {
@@ -115,6 +119,7 @@ error or blocked apply; invalid arguments exit 2 and interrupts exit 130.`,
 						return err
 					}
 					listed = append(listed, prs...)
+					status.Set(fmt.Sprintf("reading repositories · %d/%d", i+1, len(selected)))
 				}
 				slices.SortFunc(listed, func(a, b github.ListedPR) int {
 					if n := a.CreatedAt.Compare(b.CreatedAt); n != 0 {
@@ -143,10 +148,12 @@ error or blocked apply; invalid arguments exit 2 and interrupts exit 130.`,
 				if ctx.Err() != nil {
 					break
 				}
+				status.Set("checking merge for " + target.String())
 				result, mergeErr := pr.Merge(ctx, client, target, opts)
 				results = append(results, result)
 				failed = failed || mergeErr != nil || (opts.Apply && result.Status == "blocked")
 			}
+			status.Close()
 			if err := writePRMerge(cmd, results, opts.Apply, format); err != nil {
 				return err
 			}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/pr"
+	"github.com/sglavoie/deps-handler/pkg/report"
 	"github.com/sglavoie/deps-handler/pkg/review"
 	"github.com/spf13/cobra"
 )
@@ -64,10 +65,14 @@ unconfirmed response before deciding whether to try again.`,
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			status := report.NewStatus(ctx, cmd.ErrOrStderr())
+			defer status.Close()
+			status.Set("reading " + target.String())
 			service := pr.RerunService{Client: client, WaitTimeout: waitTimeout, PollInterval: 10 * time.Second,
-				Progress: func(message string) { fmt.Fprintln(cmd.ErrOrStderr(), review.Clean(message)) },
+				Progress: func(message string) { status.Progress(review.Clean(message)) },
 			}
 			result, runErr := service.Run(ctx, target, opts)
+			status.Close()
 			if format == "json" {
 				data, err := json.MarshalIndent(result, "", "  ")
 				if err != nil {

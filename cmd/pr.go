@@ -16,6 +16,7 @@ import (
 	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/pr"
+	"github.com/sglavoie/deps-handler/pkg/report"
 	"github.com/sglavoie/deps-handler/pkg/review"
 	"github.com/spf13/cobra"
 )
@@ -156,6 +157,9 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			status := report.NewStatus(ctx, cmd.ErrOrStderr())
+			defer status.Close()
+			status.Set("reading " + target.String())
 			context.AfterFunc(ctx, stop)
 			var workspace pr.Workspace
 			root := ""
@@ -182,7 +186,7 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 			}()
 			service := &pr.Service{Client: client, Agent: agent, Plan: plan, Workspace: workspace,
 				AgentTimeout: cfg.Timeout, WaitTimeout: waitTimeout, PollInterval: 10 * time.Second, MaxAttempts: attempts, Push: push,
-				Progress: func(message string) { fmt.Fprintln(cmd.ErrOrStderr(), review.Clean(message)) },
+				Progress: func(message string) { status.Progress(review.Clean(message)) },
 			}
 			var result pr.Result
 			if fix {
@@ -190,6 +194,7 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 			} else {
 				result, err = service.Diagnose(ctx, target, focus)
 			}
+			status.Close()
 			if err != nil {
 				result.Error = review.Clean(err.Error())
 			}
