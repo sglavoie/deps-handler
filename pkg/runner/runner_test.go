@@ -1676,3 +1676,30 @@ func TestRunConsumesWarnings(t *testing.T) {
 		t.Fatalf("second run repeated an old warning: %+v", second)
 	}
 }
+
+func TestAppliedEventsRetainPresentationMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name, state string
+		fail        bool
+		kind        EventKind
+	}{
+		{"merged", "CLEAN", false, EventMerged},
+		{"merge failed", "CLEAN", true, EventMergeFailed},
+		{"rebased", "BEHIND", false, EventRebaseRequested},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pr := testutil.PR(1)
+			pr.MergeState = tc.state
+			pr.Commits[0].Message = strings.Replace(pr.Commits[0].Message, "- dependency-name:", "- dependency-previous-version: '1.0.0'\n  dependency-name:", 1)
+			fc := &fakeClient{repo: testutil.Repo(pr), failMerge: map[int]bool{1: tc.fail}}
+			res := newRunner(fc, true).RunRepo(context.Background(), repoCfg)
+			if len(res.Events) != 1 || res.Events[0].Kind != tc.kind || len(res.Events[0].Dependencies) != 1 || res.Events[0].Dependencies[0].PreviousVersion != "1.0.0" {
+				t.Fatalf("event: %+v", res.Events)
+			}
+			data, err := json.Marshal(res.Events)
+			if err != nil || strings.Contains(string(data), "dependencies") || strings.Contains(string(data), "1.0.0") {
+				t.Fatalf("event schema changed: %s (%v)", data, err)
+			}
+		})
+	}
+}

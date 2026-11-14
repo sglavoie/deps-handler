@@ -134,3 +134,19 @@ func TestIsCommitAuthor(t *testing.T) {
 		t.Error("an email shaped like Dependabot's with another account's ID")
 	}
 }
+
+func TestPreviousVersionIsOptionalPresentationMetadata(t *testing.T) {
+	for _, tc := range []struct{ field, want string }{
+		{"", ""},
+		{"  dependency-previous-version: '1.0.0'\n", "1.0.0"},
+		{"  dependency-previous-version: [bad, shape]\n", ""},
+		{"  dependency-previous-version: {bad: shape}\n", ""},
+		{"  dependency-previous-version: null\n", ""},
+	} {
+		msg := "bump\n\n---\nupdated-dependencies:\n- dependency-name: lib\n  dependency-version: 1.0.1\n  update-type: version-update:semver-patch\n" + tc.field + "...\n"
+		deps := ParseCommitMessage(msg)
+		if len(deps) != 1 || deps[0].PreviousVersion != tc.want || Grade(deps) != config.UpdatePatch {
+			t.Fatalf("%q: %+v", tc.field, deps)
+		}
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/dependabot"
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/policy"
 	"github.com/sglavoie/deps-handler/pkg/review"
@@ -31,12 +32,15 @@ const (
 )
 
 type Event struct {
-	Number int               `json:"number"`
-	Title  string            `json:"title"`
-	URL    string            `json:"url"`
-	Grade  config.UpdateType `json:"grade"`
-	Kind   EventKind         `json:"kind"`
-	Detail string            `json:"detail,omitempty"`
+	// Dependencies retain presentation metadata after a successful write
+	// removes the PR from the next fetch. They do not extend event JSON.
+	Dependencies []dependabot.Dependency `json:"-"`
+	Number       int                     `json:"number"`
+	Title        string                  `json:"title"`
+	URL          string                  `json:"url"`
+	Grade        config.UpdateType       `json:"grade"`
+	Kind         EventKind               `json:"kind"`
+	Detail       string                  `json:"detail,omitempty"`
 }
 
 // RepoResult is everything a run learned and did in one repository.
@@ -513,7 +517,7 @@ func (r *Runner) RunRepoWithSetup(ctx context.Context, rc config.Repo, setup fun
 					continue
 				}
 				rebased[d.Number] = true
-				ev := Event{Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventRebaseRequested, Detail: r.approval(d)}
+				ev := Event{Dependencies: d.Dependencies, Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventRebaseRequested, Detail: r.approval(d)}
 				switch err := r.comment(ctx, rc, d.Number, policy.RebaseCommand); {
 				case err == nil:
 				case github.Transient(err) && ctx.Err() == nil:
@@ -551,7 +555,7 @@ func (r *Runner) RunRepoWithSetup(ctx context.Context, rc config.Repo, setup fun
 			// This try supersedes an earlier one that may have gone through:
 			// it merges, or fails in a way that tells whether that one did.
 			delete(unsure, next.Number)
-			ev := Event{Number: next.Number, Title: next.Title, URL: next.URL, Grade: next.Grade, Kind: EventMerged}
+			ev := Event{Dependencies: next.Dependencies, Number: next.Number, Title: next.Title, URL: next.URL, Grade: next.Grade, Kind: EventMerged}
 			err = methodErr
 			if err == nil {
 				err = r.merge(ctx, rc, next.Number, method, next.PR.HeadOID)
@@ -619,7 +623,7 @@ func (r *Runner) RunRepoWithSetup(ctx context.Context, rc config.Repo, setup fun
 				}
 				if d.Action == policy.ActionMerge && !attempted[d.Number] {
 					attempted[d.Number] = true
-					res.Events = append(res.Events, Event{Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventMergeFailed, Detail: errWritesBlocked.Error()})
+					res.Events = append(res.Events, Event{Dependencies: d.Dependencies, Number: d.Number, Title: d.Title, URL: d.URL, Grade: d.Grade, Kind: EventMergeFailed, Detail: errWritesBlocked.Error()})
 				}
 			}
 		}

@@ -5,9 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/dependabot"
 	"github.com/sglavoie/deps-handler/pkg/policy"
 	"github.com/sglavoie/deps-handler/pkg/runner"
 )
@@ -120,16 +126,24 @@ func repoBodyView(w io.Writer, apply bool, res runner.RepoResult, s style, borde
 	var rows [][]cell
 	for _, ev := range res.Events {
 		k := string(ev.Kind)
-		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", ev.Number)}, {text: ev.Grade.String(), color: gradeColor(ev.Grade)}, {text: k, color: labelColor(k)}, {text: ev.Detail}, {text: truncate(ev.Title), url: ev.URL}})
+		title := ev.Title
+		if bordered {
+			title = compactTitle(title, ev.Dependencies)
+		}
+		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", ev.Number)}, {text: ev.Grade.String(), color: gradeColor(ev.Grade)}, {text: k, color: labelColor(k)}, {text: ev.Detail}, {text: truncate(title), url: ev.URL}})
 	}
 	for _, d := range decisions {
 		l := label(d.Action, apply)
-		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", d.Number)}, {text: d.Grade.String(), color: gradeColor(d.Grade)}, {text: l, color: labelColor(l)}, {text: d.Reason}, {text: truncate(d.Title), url: d.URL}})
+		title := d.Title
+		if bordered {
+			title = compactTitle(title, d.Dependencies)
+		}
+		rows = append(rows, []cell{{text: fmt.Sprintf("#%d", d.Number)}, {text: d.Grade.String(), color: gradeColor(d.Grade)}, {text: l, color: labelColor(l)}, {text: d.Reason}, {text: truncate(title), url: d.URL}})
 	}
 	if bordered && len(rows) > 0 {
 		values := make([][]string, 0, len(rows))
 		for _, row := range rows {
-			values = append(values, []string{row[0].text, row[1].text, row[2].text, row[3].text, row[4].text})
+			values = append(values, []string{row[0].text, row[1].text, statusLabel(row[2].text), row[3].text, row[4].text})
 		}
 		fmt.Fprintln(w, formatTable(w, s, []string{"PR", "UPDATE", "STATUS", "REASON", "TITLE"}, values))
 	} else {
@@ -141,8 +155,16 @@ func repoBodyView(w io.Writer, apply bool, res runner.RepoResult, s style, borde
 
 	if res.Error == "" && len(res.Findings) > 0 {
 		fmt.Fprintln(w, "  "+s.paint(bold+";"+yellow, "needs attention:"))
-		for _, f := range res.Findings {
-			fmt.Fprintf(w, "    %s %s\n", s.paint(yellow, "-"), s.paint("", f.Summary))
+		findings := res.Findings
+		if bordered {
+			findings = tableFindings(res)
+		}
+		for _, f := range findings {
+			suffix := ""
+			if bordered && len(f.Suggestions) > 0 {
+				suffix = " — " + s.paint(cyan, "suggest:")
+			}
+			fmt.Fprintf(w, "    %s %s%s\n", s.paint(yellow, "-"), s.paint("", f.Summary), suffix)
 			if listsPRs(f.Kind) {
 				fmt.Fprintf(w, "      %s %s\n", s.paint(dim, "PRs:"), prList(f.PRs))
 			}
@@ -150,7 +172,11 @@ func repoBodyView(w io.Writer, apply bool, res runner.RepoResult, s style, borde
 				fmt.Fprintf(w, "      %s\n", s.paint(dim, "- "+d))
 			}
 			for _, sg := range f.Suggestions {
-				fmt.Fprintf(w, "      %s %s\n", s.paint(cyan, "suggest:"), s.paint("", sg))
+				if bordered {
+					fmt.Fprintf(w, "      %s\n", s.paint("", invocationCommand(sg)))
+				} else {
+					fmt.Fprintf(w, "      %s %s\n", s.paint(cyan, "suggest:"), s.paint("", sg))
+				}
 			}
 		}
 	}
@@ -197,13 +223,14 @@ func progress(w io.Writer, res runner.RepoResult, s style) {
 
 // Summary writes the totals line across the repositories reported. hidden
 // counts those left out of the report for having no open Dependabot PRs.
-func Summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int) error {
+// Supplying elapsed adds the table-only payoff; omit it for legacy list output.
+func Summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, elapsed ...time.Duration) error {
 	out := &errorWriter{w: w}
-	summary(out, apply, results, hidden, styleFor(w))
+	summary(out, apply, results, hidden, styleFor(w), elapsed...)
 	return out.err
 }
 
-func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s style) {
+func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s style, elapsed ...time.Duration) {
 	counts := map[string]int{}
 	// applicable counts what --apply would do: not what a repository in
 	// report mode would, as it is never changed.
@@ -230,6 +257,21 @@ func summary(w io.Writer, apply bool, results []runner.RepoResult, hidden int, s
 				applicable[label(d.Action, apply)]++
 			}
 		}
+	}
+	if len(elapsed) > 0 {
+		defer func() {
+			line := "done in " + max(0, elapsed[0]).Round(time.Second).String()
+			if !apply {
+				line = "elapsed " + max(0, elapsed[0]).Round(time.Second).String()
+			} else if findings > 0 {
+				verb := "need"
+				if findings == 1 {
+					verb = "needs"
+				}
+				line += fmt.Sprintf(" · %d %s you: %s", findings, verb, invocationCommand("deps-handler dependabot --open"))
+			}
+			fmt.Fprintln(w, s.paint(dim, line))
+		}()
 	}
 	var parts []string
 	for _, k := range []string{"merged", "merge-failed", "merge", "would merge", "rebase-requested", "rebase-failed", "rebase", "would rebase", "review", "wait", "skip"} {
@@ -367,3 +409,105 @@ func prList(prs []int) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+// invocationCommand recognizes the installed dh executable/symlink. A shell
+// alias expanded to deps-handler is indistinguishable from its long name.
+func invocationCommand(command string) string {
+	if len(os.Args) > 0 && strings.EqualFold(strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"), "dh") && strings.HasPrefix(command, "deps-handler ") {
+		return "dh " + strings.TrimPrefix(command, "deps-handler ")
+	}
+	return command
+}
+
+// tableFindings groups presentation copies only; scripting formats and the
+// underlying finding count retain every observation. Individual failures and
+// agent assessments always keep their own context.
+func tableFindings(res runner.RepoResult) []policy.Finding {
+	var out []policy.Finding
+	keys := map[string]int{}
+	members := map[int][]string{}
+	for _, f := range res.Findings {
+		if len(f.Details) > 0 || f.Kind == policy.FindingIncompatible || f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingAgentRejected || f.Kind == policy.FindingAgentFailed || len(f.PRs) != 1 {
+			out = append(out, f)
+			continue
+		}
+		pr := fmt.Sprintf("#%d", f.PRs[0])
+		message, member := f.Summary, pr
+		kind := string(f.Kind)
+		// Recognize the policy's exact stock messages so custom details are
+		// never discarded. Minor and major holds share the same remedy.
+		grade := ""
+		switch f.Kind {
+		case policy.FindingHeldMinor:
+			grade = "minor"
+		case policy.FindingHeldMajor:
+			grade = "major"
+		}
+		if grade != "" {
+			review := ""
+			if res.Policy.AgentReview {
+				review = ", or run with --review"
+			}
+			stock := fmt.Sprintf("%s is a %s update held only by policy (allow with max_update_type: %s%s)", pr, grade, grade, review)
+			if message == stock {
+				message = "held by policy: {PRs} — allow with max_update_type" + review
+				member += " (" + grade + ")"
+				kind = "held-policy"
+			}
+		}
+		if strings.HasPrefix(message, pr+" ") || strings.HasPrefix(message, pr+":") {
+			message = "{PRs}" + strings.TrimPrefix(message, pr)
+		}
+		if !strings.Contains(message, "{PRs}") {
+			out = append(out, f)
+			continue
+		}
+		// Compare equivalent suggestions, but retain each distinct command
+		// verbatim so grouping never redirects a command to another PR.
+		normalized := make([]string, len(f.Suggestions))
+		for i, suggestion := range f.Suggestions {
+			normalized[i] = findingPR.ReplaceAllStringFunc(suggestion, func(match string) string {
+				if match == pr {
+					return "{PR}"
+				}
+				return match
+			})
+		}
+		encoded, _ := json.Marshal(normalized)
+		key := kind + "\x00" + message + "\x00" + string(encoded)
+		if i, ok := keys[key]; ok {
+			members[i] = append(members[i], member)
+			out[i].PRs = append(out[i].PRs, f.PRs...)
+			for _, suggestion := range f.Suggestions {
+				if !slices.Contains(out[i].Suggestions, suggestion) {
+					out[i].Suggestions = append(out[i].Suggestions, suggestion)
+				}
+			}
+			out[i].Summary = strings.ReplaceAll(message, "{PRs}", strings.Join(members[i], ", "))
+		} else {
+			i := len(out)
+			keys[key] = i
+			members[i] = []string{member}
+			f.PRs = slices.Clone(f.PRs)
+			f.Suggestions = slices.Clone(f.Suggestions)
+			f.Summary = strings.ReplaceAll(message, "{PRs}", member)
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// compactTitle only uses explicit metadata; titles are never parsed for
+// versions. A named group remains a group even when it has just one entry.
+func compactTitle(title string, deps []dependabot.Dependency) string {
+	if len(deps) != 1 {
+		return title
+	}
+	d := deps[0]
+	if d.Group != "" || strings.TrimSpace(Plain(d.Name)) == "" || strings.TrimSpace(Plain(d.PreviousVersion)) == "" || strings.TrimSpace(Plain(d.Version)) == "" {
+		return title
+	}
+	return d.Name + " " + d.PreviousVersion + " → " + d.Version
+}
+
+var findingPR = regexp.MustCompile(`#[0-9]+\b`)

@@ -453,6 +453,55 @@ The original output remains available even when piped by selecting `--list`.
 available through `--format list`. Save diagnosis plans with
 `pr diagnose owner/repo#123 --list > repair.md`.
 
+The default `dependabot` table prefixes status labels with plain-text glyphs:
+`✓` for merged or would merge, `↻` for requested or would rebase, `…` for
+wait, `?` for review, `·` for skip and `✗` for failed writes. Glyphs remain
+visible without color. Compact titles use the single dependency's name,
+`dependency-previous-version` and `dependency-version` from the parsed commit
+metadata. The previous version is optional presentation metadata, not part of
+the JSON schema or policy grading. Missing values and groups (including a
+named group with one entry) keep the original title; versions are never
+inferred from title text. Demo commits include this optional field, but real
+Dependabot metadata may omit it.
+
+For example, the billing section of `just try dependabot --open` is:
+
+```text
+acme/billing  (squash, up to patch, checks required, write access)
+╭─────┬────────┬────────┬────────────────────────────────────┬────────────────────────╮
+│ PR  │ UPDATE │ STATUS │ REASON                             │ TITLE                  │
+├─────┼────────┼────────┼────────────────────────────────────┼────────────────────────┤
+│ #57 │ minor  │ · skip │ minor update exceeds limit (patch) │ stripe 17.2.0 → 17.4.0 │
+│ #58 │ major  │ · skip │ major update exceeds limit (patch) │ express 4.21.1 → 5.0.1 │
+│ #61 │ patch  │ · skip │ failing checks: test               │ jest 29.7.0 → 29.7.1   │
+╰─────┴────────┴────────┴────────────────────────────────────┴────────────────────────╯
+  needs attention:
+    - held by policy: #57 (minor), #58 (major) — allow with max_update_type, or run with --review
+    - #61 (patch) fails test — suggest:
+      deps-handler pr diagnose
+```
+
+Equivalent findings share a line in their original order. Failing checks,
+agent assessments and findings with individual details stay separate. Each
+suggested command occupies its own indented line, with `suggest:` on the
+finding line. Distinct commands are retained when findings are grouped.
+Commands beginning with `deps-handler` use `dh` when the executable's name is
+`dh` (including the installed symlink); shell aliases expanded to
+`deps-handler` cannot be detected.
+
+The totals still count all findings before grouping. Apply runs add elapsed
+time rounded to seconds and, when findings remain, a command to view them:
+
+```text
+4 repos (1 without open PRs hidden): 6 merged, 1 rebase requested, 5 skipped; 4 need attention
+done in 41s · 4 need you: dh dependabot --open
+```
+
+The time varies by run. Dry runs retain any existing rerun guidance and end
+with `elapsed 41s`. These presentation changes apply only to the Dependabot
+table; `--list`, `--json` and `--markdown` keep their previous bytes and do
+not include elapsed time.
+
 `--json` prints `{"apply": bool, "results": [...]}` with one result per
 repository: `repo`, `policy`, `config_files` (the policy files read
 from GitHub, as in [Policy files in the repositories](#policy-files-in-the-repositories)), `permission`, `decisions` (one per PR, with

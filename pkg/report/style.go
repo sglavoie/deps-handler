@@ -91,6 +91,28 @@ func labelColor(l string) string {
 	return ""
 }
 
+// statusLabel adds a plain-text glyph for the default Dependabot table.
+func statusLabel(label string) string {
+	glyph := ""
+	switch label {
+	case "merged", "merge", "would merge":
+		glyph = "✓"
+	case "rebase-requested", "rebase", "would rebase":
+		glyph = "↻"
+	case "wait":
+		glyph = "…"
+	case "review":
+		glyph = "?"
+	case "skip":
+		glyph = "·"
+	case "merge-failed", "rebase-failed":
+		glyph = "✗"
+	default:
+		return label
+	}
+	return glyph + " " + label
+}
+
 func gradeColor(g config.UpdateType) string {
 	switch g {
 	case config.UpdatePatch:

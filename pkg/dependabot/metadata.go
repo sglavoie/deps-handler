@@ -13,19 +13,24 @@ import (
 
 // Dependency is one entry of a commit's "updated-dependencies" block.
 type Dependency struct {
-	Name       string            `json:"name"`
-	Version    string            `json:"version"`
-	Type       string            `json:"type"`
-	Group      string            `json:"group"`
-	UpdateType config.UpdateType `json:"update_type"`
+	// PreviousVersion is optional presentation metadata, excluded from the
+	// scripting schema and never used to grade or authorize an update.
+	PreviousVersion string            `json:"-"`
+	Name            string            `json:"name"`
+	Version         string            `json:"version"`
+	Type            string            `json:"type"`
+	Group           string            `json:"group"`
+	UpdateType      config.UpdateType `json:"update_type"`
 }
 
 type rawDependency struct {
-	Name       string `yaml:"dependency-name"`
-	Version    string `yaml:"dependency-version"`
-	Type       string `yaml:"dependency-type"`
-	Group      string `yaml:"dependency-group"`
-	UpdateType string `yaml:"update-type"`
+	// A malformed optional display value must not change metadata validity.
+	PreviousVersion yaml.Node `yaml:"dependency-previous-version"`
+	Name            string    `yaml:"dependency-name"`
+	Version         string    `yaml:"dependency-version"`
+	Type            string    `yaml:"dependency-type"`
+	Group           string    `yaml:"dependency-group"`
+	UpdateType      string    `yaml:"update-type"`
 }
 
 // metadataStart opens the block Dependabot appends to its commit messages,
@@ -75,12 +80,17 @@ func ParseCommitMessage(msg string) []Dependency {
 		if strings.TrimSpace(d.Name) == "" {
 			return nil
 		}
+		previous := ""
+		if d.PreviousVersion.Kind == yaml.ScalarNode && d.PreviousVersion.Tag == "!!str" {
+			previous = d.PreviousVersion.Value
+		}
 		out = append(out, Dependency{
-			Name:       d.Name,
-			Version:    d.Version,
-			Type:       d.Type,
-			Group:      d.Group,
-			UpdateType: parseUpdateType(d.UpdateType),
+			PreviousVersion: previous,
+			Name:            d.Name,
+			Version:         d.Version,
+			Type:            d.Type,
+			Group:           d.Group,
+			UpdateType:      parseUpdateType(d.UpdateType),
 		})
 	}
 	return out

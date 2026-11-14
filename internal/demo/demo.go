@@ -86,7 +86,7 @@ func (s spec) pr(repo string, now time.Time) github.PullRequest {
 		if d.kind == "" {
 			kind = ""
 		}
-		fmt.Fprintf(&msg, "- dependency-name: %q\n  dependency-version: %q\n  dependency-type: direct:production\n  update-type: %q\n", d.name, d.to, kind)
+		fmt.Fprintf(&msg, "- dependency-name: %q\n  dependency-version: %q\n  dependency-previous-version: %q\n  dependency-type: direct:production\n  update-type: %q\n", d.name, d.to, d.from, kind)
 		if s.group != "" {
 			fmt.Fprintf(&msg, "  dependency-group: %s\n", s.group)
 		}

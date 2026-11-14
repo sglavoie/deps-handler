@@ -54,7 +54,7 @@ func TestTableColorSettings(t *testing.T) {
 			if strings.Contains(out.String(), "\x1b[") != tc.colored {
 				t.Fatalf("wrong colors: %q", out.String())
 			}
-			if tc.colored && (!strings.Contains(out.String(), "\x1b[32mmerged") || !strings.Contains(out.String(), "\x1b[1;31mmerge-failed")) {
+			if tc.colored && (!strings.Contains(out.String(), "\x1b[32m✓ merged") || !strings.Contains(out.String(), "\x1b[1;31m✗ merge-failed")) {
 				t.Fatalf("missing status colors: %q", out.String())
 			}
 		})

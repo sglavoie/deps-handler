@@ -308,3 +308,33 @@ func TestVerdictsForgetCarriesOn(t *testing.T) {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
 	}
 }
+
+func TestDependabotTableTimingAndAliasStayOutOfScriptingFormats(t *testing.T) {
+	old := os.Args
+	os.Args = []string{"/bin/dh"}
+	t.Cleanup(func() { os.Args = old })
+	for _, format := range []string{"--table", "--list", "--json", "--markdown"} {
+		for _, apply := range []bool{false, true} {
+			_, cfg := runFixture(t)
+			args := []string{"dependabot", "-c", cfg, format}
+			if apply {
+				args = append(args, "--apply")
+			}
+			code, out, errOut := run(args...)
+			if code != 0 {
+				t.Fatalf("%s: %d %s", format, code, errOut)
+			}
+			if format == "--table" {
+				want := "elapsed "
+				if apply {
+					want = "needs you: dh dependabot --open"
+				}
+				if !strings.Contains(out, want) {
+					t.Fatalf("missing %q: %s", want, out)
+				}
+			} else if strings.Contains(out, "elapsed ") || strings.Contains(out, "done in ") || strings.Contains(out, "✓") {
+				t.Fatalf("table decorations in %s: %s", format, out)
+			}
+		}
+	}
+}

@@ -650,6 +650,44 @@ Under each repo the report lists, without acting on them:
 See [report findings and incomplete responses](docs/behaviour.md#report-findings-and-incomplete-responses)
 for the detailed diagnosis and repository discovery guarantees.
 
+The default Dependabot table adds status glyphs even without color, groups
+matching findings, and puts suggested commands on their own selectable lines.
+For example, this excerpt from `just try dependabot --open` shows two policy
+holds together:
+
+```text
+acme/billing  (squash, up to patch, checks required, write access)
+╭─────┬────────┬────────┬────────────────────────────────────┬────────────────────────╮
+│ PR  │ UPDATE │ STATUS │ REASON                             │ TITLE                  │
+├─────┼────────┼────────┼────────────────────────────────────┼────────────────────────┤
+│ #57 │ minor  │ · skip │ minor update exceeds limit (patch) │ stripe 17.2.0 → 17.4.0 │
+│ #58 │ major  │ · skip │ major update exceeds limit (patch) │ express 4.21.1 → 5.0.1 │
+│ #61 │ patch  │ · skip │ failing checks: test               │ jest 29.7.0 → 29.7.1   │
+╰─────┴────────┴────────┴────────────────────────────────────┴────────────────────────╯
+  needs attention:
+    - held by policy: #57 (minor), #58 (major) — allow with max_update_type, or run with --review
+    - #61 (patch) fails test — suggest:
+      deps-handler pr diagnose
+```
+
+Single-dependency titles use `name old → new` only when commit metadata
+explicitly supplies both versions. Groups and updates missing that metadata
+keep their original titles. The demo supplies optional previous-version
+metadata; real PRs without it retain their titles.
+
+Dry runs keep their closing guidance and add elapsed time. An apply run ends
+with a line such as:
+
+```text
+done in 41s · 4 need you: dh dependabot --open
+```
+
+The count is findings, including each finding grouped into a shared line.
+Suggestions use `dh` when launched through the installed `dh` executable or
+symlink. Shell aliases such as `alias dh=deps-handler` expand before launch,
+so their suggestions still use `deps-handler`. `--list`, `--json` and
+`--markdown` retain their existing output.
+
 ## Scripting
 
 A dry run never writes to GitHub, so `deps-handler dependabot` is safe to

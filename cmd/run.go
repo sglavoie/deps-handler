@@ -84,6 +84,7 @@ wrong, including a --repo the config does not list or an --owner it has
 no repository of; and 130 when interrupted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			started := time.Now()
 			format, formatErr := output.resolve(cmd)
 			if formatErr != nil {
 				return formatErr
@@ -218,7 +219,11 @@ no repository of; and 130 when interrupted.`,
 					return err
 				}
 			case !markdown:
-				if err := report.Summary(out, apply, shown, len(results)-len(shown)); err != nil {
+				var elapsed []time.Duration
+				if format != "list" {
+					elapsed = []time.Duration{time.Since(started)}
+				}
+				if err := report.Summary(out, apply, shown, len(results)-len(shown), elapsed...); err != nil {
 					return err
 				}
 			}

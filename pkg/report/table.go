@@ -112,6 +112,10 @@ func valueColor(value string) string {
 	case "no", "any", "skipped":
 		return dim
 	}
+	// Only strip a glyph we generate for this exact status.
+	if _, label, ok := strings.Cut(value, " "); ok && statusLabel(label) == value {
+		return labelColor(label)
+	}
 	return labelColor(value)
 }
 
