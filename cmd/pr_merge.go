@@ -195,7 +195,15 @@ func writePRMerge(cmd *cobra.Command, results []pr.MergeResult, apply bool, form
 		rows = append(rows, []string{r.Target.String(), r.Status, r.MergeMethod, reason})
 	}
 	if format == "table" {
-		return report.Table(cmd.OutOrStdout(), []string{"PR", "OUTCOME", "METHOD", "REASON"}, rows)
+		cells := make([][]report.TableCell, len(rows))
+		for i, row := range rows {
+			target := results[i].Target
+			cells[i] = []report.TableCell{
+				{Text: row[0], URL: fmt.Sprintf("https://github.com/%s/%s/pull/%d", target.Owner, target.Repo, target.Number)},
+				{Text: report.StatusLabel(row[1])}, {Text: row[2]}, {Text: row[3]},
+			}
+		}
+		return report.TableCells(cmd.OutOrStdout(), []string{"PR", "OUTCOME", "METHOD", "REASON"}, cells)
 	}
 	for _, row := range rows {
 		for i := range row {

@@ -143,7 +143,7 @@ func repoBodyView(w io.Writer, apply bool, res runner.RepoResult, s style, borde
 	if bordered && len(rows) > 0 {
 		values := make([][]string, 0, len(rows))
 		for _, row := range rows {
-			values = append(values, []string{row[0].text, row[1].text, statusLabel(row[2].text), row[3].text, row[4].text})
+			values = append(values, []string{row[0].text, row[1].text, StatusLabel(row[2].text), row[3].text, row[4].text})
 		}
 		fmt.Fprintln(w, formatTable(w, s, []string{"PR", "UPDATE", "STATUS", "REASON", "TITLE"}, values))
 	} else {

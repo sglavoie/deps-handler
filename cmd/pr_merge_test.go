@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/pr"
 	"github.com/sglavoie/deps-handler/pkg/review"
+	"github.com/spf13/cobra"
 )
 
 type commandMergeClient struct {
@@ -189,5 +191,57 @@ func TestPRMergeDemoCannotReachGitHub(t *testing.T) {
 	code, _, stderr := run("pr", "merge", "o/r#7", "--apply")
 	if code != 1 || !strings.Contains(stderr, "unavailable in the demo") {
 		t.Fatal(code, stderr)
+	}
+}
+
+func TestPRMergeTableGlyphsKeepScriptingStatuses(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	statuses := []string{"would_merge", "merged", "skipped", "blocked", "error"}
+	results := []pr.MergeResult{}
+	for i, status := range statuses {
+		results = append(results, pr.MergeResult{Target: github.PRTarget{Owner: "o", Repo: "r", Number: i + 1}, Status: status, MergeMethod: "squash"})
+	}
+	for _, format := range []string{"table", "list", "json"} {
+		var out bytes.Buffer
+		command := &cobra.Command{}
+		command.SetOut(&out)
+		if err := writePRMerge(command, results, true, format); err != nil {
+			t.Fatal(err)
+		}
+		if format == "table" {
+			for _, want := range []string{"✓ would_merge", "✓ merged", "· skipped", "blocked", "error", "o/r#1"} {
+				if !strings.Contains(out.String(), want) {
+					t.Fatal(want, out.String())
+				}
+			}
+			for _, untouched := range []string{"blocked", "error"} {
+				if strings.Contains(out.String(), "… "+untouched) || strings.Contains(out.String(), "✗ "+untouched) {
+					t.Fatal(out.String())
+				}
+			}
+		} else {
+			if strings.ContainsAny(out.String(), "✓·…✗") {
+				t.Fatal(out.String())
+			}
+			if format == "list" {
+				var want strings.Builder
+				for i, status := range statuses {
+					fmt.Fprintf(&want, "o/r#%d\t%s\tsquash\t\n", i+1, status)
+				}
+				if out.String() != want.String() {
+					t.Fatal(out.String(), want.String())
+				}
+			} else {
+				var got []pr.MergeResult
+				if err := json.Unmarshal(out.Bytes(), &got); err != nil || len(got) != len(results) {
+					t.Fatal(err, out.String())
+				}
+				for i := range got {
+					if got[i].Status != statuses[i] {
+						t.Fatal(got)
+					}
+				}
+			}
+		}
 	}
 }

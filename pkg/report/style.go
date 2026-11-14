@@ -75,7 +75,7 @@ func Plain(text string) string {
 // for the agent (magenta), left alone (dim) or failed (red).
 func labelColor(l string) string {
 	switch l {
-	case "merged", "merge", "would merge":
+	case "merged", "merge", "would merge", "would_merge":
 		return green
 	case "rebase-requested", "rebase", "would rebase":
 		return cyan
@@ -83,7 +83,7 @@ func labelColor(l string) string {
 		return yellow
 	case "review":
 		return magenta
-	case "skip":
+	case "skip", "skipped":
 		return dim
 	case "merge-failed", "rebase-failed":
 		return bold + ";" + red
@@ -91,11 +91,11 @@ func labelColor(l string) string {
 	return ""
 }
 
-// statusLabel adds a plain-text glyph for the default Dependabot table.
-func statusLabel(label string) string {
+// StatusLabel adds a plain-text glyph for a recognized table status.
+func StatusLabel(label string) string {
 	glyph := ""
 	switch label {
-	case "merged", "merge", "would merge":
+	case "merged", "merge", "would merge", "would_merge":
 		glyph = "✓"
 	case "rebase-requested", "rebase", "would rebase":
 		glyph = "↻"
@@ -103,7 +103,7 @@ func statusLabel(label string) string {
 		glyph = "…"
 	case "review":
 		glyph = "?"
-	case "skip":
+	case "skip", "skipped":
 		glyph = "·"
 	case "merge-failed", "rebase-failed":
 		glyph = "✗"

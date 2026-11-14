@@ -153,7 +153,7 @@ func TestTableSummaryPayoff(t *testing.T) {
 
 func TestStatusGlyphs(t *testing.T) {
 	for label, glyph := range map[string]string{"merged": "✓", "would merge": "✓", "rebase-requested": "↻", "would rebase": "↻", "wait": "…", "review": "?", "skip": "·", "merge-failed": "✗", "rebase-failed": "✗"} {
-		if got := statusLabel(label); got != glyph+" "+label {
+		if got := StatusLabel(label); got != glyph+" "+label {
 			t.Errorf("%s: %q", label, got)
 		}
 	}

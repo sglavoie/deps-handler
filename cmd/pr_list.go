@@ -10,11 +10,14 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"text/tabwriter"
+	"time"
 
 	"github.com/sglavoie/deps-handler/pkg/github"
 	"github.com/sglavoie/deps-handler/pkg/report"
+	"github.com/sglavoie/deps-handler/pkg/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -61,17 +64,12 @@ With neither filter, all accessible repositories are read.
 				}
 				return err
 			}
-			prs := []github.ListedPR{}
-			for _, repository := range selected {
-				o, name, _ := github.ParseRepository(repository)
-				listed, err := client.ListOpenPRs(ctx, o, name)
-				if err != nil {
-					if ctx.Err() != nil {
-						return errInterrupted
-					}
-					return err
+			prs, err := listPRRepositories(ctx, client, selected)
+			if err != nil {
+				if ctx.Err() != nil {
+					return errInterrupted
 				}
-				prs = append(prs, listed...)
+				return err
 			}
 			if ctx.Err() != nil {
 				return errInterrupted
@@ -93,6 +91,50 @@ With neither filter, all accessible repositories are read.
 	c.Flags().StringArrayVar(&owners, "owner", nil, "only list repositories of this owner (once)")
 	keepEmpty(c, "repo", "owner")
 	return c
+}
+
+// listPRRepositories bounds active reads and cancels all in-flight work on the
+// first error. Workers finish before returning, and partial results never escape.
+func listPRRepositories(ctx context.Context, client github.PRListClient, repositories []string) ([]github.ListedPR, error) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	jobs := make(chan int)
+	results := make([][]github.ListedPR, len(repositories))
+	var workers sync.WaitGroup
+	for range min(runner.DefaultParallel, len(repositories)) {
+		workers.Go(func() {
+			for i := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				owner, name, _ := github.ParseRepository(repositories[i])
+				prs, err := client.ListOpenPRs(ctx, owner, name)
+				if err != nil {
+					cancel(err)
+					return
+				}
+				results[i] = prs
+			}
+		})
+	}
+dispatch:
+	for i := range repositories {
+		select {
+		case <-ctx.Done():
+			break dispatch
+		case jobs <- i:
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	if err := context.Cause(ctx); err != nil {
+		return nil, err
+	}
+	prs := []github.ListedPR{}
+	for _, result := range results {
+		prs = append(prs, result...)
+	}
+	return prs, nil
 }
 
 func selectPRListRepositories(ctx context.Context, client github.PRListClient, owner string, repos []string) ([]string, error) {
@@ -155,13 +197,13 @@ func writePRList(cmd *cobra.Command, prs []github.ListedPR, format string) error
 		_, err := fmt.Fprintln(cmd.OutOrStdout(), "no open PRs")
 		return err
 	}
+	if format == "table" {
+		return report.PRListTable(cmd.OutOrStdout(), prs, time.Now())
+	}
 	headers := []string{"PR", "TITLE", "AUTHOR", "DRAFT", "CREATED", "URL"}
 	rows := make([][]string, 0, len(prs))
 	for _, p := range prs {
 		rows = append(rows, []string{fmt.Sprintf("%s#%d", p.Repository, p.Number), p.Title, p.Author, yesNo(p.Draft), p.CreatedAt.Local().Format("2006-01-02"), p.URL})
-	}
-	if format == "table" {
-		return report.Table(cmd.OutOrStdout(), headers, rows)
 	}
 	tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, strings.Join(headers, "\t"))

@@ -26,6 +26,29 @@ func FormatTable(w io.Writer, headers []string, rows [][]string) string {
 }
 
 func formatTable(w io.Writer, s style, headers []string, rows [][]string) string {
+	cells := make([][]TableCell, len(rows))
+	for i, row := range rows {
+		for _, value := range row {
+			cells[i] = append(cells[i], TableCell{Text: value})
+		}
+	}
+	return formatTableCells(w, s, headers, cells)
+}
+
+// TableCell keeps presentation metadata separate from untrusted cell text.
+// DimSuffix is appended after Text, with dim styling when colors are enabled.
+type TableCell struct {
+	Text, URL, DimSuffix string
+}
+
+// TableCells writes a bordered table with terminal links and styled suffixes.
+// All supplied strings are sanitized before generated escapes are added.
+func TableCells(w io.Writer, headers []string, rows [][]TableCell) error {
+	_, err := io.WriteString(&errorWriter{w: w}, formatTableCells(w, styleFor(w), headers, rows)+"\n")
+	return err
+}
+
+func formatTableCells(w io.Writer, s style, headers []string, rows [][]TableCell) string {
 	if len(headers) == 0 {
 		return ""
 	}
@@ -42,12 +65,13 @@ func formatTable(w io.Writer, s style, headers []string, rows [][]string) string
 	for _, row := range rows {
 		r := make(pretty.Row, len(headers))
 		for i := range headers {
-			value := ""
+			c := TableCell{}
 			if i < len(row) {
-				value = Plain(row[i])
+				c = row[i]
 			}
-			widths[i] = max(widths[i], text.StringWidth(value))
-			r[i] = s.paint(valueColor(value), value)
+			value, suffix := Plain(c.Text), Plain(c.DimSuffix)
+			widths[i] = max(widths[i], text.StringWidth(value+suffix))
+			r[i] = s.link(c.URL, s.paint(valueColor(value), value)+s.paint(dim, suffix))
 		}
 		t.AppendRow(r)
 	}
@@ -92,6 +116,19 @@ func formatTable(w io.Writer, s style, headers []string, rows [][]string) string
 // Rewrapping one cell narrower leaves room for that rune and keeps borders
 // aligned without truncating its contents or stripping generated ANSI colors.
 func wrapTableCell(value string, width int) string {
+	// go-pretty's hard wrapping understands SGR colors but can split an OSC 8
+	// destination. Unwrap our generated link, wrap its label, then link each
+	// line independently so neither the URL nor the table border is clickable.
+	const linkEnd = "\x1b]8;;\x1b\\"
+	if strings.HasPrefix(value, "\x1b]8;;") && strings.HasSuffix(value, linkEnd) {
+		if start, label, ok := strings.Cut(value, "\x1b\\"); ok {
+			lines := strings.Split(wrapTableCell(strings.TrimSuffix(label, linkEnd), width), "\n")
+			for i, line := range lines {
+				lines[i] = start + "\x1b\\" + line + linkEnd
+			}
+			return strings.Join(lines, "\n")
+		}
+	}
 	wrapped := text.WrapSoft(value, width)
 	for _, line := range strings.Split(wrapped, "\n") {
 		if text.StringWidthWithoutEscSequences(line) > width {
@@ -113,7 +150,7 @@ func valueColor(value string) string {
 		return dim
 	}
 	// Only strip a glyph we generate for this exact status.
-	if _, label, ok := strings.Cut(value, " "); ok && statusLabel(label) == value {
+	if _, label, ok := strings.Cut(value, " "); ok && StatusLabel(label) == value {
 		return labelColor(label)
 	}
 	return labelColor(value)

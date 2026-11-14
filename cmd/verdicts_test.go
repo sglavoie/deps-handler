@@ -1,14 +1,17 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sglavoie/deps-handler/pkg/policy"
 	"github.com/sglavoie/deps-handler/pkg/review"
+	"github.com/spf13/cobra"
 )
 
 // verdictsState points the state directory at a new one and returns the
@@ -81,7 +84,7 @@ func TestVerdictsUnmatchedTargetExitsOne(t *testing.T) {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
 	}
 	code, out, stderr = run("verdicts", "O/A#1", "o/zzz")
-	if code != 1 || !strings.Contains(out, "o/a#1 lib@2.0.0") || strings.Contains(stderr, "O/A#1") {
+	if code != 1 || !strings.Contains(out, "o/a#1") || strings.Contains(out, "lib@2.0.0") || strings.Contains(stderr, "O/A#1") {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
 	}
 }
@@ -139,7 +142,7 @@ func TestVerdictsPrintNoControlCharacters(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, _ := run("verdicts")
-	if code != 0 || strings.ContainsAny(out, "\x1b\x07") || !strings.Contains(out, "o/a#1 lib]8;;https://evil@2.0.0") || !strings.Contains(out, "cla[2Jude") {
+	if code != 0 || strings.ContainsAny(out, "\x1b\x07") || !strings.Contains(out, "o/a#1") || strings.Contains(out, "https://evil") || !strings.Contains(out, "cla[2Jude") {
 		t.Fatalf("code %d:\n%q", code, out)
 	}
 }
@@ -155,5 +158,44 @@ func TestVerdictsWarnOnCorruptCache(t *testing.T) {
 	code, out, stderr := run("verdicts")
 	if code != 0 || out != "no cached verdicts\n" || !strings.Contains(stderr, "deps-handler: warning: verdict cache") || !strings.Contains(stderr, ".corrupt-") {
 		t.Fatalf("code %d, out %q, stderr %q", code, out, stderr)
+	}
+}
+
+func TestVerdictsTablePRFallbackAndRelativeTimes(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	now := time.Now()
+	key := `acme/billing#57 v4 base="main" base_oid="" "stripe"@"17.4.0" a5a1a9c`
+	entries := []review.Entry{{Key: key, Agent: "claude", HeadOID: "a5a1a9c", ReviewedAt: now.Add(-5*24*time.Hour - time.Hour), Expires: now.Add(9*24*time.Hour + time.Hour), Verdict: policy.Verdict{Approved: true, Summary: "Looks good"}}}
+	for _, format := range []string{"table", "list", "json"} {
+		var out bytes.Buffer
+		command := &cobra.Command{}
+		command.SetOut(&out)
+		if err := printVerdictsView(command, entries, format); err != nil {
+			t.Fatal(err)
+		}
+		if format == "table" {
+			for _, want := range []string{"acme/billing#57", "5d ago", "in 9d", "Looks good"} {
+				if !strings.Contains(out.String(), want) {
+					t.Fatal(want, out.String())
+				}
+			}
+			for _, hidden := range []string{"base=", "base_oid", "stripe", "17.4.0", "DEPENDENCY"} {
+				if strings.Contains(out.String(), hidden) {
+					t.Fatal(hidden, out.String())
+				}
+			}
+			if strings.Count(out.String(), "\n") != 5 {
+				t.Fatal("expected one verdict row", out.String())
+			}
+		} else if format == "list" {
+			if !strings.Contains(out.String(), key) || !strings.Contains(out.String(), entries[0].ReviewedAt.Local().Format("2006-01-02 15:04")) {
+				t.Fatal(out.String())
+			}
+		} else {
+			var doc struct{ Verdicts []struct{ Update string } }
+			if err := json.Unmarshal(out.Bytes(), &doc); err != nil || len(doc.Verdicts) != 1 || doc.Verdicts[0].Update != key {
+				t.Fatal(err, out.String())
+			}
+		}
 	}
 }

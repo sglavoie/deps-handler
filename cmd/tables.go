@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/sglavoie/deps-handler/internal/diagnosiseval"
 	"github.com/sglavoie/deps-handler/pkg/config"
@@ -36,8 +37,12 @@ func printVerdictsView(cmd *cobra.Command, entries []review.Entry, format string
 		return printVerdicts(cmd, entries, format == "json")
 	}
 	rows := make([][]string, 0, len(entries))
+	now := time.Now()
 	for _, e := range entries {
-		rows = append(rows, []string{e.Key, verdictWord(e), e.Agent, heldFor(e), e.ReviewedAt.Local().Format("2006-01-02 15:04"), e.Expires.Local().Format("2006-01-02"), clipSummary(e.Verdict.Summary)})
+		// Cache entries have no structured dependency metadata. Use the PR-only
+		// fallback; dependency text must never be reconstructed from opaque keys.
+		reference, _, _ := strings.Cut(e.Key, " ")
+		rows = append(rows, []string{reference, verdictWord(e), e.Agent, heldFor(e), report.RelativeTime(e.ReviewedAt, now), report.RelativeTime(e.Expires, now), clipSummary(e.Verdict.Summary)})
 	}
 	return report.Table(cmd.OutOrStdout(), []string{"UPDATE", "VERDICT", "AGENT", "HEAD", "REVIEWED", "EXPIRES", "SUMMARY"}, rows)
 }

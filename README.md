@@ -118,6 +118,11 @@ Use one `--owner` to narrow to an owner, and repeat `--repo` to select multiple
 repositories. `--repo owner/name` works without `--owner`; `--repo name` selects
 matching repository names across owners, or that owner's repository when
 `--owner` is set. The filters combine, and `--json` emits structured results.
+Repositories are read up to 10 at a time; results stay oldest first and a
+failed read stops the listing without partial output. The table links PR
+references on a terminal and includes a URL column when redirected. `AGE`
+shows elapsed time (`3d`, `5w`); drafts have a dim `draft` marker after the
+title. `--list` retains its original date, draft and URL columns.
 
 ### Merge PRs from any author
 
@@ -139,6 +144,9 @@ PR numbers can be used with one `--repo owner/name`, or one bare `--repo`
 and `--owner`. Without references or filters, all accessible repositories
 are selected. Discovery completes before any writes; discovered PRs are
 processed oldest first, with fresh state for each merge.
+The merge table links PR references on a terminal and marks `would_merge`
+and `merged` with ✓, and `skipped` with ·. Other statuses keep their labels;
+`--list` and `--json` retain their original statuses.
 
 Preview is the default; add `--apply` to merge. Drafts and closed PRs are
 skipped. Merging requires write access, clean GitHub mergeability, satisfied
@@ -595,7 +603,10 @@ change of head, base commit or target branch is always reviewed again.
 `deps-handler verdicts` lists them and `deps-handler verdicts forget
 acme/Storefront#42` drops them. Set
 `agent_review: false` on a repo to keep the agent out of it.
-Every verdict is pinned to the reviewed head and base commits.
+Every verdict is pinned to the reviewed head and base commits. The verdict
+table shows PR references and relative review/expiry times. Current cache
+entries have no structured dependency details, so the table uses PR references
+alone; raw update keys remain available in `--list` and `--json`.
 
 Overlapping review runs cannot share checkouts, even when they use different
 state directories for their verdict caches.

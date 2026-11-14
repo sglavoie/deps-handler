@@ -382,10 +382,15 @@ them, optionally only for some repositories or PRs (exiting 1 when one
 matches nothing), with `--json` for their concerns; its `HEAD` column
 (`head_oid` in `--json`) is the commit each verdict holds for; an
 expired verdict is neither listed nor forgotten. `deps-handler verdicts forget acme/Storefront#42` (or a whole
-`owner/name`, or one update as `verdicts` lists it) has those updates
+`owner/name`, or one full update key from `verdicts --list` or `--json`) has those updates
 reviewed again on the next run; anything else is a usage error (exit 2).
 An update target matches the full key exactly, including the case of its
 branch, dependencies and versions; only the repository name ignores case.
+The default verdict table shows the PR reference instead of the cache key,
+with relative `REVIEWED` and `EXPIRES` times (such as `5d ago` and `in 9d`).
+Current cache entries lack structured dependency metadata, so they use the
+PR-only fallback; dependency details are not inferred from opaque keys.
+`--list` retains raw keys and absolute dates, and `--json` is unchanged.
 Both complete the repositories and PRs that have verdicts. Only one
 `--review` run works at a time: a second one, such as an overlapping cron
 job, fails at once rather than share the checkouts. The checkout lock lives
@@ -758,7 +763,20 @@ drafts and Dependabot PRs. `--owner` accepts one owner; repeated `--repo`
 values select repository names or owner/name references. Together they narrow
 the result to repositories matching both filters. Repository and PR listings
 are paginated; incomplete listings fail without printing partial results.
-Table, list and JSON output are available.
+Repository reads run with at most 10 in flight, using the Dependabot default.
+The first error cancels outstanding reads; workers finish before the command
+returns. Results remain sorted by creation time, case-insensitive repository
+name and PR number. Table, list and JSON output are available. On a terminal,
+the PR cell is an OSC 8 link and the URL column is omitted; redirected output
+keeps the URL column, including when color is forced. The table uses `AGE`
+(`3d`, `5w`) and a dim `draft` suffix on the title. `--list` keeps its original
+`DRAFT`, `CREATED` and `URL` columns; JSON fields are unchanged.
+
+The `pr merge` table uses the same PR links and shared status glyphs for
+`would_merge` (✓), `merged` (✓) and `skipped` (·). `blocked` and `error`
+remain unchanged because they do not map directly to Dependabot's actions.
+List and JSON status labels are unchanged; merge discovery and writes remain
+serial.
 
 `pr fix` explicitly authorizes local repair work for the selected PR, including
 non-bot PRs. It requires write permission, an open PR and an existing head
