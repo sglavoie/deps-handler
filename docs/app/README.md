@@ -180,3 +180,31 @@ restarts the services. It expects `prod.env`, `prod.pem`,
 `./scripts/serve-model.sh` is the optional local model setup used with
 that deployment. Run only one tunnel connector for the App's hostname at
 a time.
+
+### Reconciliation and tracking
+
+Queued webhook events and retries recognize repository names regardless
+of capitalization, including when replayed after a restart.
+Incomplete installation or repository lists stop reconciliation, preserving
+stored data and access state until GitHub returns a complete list.
+Unknown PR states also fail tracking and preserve the previously open record
+instead of counting the PR as closed.
+Overlapping runs also preserve confirmed PR merges, their recorded times and
+the App's merge attribution when a delayed run saves an older outcome.
+The App shares GitHub's rate-limit cooldown across each installation's
+repositories, retries, repository listings, review comments and health issues,
+including issue pinning when GraphQL returns a rate limit with HTTP 200.
+Other installations keep running with their own quotas.
+Repository reconciliation records access as soon as a repository is discovered,
+so older webhook responses cannot revoke that access before its first run.
+Later sweeps can also revoke access to discovered repositories that have not run yet.
+
+### Dependency health reports
+
+Large Dependency health reports keep complete lines within a 60,000-byte
+budget and show a truncation notice, so they can still be published.
+Dependency health issue lookups reject missing lists, unidentified entries,
+unknown issue states and broken pagination before creating or editing an issue.
+Issue creation also requires a valid response identifying the App's health
+issue before reporting success or attempting to pin it. An unconfirmed
+creation is looked up again on the next run.

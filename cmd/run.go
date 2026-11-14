@@ -41,6 +41,10 @@ func newDependabotCmd() *cobra.Command {
 		reviewPar  int
 	)
 	c := &cobra.Command{
+		Example: `  deps-handler dependabot
+  deps-handler dependabot --apply
+  deps-handler dependabot -r Storefront --json
+  deps-handler dependabot --review --apply`,
 		Use:   "dependabot",
 		Short: "Evaluate Dependabot PRs and, with --apply, merge the safe ones",
 		Long: `Evaluate every open Dependabot PR in the configured repositories.
@@ -117,7 +121,7 @@ no repository of; and 130 when interrupted.`,
 			if err != nil {
 				return err
 			}
-			selected, err := cfg.Filter(repos, owners, allRepos)
+			selected, err := filterRepos(cfg, repos, owners, allRepos)
 			if err != nil {
 				// A repo the config lacks is a mistake of the command
 				// line, not of the config.

@@ -4,54 +4,27 @@
 [![Release](https://img.shields.io/github/v/release/sglavoie/deps-handler)](https://github.com/sglavoie/deps-handler/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Manages Dependabot updates across a list of repositories and reviews, repairs
-and merges explicitly selected non-Dependabot pull requests. It also diagnoses,
-repairs or directly merges PRs from any author across owners and repositories.
-It uses your `gh` login.
-
-The same repository also contains a free GitHub App server. It
-reports into a Dependency health issue and merges only in repositories
-that opt in. See [GitHub App setup and operation](docs/app/README.md).
-The App also reruns when a Dependabot PR leaves draft state, is edited,
-or receives an approval or review dismissal.
-Queued webhook events and retries recognize repository names regardless
-of capitalization, including when replayed after a restart.
-Incomplete installation or repository lists stop reconciliation, preserving
-stored data and access state until GitHub returns a complete list.
-Large Dependency health reports keep complete lines within a 60,000-byte
-budget and show a truncation notice, so they can still be published.
-Dependency health issue lookups reject missing lists, unidentified entries,
-unknown issue states and broken pagination before creating or editing an issue.
-Issue creation also requires a valid response identifying the App's health
-issue before reporting success or attempting to pin it. An unconfirmed
-creation is looked up again on the next run.
-Unknown PR states also fail tracking and preserve the previously open record
-instead of counting the PR as closed.
-Uninstall cleanup cannot be undone by a run finishing in another process:
-tracking results and issue numbers are saved only while the original run exists.
-Overlapping runs also preserve confirmed PR merges, their recorded times and
-the App's merge attribution when a delayed run saves an older outcome.
-The App shares GitHub's rate-limit cooldown across each installation's
-repositories, retries, repository listings, review comments and health issues,
-including issue pinning when GraphQL returns a rate limit with HTTP 200.
-Other installations keep running with their own quotas.
-Repository reconciliation records access as soon as a repository is discovered,
-so older webhook responses cannot revoke that access before its first run.
-Later sweeps can also revoke access to discovered repositories that have not run yet.
-Repositories with reviews disabled skip review setup, so a broken review
-cache or unavailable checkout credentials cannot fail their reports.
-
-The Dependabot workflow is deliberately conservative. A PR merges only
-when Dependabot alone wrote it, its checks are green and its update is
-within your policy. With `--review`, an AI agent (Claude Code or Codex)
-reads a read-only checkout to judge the bigger updates. Anything it can't
-merge is reported with the fix: a check broken on the base branch, an
-update to ignore, a review branch protection wants.
+deps-handler manages Dependabot updates across your repositories using your
+`gh` login. Preview safe updates, merge them with `--apply`, and ask an AI
+agent to review bigger bumps. It also lists, diagnoses, repairs and merges
+explicitly selected pull requests from any author.
 
 ![deps-handler merging, rebasing and reviewing Dependabot PRs across fictional repositories](docs/demo.gif)
 
-<sub>Recorded with the `demo` build against make-believe repositories: no
-real PR was harmed. See [Try it without your repositories](#try-it-without-your-repositories).</sub>
+```bash
+deps-handler init --discover     # find your repos that use Dependabot
+deps-handler dependabot          # preview updates
+deps-handler dependabot --apply  # merge safe updates
+```
+
+The `pr` commands [list and merge PRs](#list-open-prs),
+[review non-Dependabot PRs](#review-repair-and-merge-non-dependabot-prs),
+and [diagnose or repair a selected PR](#diagnose-or-repair-a-specific-pr).
+
+The free [GitHub App](docs/app/README.md) reports into a Dependency health
+issue and merges only in repositories that opt in.
+
+<sub>The demo uses fictional repositories. [Try it without your repositories](#try-it-without-your-repositories).</sub>
 
 ## Install
 
@@ -132,6 +105,10 @@ deps-handler pr fix acme/Storefront#123 --agent codex --push  # publish and veri
 deps-handler verdicts              # the agent's cached verdicts
 deps-handler verdicts acme/Storefront --json  # one repo's, with concerns
 ```
+
+Configured repository and owner filters suggest a nearby name when you make
+a typo, for example `-r storefrnt` suggests `storefront`. The command still
+exits 2; it never selects the suggestion automatically.
 
 ### List open PRs
 
@@ -524,53 +501,14 @@ The `dependabot` command and GitHub App merge a PR only when all of these hold:
   to it.
 - Every dependency it moves has a known semver bump, and the largest is
   within `max_update_type` (a grouped PR is as risky as its riskiest bump).
-  Missing or blank dependency names invalidate the metadata for the whole
-  commit, requiring agent review or manual handling.
-  Metadata containing multiple YAML documents or malformed trailing YAML
-  is also rejected rather than graded from its first document alone.
 - Every check on its head commit passed, and at least one ran, unless the
   repo sets `require_checks: false` or `merge_without_checks_after`.
 - GitHub reports it mergeable and clean, and nothing about it was cut off
   (over 100 commits or checks).
 
-An unrecognized mergeability value blocks action. Missing or unrecognized
-check types, statuses and completed-check conclusions also block action,
-even when a newer check passed. A newer check can replace
-an older one only when both identify their name, suite, app, workflow and
-event; checks with missing identifiers remain part of the decision.
-An unknown check state cannot replace an earlier result, so known failures
-remain visible in reports while the unknown state blocks merging.
-The waiting period for `merge_without_checks_after` uses the head commit's
-timestamp. When that timestamp is missing, the PR waits and is not diagnosed
-as having no CI yet.
-
-Missing mergeability or merge-state values get the same bounded retries as
-`UNKNOWN`. If they remain unresolved, the PR waits without merging.
-
-A safe PR that is only behind its base branch gets one `@dependabot rebase`
-comment, one PR at a time per target branch, so that merges do not rerun CI
-on every other PR targeting that branch. PRs targeting independent branches
-do not hold each other's rebase queues. Merges are made one at a time with
-the head SHA pinned, re-reading the repository after each; a merge GitHub
-fails in a way that may hide a success is checked before it is reported. Writes are never sent
-concurrently, and a rate limit stops them rather than push through it.
-Merge responses must explicitly confirm success. Missing or malformed
-confirmations are reconciled against the PR's state; an unknown state is
-reported as an error rather than assumed to mean the PR was closed.
-HTTP 500 responses also require reconciliation: an internal server error
-does not establish whether a merge went through.
-Rate-limit pauses accept `Retry-After` as seconds or an HTTP date; pauses
-over two minutes stop further writes for that run.
-A PR whose merge or rebase request failed stops holding the rebase queue
-for that run, even if it later waits on CI or GitHub to compute mergeability.
-A PR blocked on a required human review also leaves the rebase queue free
-while it waits for CI. If GitHub reports existing comments but returns none,
-the PR waits rather than risking a duplicate rebase request.
-An unreadable response to a successful rebase-comment POST is reported as
-possibly posted, with a warning, and keeps its place in the queue. A rebase
-request with the same timestamp as the head commit also counts as already
-requested, so timestamp ties do not trigger duplicate comments.
-Rebase requests recognize your login regardless of capitalization.
+Safe PRs behind their base branch get a rebase request, one at a time per
+target branch. Merges pin the head SHA and recheck repository state after
+each merge; writes run serially and respect rate limits.
 
 The exact rules, and how each failure, retry, interruption and rate limit
 is reported, are in [How deps-handler behaves](docs/behaviour.md#what-counts-as-safe).
@@ -709,35 +647,8 @@ Under each repo the report lists, without acting on them:
 - **agent rejected** / **agent failed**: an update the agent judged unsafe,
   with its concerns, or could not review.
 
-Truncation findings remain visible with `--open`, even when every PR on
-the fetched search page has closed since GitHub indexed it. An incomplete
-search is not reported as having no open PRs.
-Missing search results, counts or lists, and unknown states on returned PRs,
-fail the repository read instead of silently hiding PRs.
-Null or unidentified search items, non-positive PR numbers and search counts
-smaller than the returned list also fail the read, so `--open` cannot hide
-an incomplete response as a repository with nothing to process.
-Missing or null archive and draft flags also fail the read rather than
-treating a repository as active or a PR as ready for merging.
-Missing commit, check or comment lists or totals also fail the read, as do
-totals smaller than the returned lists. Incomplete responses cannot establish
-that all commits and checks were verified or that no rebase was requested.
-A missing check-summary field also fails the read; only an explicit null
-means the head has no checks, even when checks are optional.
-
-Repository discovery rejects missing lists or pagination fields and missing
-or repeated continuation cursors. It also rejects null or unidentified
-repository entries, missing archive or fork flags, and omitted permission
-or Dependabot-config lookups. Explicit null permissions and config lookups
-remain valid and are filtered normally. If a later page is incomplete,
-`init --discover` fails instead of writing a partial repository list.
-
-Failure diagnosis compares checks by name and their available app, workflow
-and event identities, keeping commit status contexts separate from check runs.
-A same-named job from another source cannot establish or hide a shared
-failure, and a shared failure does not hide an update's separate failing job.
-Incomplete check lists are excluded from failure and no-checks diagnoses:
-unread checks may include a passing rerun or the only check that ran.
+See [report findings and incomplete responses](docs/behaviour.md#report-findings-and-incomplete-responses)
+for the detailed diagnosis and repository discovery guarantees.
 
 ## Scripting
 

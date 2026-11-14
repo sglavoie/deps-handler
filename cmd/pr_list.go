@@ -24,6 +24,8 @@ func newPRListCmd() *cobra.Command {
 	var repos, owners []string
 	var output *outputFormat
 	c := &cobra.Command{
+		Example: `  deps-handler pr list
+  deps-handler pr list --owner acme --repo Storefront --repo API --json`,
 		Use:   "list",
 		Short: "List open PRs across repositories",
 		Long: `List all open pull requests, including drafts and Dependabot PRs, in

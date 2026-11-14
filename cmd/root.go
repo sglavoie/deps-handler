@@ -26,22 +26,13 @@ func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "deps-handler",
 		Short: "Manage Dependabot updates and review, repair or merge pull requests",
-		Long: `deps-handler manages Dependabot updates across repositories and helps
-review, repair and merge selected non-Dependabot pull requests.
-
-Use dependabot to evaluate open Dependabot PRs in configured repositories
-and, with --apply, merge those that are green and within policy. PRs not
-opened by Dependabot, or touched by anyone else, are never changed by
-this command.
-
-Use pr handle with specific PR references or --repo owner/name to review
-non-Dependabot PRs; --apply authorizes repairs, CI reruns and merging.
-Dependabot PRs are always excluded from this separate workflow.
-
-Use pr list to see open PRs across accessible repositories. Use pr diagnose
-for a repair handoff or pr fix to prepare local fixes to
-a selected PR; add --push to publish them and verify CI. Use pr rerun to
-preview failed Actions jobs; --apply reruns them and watches the new attempt.`,
+		Long: `deps-handler manages Dependabot updates across configured repositories.
+Use dependabot to preview safe updates and --apply to merge them. Use pr
+commands to list, review, repair or merge selected pull requests.`,
+		Example: `  deps-handler init --discover
+  deps-handler dependabot
+  deps-handler dependabot --apply
+  deps-handler pr list`,
 		Version:       versionString(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -54,13 +45,14 @@ preview failed Actions jobs; --apply reruns them and watches the new attempt.`,
 		}
 		return nil
 	}
-	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default $XDG_CONFIG_HOME/deps-handler/config.yaml, or ~/.config/deps-handler/config.yaml when XDG_CONFIG_HOME is unset)")
+	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default ~/.config/deps-handler/config.yaml)")
 	root.AddCommand(newInitCmd(), newDependabotCmd(), newReposCmd(), newVerdictsCmd(), newPRCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	// Cobra's help prints the usage for an unknown topic and succeeds:
 	// a topic that names no command is a usage error like any other.
 	root.InitDefaultHelpCmd()
 	if help, _, err := root.Find([]string{"help"}); err == nil {
+		help.Example = "  deps-handler help dependabot\n  deps-handler help pr fix"
 		help.Args = func(cmd *cobra.Command, args []string) error {
 			if _, _, err := cmd.Root().Find(args); err != nil {
 				return fmt.Errorf("unknown help topic %q", strings.Join(args, " "))
@@ -68,6 +60,7 @@ preview failed Actions jobs; --apply reruns them and watches the new attempt.`,
 			return nil
 		}
 	}
+	configureHelp(root)
 	usageArgs(root)
 	return root
 }
@@ -110,6 +103,10 @@ func execute(args []string, stdout, stderr io.Writer) int {
 func usageCompletion(root *cobra.Command) {
 	root.InitDefaultCompletionCmd()
 	if completion, _, err := root.Find([]string{"completion"}); err == nil && completion != root {
+		completion.Example = "  deps-handler completion bash\n  deps-handler completion zsh"
+		for _, shell := range completion.Commands() {
+			shell.Example = fmt.Sprintf("  deps-handler completion %s\n  deps-handler completion %s --no-descriptions", shell.Name(), shell.Name())
+		}
 		completion.Args = cobra.NoArgs
 		completion.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
 	}

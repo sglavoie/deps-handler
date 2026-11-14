@@ -24,6 +24,8 @@ func newPRMergeCmd() *cobra.Command {
 	var opts pr.MergeOptions
 	var output *outputFormat
 	c := &cobra.Command{
+		Example: `  deps-handler pr merge --owner acme --repo Storefront --repo API
+  deps-handler pr merge acme/Storefront#123 --apply`,
 		Use:   "merge [owner/repo#number | PR-URL ...]",
 		Short: "Preview merges for any PR author; --apply merges eligible PRs",
 		Long: `Merge explicitly named PRs, or discover open PRs using the same filters as

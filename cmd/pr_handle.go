@@ -49,6 +49,8 @@ func newPRHandleCmd() *cobra.Command {
 	var waitTimeout time.Duration
 	var output *outputFormat
 	c := &cobra.Command{
+		Example: `  deps-handler pr handle acme/Storefront#123 --agent claude
+  deps-handler pr handle --repo acme/Storefront --agent claude --apply`,
 		Use:   "handle [owner/repo#number | PR-URL ...]",
 		Short: "Review non-Dependabot PRs; --apply repairs, verifies CI and merges",
 		Long: `Review exactly the named PRs, or all open PRs in --repo owner/name.

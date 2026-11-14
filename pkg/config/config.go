@@ -704,7 +704,7 @@ func (c *Config) Filter(only, owners []string, includeSkipped bool) ([]Repo, err
 		}
 		switch len(matches) {
 		case 0:
-			return nil, fmt.Errorf("repo %q is not in the config", want)
+			return nil, &SelectionError{Kind: "repo", Name: want}
 		case 1:
 		default:
 			// Only a bare name can match more than one repo.
@@ -726,7 +726,7 @@ func (c *Config) Filter(only, owners []string, includeSkipped bool) ([]Repo, err
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("owner %q has no repo in the config", owner)
+			return nil, &SelectionError{Kind: "owner", Name: owner}
 		}
 	}
 	var out []Repo
@@ -736,6 +736,19 @@ func (c *Config) Filter(only, owners []string, includeSkipped bool) ([]Repo, err
 		}
 	}
 	return out, nil
+}
+
+// SelectionError identifies a repository or owner absent from the config.
+type SelectionError struct {
+	Kind string
+	Name string
+}
+
+func (e *SelectionError) Error() string {
+	if e.Kind == "owner" {
+		return fmt.Sprintf("owner %q has no repo in the config", e.Name)
+	}
+	return fmt.Sprintf("repo %q is not in the config", e.Name)
 }
 
 // RepoFile is where a repository keeps its own policy, on its default

@@ -23,6 +23,9 @@ func newPREvalCmd() *cobra.Command {
 	var list bool
 	var timeout time.Duration
 	c := &cobra.Command{
+		Example: `  deps-handler pr eval --list
+  deps-handler pr eval --agent claude
+  deps-handler pr eval lyzma muse --agent codex --json > evaluation.json`,
 		Use: "eval [case ...]", Short: "Evaluate diagnosis against frozen real-world PR cases",
 		Long: `Replay frozen PR snapshots, logs, base checks, artifacts and source files
 through the production diagnosis service, without reading live GitHub state.

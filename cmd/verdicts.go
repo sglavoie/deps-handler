@@ -21,7 +21,9 @@ const summaryWidth = 70
 func newVerdictsCmd() *cobra.Command {
 	var output *outputFormat
 	c := &cobra.Command{
-		Use:   "verdicts [TARGET...]",
+		Use: "verdicts [TARGET...]",
+		Example: `  deps-handler verdicts
+  deps-handler verdicts acme/Storefront --json`,
 		Short: "List the agent verdicts kept between runs",
 		Long: `List the agent verdicts kept between runs, one per reviewed update.
 Verdicts are reused for up to 14 days while the update and its head and base
@@ -74,7 +76,9 @@ A target narrows the list to a repository (owner/name) or a pull request
 	output = addOutputFlags(c, false)
 	c.ValidArgsFunction = completeTargets
 	c.AddCommand(&cobra.Command{
-		Use:   "forget TARGET...",
+		Use: "forget TARGET...",
+		Example: `  deps-handler verdicts forget acme/Storefront#42
+  deps-handler verdicts forget acme/Storefront`,
 		Short: "Drop cached verdicts so the next --review run judges them again",
 		Long: `Drop cached verdicts so the next --review run judges those updates again.
 A target is a repository (owner/name), a pull request (owner/name#7) or an

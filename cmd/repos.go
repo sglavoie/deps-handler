@@ -17,6 +17,8 @@ func newReposCmd() *cobra.Command {
 		owners []string
 	)
 	c := &cobra.Command{
+		Example: `  deps-handler repos
+  deps-handler repos --owner acme --json`,
 		Use:   "repos",
 		Short: "List configured repositories and their effective policy",
 		Long: `List the configured repositories, skipped ones included, with the policy
@@ -42,7 +44,7 @@ repository, which can override it.`,
 				return err
 			}
 			// Skipped repos are listed: the SKIP column says so.
-			if cfg.Repos, err = cfg.Filter(repos, owners, true); err != nil {
+			if cfg.Repos, err = filterRepos(cfg, repos, owners, true); err != nil {
 				return usageError{err}
 			}
 			if format == "json" {

@@ -23,6 +23,8 @@ func newPRRerunCmd() *cobra.Command {
 	var output *outputFormat
 	var waitTimeout time.Duration
 	c := &cobra.Command{
+		Example: `  deps-handler pr rerun acme/Storefront#123
+  deps-handler pr rerun acme/Storefront#123 --apply`,
 		Use:   "rerun <owner/repo#number | PR-URL>",
 		Short: "Preview failed Actions jobs; --apply reruns once and watches the new attempt",
 		Long: `Preview verified failed GitHub Actions jobs on the current PR head.

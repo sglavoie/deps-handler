@@ -30,6 +30,8 @@ func newInitCmd() *cobra.Command {
 		owners   []string
 	)
 	c := &cobra.Command{
+		Example: `  deps-handler init
+  deps-handler init --discover`,
 		Use:   "init",
 		Short: "Write an example config to fill in",
 		Long: `Write the commented example config to the default config path, or to the

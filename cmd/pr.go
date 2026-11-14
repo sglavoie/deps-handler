@@ -48,7 +48,11 @@ var newTaskAgent = func(cfg config.Agent, name string) (review.TaskAgent, error)
 }
 
 func newPRCmd() *cobra.Command {
-	c := &cobra.Command{Use: "pr", Short: "List, review, repair and merge PRs, diagnose failures or rerun CI", Args: cobra.NoArgs}
+	c := &cobra.Command{
+		Use: "pr", Short: "List, review, repair and merge PRs, diagnose failures or rerun CI", Args: cobra.NoArgs,
+		Example: `  deps-handler pr list
+  deps-handler pr diagnose acme/Storefront#123 --list > repair.md`,
+	}
 	c.AddCommand(newPRListCmd(), newPRMergeCmd(), newPRHandleCmd(), newPRTaskCmd(false), newPRTaskCmd(true), newPRRerunCmd(), newPREvalCmd())
 	return c
 }
@@ -63,6 +67,14 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 	if fix {
 		verb, short = "fix", "Prepare an AI repair locally; --push publishes and verifies CI"
 	}
+	example := `  deps-handler pr diagnose acme/Storefront#123 --list > repair.md
+  deps-handler pr diagnose acme/Storefront#123 --focus 'Linux build failure'
+  deps-handler pr diagnose acme/Storefront#123 --json`
+	if fix {
+		example = `  deps-handler pr fix --plan repair.md --agent codex
+  deps-handler pr fix acme/Storefront#123 --agent codex
+  deps-handler pr fix acme/Storefront#123 --agent codex --push`
+	}
 	targetArgs := cobra.ExactArgs(1)
 	use := verb + " <owner/repo#number | PR-URL>"
 	if fix {
@@ -71,8 +83,9 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 	}
 	c := &cobra.Command{
 		Use: use, Short: short,
-		Long: prTaskHelp(fix),
-		Args: targetArgs,
+		Long:    prTaskHelp(fix),
+		Example: example,
+		Args:    targetArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format, formatErr := output.resolve(cmd)
 			if formatErr != nil {

@@ -52,6 +52,19 @@ The `dependabot` command and GitHub App merge a PR only when all of these hold:
   head is missing from the verified commits, the PR waits for a later
   run, even when checks already match that head.
 
+Missing or blank dependency names invalidate the metadata for the whole
+commit, requiring agent review or manual handling. Metadata containing
+multiple YAML documents or malformed trailing YAML is also rejected rather
+than graded from its first document alone.
+
+Missing or unrecognized check types, statuses and completed-check conclusions
+block action, even when a newer check passed. An unknown check state cannot
+replace an earlier result, so known failures remain visible in reports while
+the unknown state blocks merging.
+
+Missing mergeability or merge-state values get the same bounded retries as
+`UNKNOWN`. If they remain unresolved, the PR waits without merging.
+
 A safe PR that is only `BEHIND` its base branch gets one `@dependabot rebase`
 comment per head commit, one PR at a time per target branch: while a PR can
 merge, is up to date and waiting on CI, or has a rebase pending, the others
@@ -63,6 +76,7 @@ have separate queues. A rebase request Dependabot has not acted on within a
 day stops holding the queue: that PR is left for a human and the next one is
 rebased. A request with the same timestamp as the head commit counts as
 pending too: the timestamp cannot establish that it preceded the commit.
+Rebase requests recognize your login regardless of capitalization.
 When the head timestamp is missing, the PR waits without requesting another
 rebase or treating historical requests as stalled. It does not hold the
 rebase queue while waiting for that timestamp.
@@ -120,7 +134,8 @@ repositories' writes; a merge that times out is handled like a 504. A rebase req
 with a 500, 502, 503, 504, a timeout, a broken connection or unreadable JSON
 in a successful HTTP response may have been posted all the same: it is
 reported requested, with a warning, rather than failed, and a later run
-asks again if it was not. A merge or comment GitHub refuses for a rate limit
+asks again if it was not. An unreadable response to a successful rebase-comment
+POST keeps its place in the rebase queue. A merge or comment GitHub refuses for a rate limit
 is made again after the pause GitHub asks for, up to two minutes; other
 writes wait meanwhile, since the limit applies to the user. When GitHub
 asks for a longer pause, or refuses the write again (`rate-limited again
@@ -139,6 +154,38 @@ so they cannot overflow into an immediate retry.
 
 PRs not opened by Dependabot are never fetched: the query asks GitHub only
 for `author:app/dependabot`, and the author is checked again locally.
+
+## Report findings and incomplete responses
+
+Truncation findings remain visible with `--open`, even when every PR on
+the fetched search page has closed since GitHub indexed it. An incomplete
+search is not reported as having no open PRs.
+Missing search results, counts or lists, and unknown states on returned PRs,
+fail the repository read instead of silently hiding PRs.
+Null or unidentified search items, non-positive PR numbers and search counts
+smaller than the returned list also fail the read, so `--open` cannot hide
+an incomplete response as a repository with nothing to process.
+Missing or null archive and draft flags also fail the read rather than
+treating a repository as active or a PR as ready for merging.
+Missing commit, check or comment lists or totals also fail the read, as do
+totals smaller than the returned lists. Incomplete responses cannot establish
+that all commits and checks were verified or that no rebase was requested.
+A missing check-summary field also fails the read; only an explicit null
+means the head has no checks, even when checks are optional.
+
+Repository discovery rejects missing lists or pagination fields and missing
+or repeated continuation cursors. It also rejects null or unidentified
+repository entries, missing archive or fork flags, and omitted permission
+or Dependabot-config lookups. Explicit null permissions and config lookups
+remain valid and are filtered normally. If a later page is incomplete,
+`init --discover` fails instead of writing a partial repository list.
+
+Failure diagnosis compares checks by name and their available app, workflow
+and event identities, keeping commit status contexts separate from check runs.
+A same-named job from another source cannot establish or hide a shared
+failure, and a shared failure does not hide an update's separate failing job.
+Incomplete check lists are excluded from failure and no-checks diagnoses:
+unread checks may include a passing rerun or the only check that ran.
 
 ## Agent review
 
