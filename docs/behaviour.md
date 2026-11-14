@@ -417,6 +417,45 @@ header then says `no agent review`. When every repo a run selects sets it,
 installed. `--max-reviews` or `--review-parallel` without `--review`,
 `--agent`, or `--allow-major` is an error.
 
+## Status and first run
+
+`deps-handler status` evaluates the same configured repositories as a Dependabot
+dry run, skipping `skip: true` repositories. It never writes to GitHub, runs an
+agent, or uses cached agent verdicts. It shows one line per repository with open
+Dependabot PRs, then totals and a single next command. Each PR counts once:
+
+- **would merge**: the policy permits merging and the repository is not in
+  `mode: report`;
+- **waiting**: a transient wait, or a safe rebase that has yet to be requested;
+- **held**: other skipped PRs, including merge/rebase candidates in `mode: report`;
+- **failing**: PRs with failing checks, counted once even if several checks fail.
+
+Failing checks take precedence over the other counts. Repository read errors
+remain visible and exit 1; their stale decisions are excluded from totals.
+Warnings and findings also keep a repository visible. Finding counts are
+observations needing attention, not additional PRs. No open PRs is a successful
+result. The next command is `dependabot --apply` when something can merge,
+otherwise `dependabot --open` for details. Explicit `-c` paths are preserved.
+
+`status --json` is identical to `dependabot --open --json`, with `apply: false`
+and complete repository results. It uses the shared output flags and conflict
+checks. Both `--table` (the default) and `--list` show the compact text view.
+Status has no `--apply` or review flags. Its exit codes follow the dry run:
+0 for successful evaluation, 1 for processing/output errors, 2 for usage errors,
+and 130 for interruption. Failing CI alone does not make the command fail.
+
+Bare `dh` or `deps-handler` prints help and makes no network requests, regardless
+of config availability. On a terminal it appends a one-line pointer to `status`;
+redirected output and explicit `--help` or `help` keep the normal help output.
+The terminal hint preserves an invoked `dh` symlink and an explicit config path.
+
+After writing a config, `init --discover` reports the total repository count and
+wraps up to 20 names, followed by `… and N more` if needed. Every discovered
+repository is still written to the config. The next command runs the full
+Dependabot dry run, preserving an explicit config path. `--stdout` prints only
+the config, without discovery guidance or counts. Discovery does not fetch open
+PR counts; run `status` to see them.
+
 ## Scripting
 
 A dry run never writes to GitHub, so `deps-handler dependabot` is safe to
@@ -447,8 +486,8 @@ run's review approved without asking the agent again. For
 - `130`: interrupted (Ctrl-C, `SIGTERM` or `SIGHUP`). A second Ctrl-C
   kills deps-handler at once, should the first not stop it.
 
-All report commands default to bordered tables. `--table`, `--list` and
-`--json` select the table view, original layout or JSON respectively;
+Report commands default to bordered tables, except the compact `status` view.
+`--table`, `--list` and `--json` select the table view, original layout or JSON respectively;
 `--format table|list|json` selects the same modes. Conflicting selections
 or an unknown format are usage errors (exit `2`), checked before config,
 GitHub access or agent setup. Table cells wrap to the terminal width (140

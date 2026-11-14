@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/report"
 	"github.com/spf13/cobra"
 )
 
@@ -61,6 +64,7 @@ With --stdout, the config is printed rather than written.`,
 				return errors.New("this build carries no example config")
 			}
 			content := ExampleConfig
+			var discovered []string
 			if discover {
 				repos, err := discoverRepos(cmd.Context(), owners)
 				if err != nil {
@@ -69,6 +73,7 @@ With --stdout, the config is printed rather than written.`,
 				if len(repos) == 0 {
 					return errors.New("found no repository you can write to with a Dependabot config; run init without --discover and list yours by hand")
 				}
+				discovered = repos
 				if content, err = withRepos(ExampleConfig, repos); err != nil {
 					return err
 				}
@@ -122,7 +127,7 @@ With --stdout, the config is printed rather than written.`,
 			}
 			var err error
 			if discover {
-				_, err = fmt.Fprintf(out, "check the repositories it lists under repos: with `%s`, then try a dry run with `%s`\n", command("repos"), command("dependabot"))
+				err = discoverySummary(out, discovered)
 			} else {
 				_, err = fmt.Fprintf(out, "list your repositories under repos:, then check them with `%s`\n", command("repos"))
 			}
@@ -234,4 +239,26 @@ func withRepos(example []byte, repos []string) ([]byte, error) {
 		fmt.Fprintf(&b, "  - %s\n", r)
 	}
 	return b.Bytes(), nil
+}
+
+// discoverySummary bounds the printed list; the config retains every name.
+func discoverySummary(out io.Writer, repos []string) error {
+	if _, err := fmt.Fprintf(out, "found %d repositories:\n", len(repos)); err != nil {
+		return err
+	}
+	var names []string
+	for _, repo := range repos[:min(20, len(repos))] {
+		names = append(names, report.Plain(repo))
+	}
+	wrapped := text.WrapSoft(strings.Join(names, ", "), 76)
+	if _, err := fmt.Fprintln(out, "  "+strings.ReplaceAll(wrapped, "\n", "\n  ")); err != nil {
+		return err
+	}
+	if len(repos) > 20 {
+		if _, err := fmt.Fprintf(out, "  … and %d more\n", len(repos)-20); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(out, "try a full dry run with `%s`\n", report.Plain(displayCommand("dependabot")))
+	return err
 }

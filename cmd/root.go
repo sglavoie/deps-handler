@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 
+	"github.com/cli/go-gh/v2/pkg/term"
 	"github.com/sglavoie/deps-handler/pkg/config"
+	"github.com/sglavoie/deps-handler/pkg/report"
 	"github.com/spf13/cobra"
 )
 
@@ -46,7 +49,7 @@ commands to list, review, repair or merge selected pull requests.`,
 		return nil
 	}
 	root.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file (default ~/.config/deps-handler/config.yaml)")
-	root.AddCommand(newInitCmd(), newDependabotCmd(), newReposCmd(), newVerdictsCmd(), newPRCmd())
+	root.AddCommand(newInitCmd(), newDependabotCmd(), newStatusCmd(), newReposCmd(), newVerdictsCmd(), newPRCmd())
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	// Cobra's help prints the usage for an unknown topic and succeeds:
 	// a topic that names no command is a usage error like any other.
@@ -92,7 +95,30 @@ func execute(args []string, stdout, stderr io.Writer) int {
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	usageCompletion(root)
-	return exitCode(root.Execute(), stderr)
+	executed, err := root.ExecuteC()
+	// Keep Cobra's help path (and its usage layout) intact. Only an implicit
+	// root help on a terminal gets the status hint; no config or client is read.
+	help, _ := root.Flags().GetBool("help")
+	version, _ := root.Flags().GetBool("version")
+	if err == nil && executed == root && !help && !version && stdoutIsTerminal(stdout) {
+		_, err = fmt.Fprintf(stdout, "\nFor a read-only overview, run `%s`.\n", report.Plain(displayCommand("status")))
+	}
+	return exitCode(err, stderr)
+}
+
+// Tests replace the terminal probe while retaining the real execution path.
+var stdoutIsTerminal = func(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && term.IsTerminal(f)
+}
+
+// displayCommand preserves an invoked dh symlink in new human-facing hints.
+func displayCommand(sub string) string {
+	line := command(sub)
+	if len(os.Args) > 0 && strings.EqualFold(strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"), "dh") {
+		return "dh " + strings.TrimPrefix(line, "deps-handler ")
+	}
+	return line
 }
 
 // usageCompletion makes completion for a shell it has no script for a

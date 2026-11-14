@@ -13,9 +13,20 @@ explicitly selected pull requests from any author.
 
 ```bash
 deps-handler init --discover     # find your repos that use Dependabot
-deps-handler dependabot          # preview updates
+deps-handler status             # see what is ready and what needs attention
 deps-handler dependabot --apply  # merge safe updates
 ```
+
+`status` shows one line per repository with open Dependabot PRs, totals for
+would merge / waiting / held / failing, and a next command. It makes read-only
+GitHub requests without agent reviews; `status --json` uses the same schema as
+`dependabot --open --json`. Run `dependabot` for the full dry run.
+
+Bare `dh` or `deps-handler` prints help, with a pointer to `status` on a terminal.
+It makes no network requests and needs no config. Piped bare output and explicit
+`--help` / `help` print help without the pointer. After `init --discover` writes
+the config, it lists the repositories found (up to 20 names) and suggests the
+full dry run; `--stdout` still prints only the config.
 
 The `pr` commands [list and merge PRs](#list-open-prs),
 [review non-Dependabot PRs](#review-repair-and-merge-non-dependabot-prs),
@@ -84,6 +95,7 @@ and scheduled jobs that used `run` to use `dependabot` with the same flags.
 ```bash
 deps-handler init                         # write an example config, then list your repos in it
 deps-handler init --discover              # or fill it with your repos that use Dependabot
+deps-handler status                       # compact, read-only Dependabot overview
 deps-handler repos                        # effective policy per repo (--json, -r, --owner)
 deps-handler dependabot                   # dry run: report only
 deps-handler dependabot --apply           # merge safe PRs

@@ -23,7 +23,13 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newDependabotCmd() *cobra.Command {
+func newDependabotCmd() *cobra.Command { return newDependabotView(false) }
+
+func newStatusCmd() *cobra.Command { return newDependabotView(true) }
+
+// The compact status view shares the dry-run path, but exposes no flags
+// that enable writes or reviews.
+func newDependabotView(compact bool) *cobra.Command {
 	var output *outputFormat
 	var (
 		apply      bool
@@ -36,8 +42,8 @@ func newDependabotCmd() *cobra.Command {
 		agentName  string
 		maxReviews int
 		open       bool
-		parallel   int
-		reviewPar  int
+		parallel   = runner.DefaultParallel
+		reviewPar  = runner.DefaultReviewParallel
 	)
 	c := &cobra.Command{
 		Example: `  deps-handler dependabot
@@ -181,7 +187,7 @@ no repository of; and 130 when interrupted.`,
 						outputErr = status.WithOutput(func() error { return report.Markdown(out, apply, r) })
 					}
 				}
-			} else if format != "json" {
+			} else if format != "json" && !compact {
 				progress = func(r runner.RepoResult) {
 					if outputErr == nil && (!open || report.HasPRs(r)) {
 						if format == "list" {
@@ -220,6 +226,10 @@ no repository of; and 130 when interrupted.`,
 				if err := report.JSON(out, apply, shown); err != nil {
 					return err
 				}
+			case compact:
+				if err := report.Overview(out, shown, len(results)-len(shown), command("dependabot")); err != nil {
+					return err
+				}
 			case !markdown:
 				var elapsed []time.Duration
 				if format != "list" {
@@ -239,6 +249,20 @@ no repository of; and 130 when interrupted.`,
 			}
 			return nil
 		},
+	}
+	if compact {
+		open = true
+		c.Use = "status"
+		c.Short = "Show a read-only summary of open Dependabot PRs"
+		c.Long = `Evaluate configured repositories without agent reviews or GitHub writes.
+Show one line per repository with open Dependabot PRs, totals and a next
+command. Repositories with errors or warnings remain visible. JSON uses
+the same result schema as dependabot --open --json.`
+		c.Example = "  deps-handler status\n  deps-handler status --json"
+		output = addOutputFlags(c, false)
+		c.Flags().Lookup("table").Usage = "print the compact text summary (default)"
+		c.Flags().Lookup("list").Usage = "print the compact text summary"
+		return c
 	}
 	c.Flags().BoolVar(&apply, "apply", false, "merge safe PRs and request rebases (default is a dry run)")
 	output = addOutputFlags(c, false)
