@@ -9,7 +9,7 @@ deps-handler manages Dependabot updates across your repositories using your
 agent to review bigger bumps. It also lists, diagnoses, repairs and merges
 explicitly selected pull requests from any author.
 
-![deps-handler merging, rebasing and reviewing Dependabot PRs across fictional repositories](docs/demo.gif)
+![deps-handler showing status, reviewing Dependabot updates and repairing a fictional pull request](docs/demo.gif)
 
 ```bash
 deps-handler init --discover     # find your repos that use Dependabot
@@ -88,8 +88,9 @@ names. Existing Dependency health issues are recognized and updated.
 
 ## Usage
 
-Use `dependabot` for Dependabot PRs across configured repositories, or
-`pr diagnose`, `pr fix` and `pr rerun` for any explicitly selected PR. Update scripts
+Use `status` for a compact overview and `dependabot` for Dependabot PRs across
+configured repositories. Use `pr list`, `pr merge` and `pr handle` for general
+PR work, or `pr diagnose`, `pr fix` and `pr rerun` for a selected PR. Update scripts
 and scheduled jobs that used `run` to use `dependabot` with the same flags.
 
 ```bash
@@ -436,7 +437,7 @@ snapshot's checks describe the older remote commit.
 Publishing a repair adds commits that Dependabot did not author. The `dependabot`
 command therefore leaves that PR alone under its authorship policy; review
 and merge the repaired PR yourself after its checks and remaining gates pass.
-These commands are CLI-only and unavailable in the demo build.
+`pr diagnose` and `pr fix` are CLI-only and unavailable in the demo build.
 
 ### Rerun CI for a specific PR
 
@@ -504,10 +505,40 @@ config, token or verdicts, so `--apply` is safe to try:
 
 ```bash
 git clone https://github.com/sglavoie/deps-handler && cd deps-handler
-go run -tags demo . dependabot                    # dry run
-go run -tags demo . dependabot --review --apply   # merge, rebase, agent verdicts
+go run -tags demo .                              # help and a status pointer
+go run -tags demo . status                       # compact Dependabot overview
+go run -tags demo . dependabot --open --review --apply
 go run -tags demo . verdicts
+go run -tags demo . pr list
+go run -tags demo . pr merge                     # preview merge gates
+go run -tags demo . pr merge --apply
+go run -tags demo . pr handle --repo acme/storefront --agent claude
+go run -tags demo . pr handle --repo acme/storefront --agent claude --apply
 ```
+
+With `just` installed, `just try …` runs the same demo. After the initial Go
+dependencies are installed, it needs no network, GitHub login or installed
+agent. Dependabot commands show five fictional repositories. The general PR
+commands use a separate three-PR scenario in `acme/storefront`:
+
+| PR | `pr handle` preview | `pr handle --apply` |
+| --- | --- | --- |
+| #430: checkout confirmation | would merge | approved and merged |
+| #431: empty cart total | would repair | simulated repair pushed, CI checked, re-reviewed and merged |
+| #432: guest checkout policy | blocked with a question | asks whether guests may check out or must sign in |
+
+`pr merge --apply` merges #430 and reports the other two blocked. Repository-wide
+`pr handle --apply` merges #430 and #431, leaving #432 blocked. Both commands
+therefore exit 1, just as real runs do when eligible PRs remain blocked. Try
+`just try pr handle acme/storefront#431 --agent claude --apply` for a successful
+single-PR repair and merge example. Repairs, checks and agent answers are simulated; no git
+or agent process runs. A retained demo checkout is an empty temporary directory.
+
+Each invocation resets PR state; only demo verdicts persist in the isolated
+`deps-handler-demo` cache directory. `pr diagnose`, `pr fix`, `pr rerun` and
+agent-backed `pr eval` remain unavailable and name the three supported commands.
+`pr eval --list` can still list its embedded cases. `just demo` records the GIF
+with VHS, using a demo-local `dh` symlink.
 
 ## What counts as safe
 
@@ -696,7 +727,8 @@ acme/billing  (squash, up to patch, checks required, write access)
   needs attention:
     - held by policy: #57 (minor), #58 (major) — allow with max_update_type, or run with --review
     - #61 (patch) fails test — suggest:
-      deps-handler pr diagnose
+      deps-handler pr diagnose acme/billing#61 --list > repair.md
+      @dependabot ignore this patch version
 ```
 
 Single-dependency titles use `name old → new` only when commit metadata
@@ -704,11 +736,11 @@ explicitly supplies both versions. Groups and updates missing that metadata
 keep their original titles. The demo supplies optional previous-version
 metadata; real PRs without it retain their titles.
 
-Dry runs keep their closing guidance and add elapsed time. An apply run ends
-with a line such as:
+Dry runs keep their closing guidance and add elapsed time. A demo apply run
+through the `dh` symlink ends with a line such as (timing varies):
 
 ```text
-done in 41s · 4 need you: dh dependabot --open
+done in 4s · 4 need you: dh dependabot --open
 ```
 
 The count is findings, including each finding grouped into a shared line.
@@ -736,9 +768,9 @@ discarded and cannot become a cached approval for a later run.
 `init`, `repos` and `verdicts` also exit `1` if their output cannot be
 written, including confirmations after a config or cache change.
 
-Report commands (`dependabot`, `repos`, `verdicts`, and `pr diagnose`, `fix`,
-`rerun`, `eval`) default to bordered tables, with colors on a terminal and
-wrapped cells for long values. Use `--list` for the original output or `--json`
+Report commands (`dependabot`, `repos`, `verdicts`, and `pr list`, `merge`,
+`handle`, `diagnose`, `fix`, `rerun`, `eval`) default to bordered tables, with
+colors on a terminal and wrapped cells for long values. Use `--list` for the original output or `--json`
 for machine-readable output; `--table` explicitly selects the default.
 `--format table|list|json` selects the same modes. Conflicting output modes
 exit `2` before any work begins.

@@ -522,7 +522,8 @@ acme/billing  (squash, up to patch, checks required, write access)
   needs attention:
     - held by policy: #57 (minor), #58 (major) — allow with max_update_type, or run with --review
     - #61 (patch) fails test — suggest:
-      deps-handler pr diagnose
+      deps-handler pr diagnose acme/billing#61 --list > repair.md
+      @dependabot ignore this patch version
 ```
 
 Equivalent findings share a line in their original order. Failing checks,
@@ -538,11 +539,11 @@ time rounded to seconds and, when findings remain, a command to view them:
 
 ```text
 4 repos (1 without open PRs hidden): 6 merged, 1 rebase requested, 5 skipped; 4 need attention
-done in 41s · 4 need you: dh dependabot --open
+done in 4s · 4 need you: dh dependabot --open
 ```
 
 The time varies by run. Dry runs retain any existing rerun guidance and end
-with `elapsed 41s`. These presentation changes apply only to the Dependabot
+with a line such as `elapsed 0s` for the offline demo. These presentation changes apply only to the Dependabot
 table; `--list`, `--json` and `--markdown` keep their previous bytes and do
 not include elapsed time.
 
@@ -962,8 +963,10 @@ passing PR. Preparation, repair or CI confirmation failures exit 1. Both
 commands support `--json`, report operational errors there, use 2 for invalid
 arguments and 130 for interruption. The `dependabot` command keeps its authorship policy:
 a PR with published repair commits fails its Dependabot-only authorship gate
-and must be merged manually. Neither the GitHub App nor the
-demo build runs repairs.
+and must be merged manually. The GitHub App does not run repairs. The demo build simulates general PR
+repairs through `pr handle` with an offline client, workspace and canned
+agent answers; `pr diagnose` and `pr fix` remain unavailable. See the
+[offline demo](../README.md#try-it-without-your-repositories).
 
 ## Diagnosis evaluation
 

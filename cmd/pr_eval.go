@@ -103,8 +103,8 @@ Exit 0 means every selected case passed, 1 means a case failed or errored,
 				}
 				return nil
 			}
-			if !prCommandsAvailable {
-				return errors.New("pr commands are unavailable in the demo build")
+			if !prCommandsAvailable || !prExtraCommandsAvailable {
+				return errors.New(demoPRUnavailable)
 			}
 			cfg, err := loadPRConfig()
 			if err != nil {

@@ -1,38 +1,44 @@
-# Records docs/demo.gif against the make-believe GitHub of internal/demo:
-# fictional acme repositories, no network, no real merges.
-# Run with `just demo`, which builds the demo binary this puts on PATH.
-
+# Offline fictional PRs only. `just demo` installs the demo-local dh symlink.
+# Under 40 seconds, including the real two-observation CI wait after repair.
 Output docs/demo.gif
 
 Set Shell "bash"
 Set FontSize 14
 Set Width 1440
-Set Height 700
+Set Height 1080
 Set Padding 20
 Set Theme "Catppuccin Mocha"
-Set TypingSpeed 45ms
+Set TypingSpeed 25ms
+Set Framerate 25
 
 Hide
-Type "export PATH=$PWD/.demo/bin:$PATH PS1='$ ' && rm -rf $HOME/Library/Caches/deps-handler-demo ${XDG_CACHE_HOME:-$HOME/.cache}/deps-handler-demo && clear"
+Type "export PATH=$PWD/.demo/bin:$PATH PS1='$ '; unset NO_COLOR CLICOLOR CLICOLOR_FORCE; dh verdicts forget acme/storefront acme/billing acme/gateway >/dev/null; clear"
 Enter
+Sleep 500ms
 Show
 
-Type "deps-handler repos"
-Sleep 400ms
+# Bare dh intentionally shows help and the status pointer.
+Type "dh"
 Enter
-Sleep 3s
+Sleep 2s
 
-Type "clear && deps-handler dependabot --open        # dry run: report only"
-Sleep 400ms
+Ctrl+L
+Type "dh status"
+Enter
+Sleep 2s
+
+Ctrl+L
+Type "dh dependabot --open --review --apply"
 Enter
 Sleep 7s
 
-Type "clear && deps-handler dependabot --open --review --apply"
-Sleep 400ms
+Ctrl+L
+Type "dh verdicts"
 Enter
-Sleep 9s
+Sleep 3s
 
-Type "clear && deps-handler verdicts"
-Sleep 400ms
+# The repaired PR is re-reviewed at its new head before merging.
+Ctrl+L
+Type "dh pr handle acme/storefront#431 --agent claude --apply"
 Enter
-Sleep 6s
+Sleep 15s

@@ -25,20 +25,41 @@ sh scripts/test-container.sh deps-handler:test
 
 The `demo` build tag swaps GitHub and the AI agent for a make-believe
 version with fictional `acme` repositories ([`internal/demo`](internal/demo/demo.go)).
-It never reaches the network, and keeps its config, verdicts and checkouts
+After Go dependencies are installed, demo commands need no network or installed
+agent. The demo keeps its config and verdicts
 in a directory of its own, `deps-handler-demo` in your user cache directory
 (`~/Library/Caches` on macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux):
 
 ```bash
-just try dependabot                    # dry run
-just try dependabot --review --apply   # "merge", "rebase", have the "agent" review
+just try                               # help and a terminal status pointer
+just try status                        # compact overview
+just try dependabot --open --review --apply
 just try verdicts
+just try pr list
+just try pr merge                       # preview
+just try pr merge --apply               # #430 merges; #431 and #432 block (exit 1)
+just try pr handle --repo acme/storefront --agent claude
+just try pr handle --repo acme/storefront --agent claude --apply  # exit 1: #432 needs a decision
+just try pr handle acme/storefront#431 --agent claude --apply     # repair and merge (exit 0)
 ```
 
-Merges only change the demo's memory, so every run starts over. `just demo`
+The PR scenario is separate from the Dependabot fixtures: #430 is approved,
+#431 needs a simulated repair, and #432 asks whether guests may check out or
+must sign in. Preview never publishes a repair or merge. Apply uses the real
+orchestration with canned agent answers, an in-memory push and simulated CI;
+no git or agent subprocess runs. Any retained checkout is an empty temporary
+directory. `pr diagnose`, `pr fix`, `pr rerun` and agent-backed `pr eval` are
+unavailable; `pr eval --list` still lists embedded cases.
+
+Merges and repairs only change memory, so every invocation starts over.
+Verdicts persist separately; the tape forgets only fictional repo verdicts to
+show live review progress. `just demo`
 re-records [`docs/demo.gif`](docs/demo.gif) from [`demo/demo.tape`](demo/demo.tape)
 with [VHS](https://github.com/charmbracelet/vhs); re-record it when the
-report output changes.
+report output changes. The recipe creates `.demo/bin/dh` pointing to the demo
+binary, so the tape cannot pick up an installed production `dh`. It shows bare
+help, explicit status, reviewed Dependabot apply, verdicts and a PR repair in
+under 40 seconds.
 
 ## Evaluating PR diagnosis
 

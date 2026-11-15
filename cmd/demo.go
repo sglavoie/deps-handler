@@ -11,16 +11,17 @@ import (
 	"github.com/sglavoie/deps-handler/internal/demo"
 	"github.com/sglavoie/deps-handler/pkg/config"
 	"github.com/sglavoie/deps-handler/pkg/github"
+	"github.com/sglavoie/deps-handler/pkg/pr"
 	"github.com/sglavoie/deps-handler/pkg/review"
 )
 
 // The demo build talks to the make-believe GitHub of package demo instead
-// of the real one, and keeps its config, verdicts and checkouts in a
-// directory of its own, so it can neither touch a repository nor the
-// state of a real install.
+// of the real one. Config and verdicts live in a separate cache directory;
+// PR workspaces are empty temporary directories. It cannot touch a real
+// repository or the state of a real install.
 func init() {
 	Version += "+demo"
-	prCommandsAvailable = false
+	prExtraCommandsAvailable = false
 	dir := demoDir()
 	for _, v := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
 		os.Setenv(v, dir)
@@ -30,6 +31,17 @@ func init() {
 	if err := os.MkdirAll(filepath.Join(dir, "deps-handler"), 0o700); err == nil {
 		_ = os.WriteFile(filepath.Join(dir, "deps-handler", "config.yaml"), []byte(demo.Config), 0o600)
 	}
+	prClient := demo.NewPRClient()
+	newPRListClient = func() (github.PRListClient, error) { return demo.NewPRClient(), nil }
+	newPRMergeClient = func() (github.MergeClient, error) { return demo.NewPRClient(), nil }
+	newPRHandleClient = func() (github.HandleClient, error) {
+		prClient = demo.NewPRClient()
+		return prClient, nil
+	}
+	newTaskAgent = func(_ config.Agent, name string) (review.TaskAgent, error) {
+		return demo.TaskAgent{AgentName: name}, nil
+	}
+	newPRWorkspace = func(root string) pr.Workspace { return &demo.PRWorkspace{Client: prClient, Root: root} }
 	client := demo.NewClient()
 	newClient = func() (github.Client, error) { return client, nil }
 	newAgent = func(config.Agent, string) (review.Agent, error) { return demo.Agent{}, nil }

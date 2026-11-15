@@ -22,6 +22,9 @@ import (
 )
 
 var prCommandsAvailable = true
+var prExtraCommandsAvailable = true
+
+const demoPRUnavailable = "this command is unavailable in the demo build; try pr list, pr merge or pr handle"
 
 var newPRClient = github.NewPRClient
 var newPRWorkspace = func(root string) pr.Workspace {
@@ -144,8 +147,8 @@ func newPRTaskCmd(fix bool) *cobra.Command {
 				return usageError{errors.New("pr fix needs --agent claude or --agent codex; api supports pr diagnose only")}
 			}
 			// The demo build must remain unable to reach real repositories.
-			if !prCommandsAvailable {
-				return errors.New("pr commands are unavailable in the demo build")
+			if !prCommandsAvailable || !prExtraCommandsAvailable {
+				return errors.New(demoPRUnavailable)
 			}
 			agent, err := newTaskAgent(cfg, name)
 			if err != nil {

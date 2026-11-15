@@ -115,6 +115,7 @@ ci: vet lint vuln test
 # Record docs/demo.gif with VHS against fake repositories (nothing real is touched)
 demo:
     go build -tags demo -o .demo/bin/{{ binary_name }} .
+    ln -sfn {{ binary_name }} .demo/bin/dh
     vhs demo/demo.tape
 
 # Try the CLI against fake repositories, e.g. `just try dependabot --review --apply`

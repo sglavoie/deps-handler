@@ -56,8 +56,8 @@ unconfirmed response before deciding whether to try again.`,
 			if cmd.Flags().Changed("head") && strings.TrimSpace(opts.HeadOID) == "" {
 				return usageError{errors.New("--head needs a commit SHA")}
 			}
-			if !prCommandsAvailable {
-				return errors.New("pr commands are unavailable in the demo build")
+			if !prCommandsAvailable || !prExtraCommandsAvailable {
+				return errors.New(demoPRUnavailable)
 			}
 			client, err := newPRRerunClient()
 			if err != nil {

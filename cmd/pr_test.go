@@ -49,11 +49,14 @@ func (commandWorkspace) CommitAndPush(context.Context, string, string, string, s
 
 func mockPRCommands(t *testing.T) {
 	t.Helper()
+	oldExtraAvailable := prExtraCommandsAvailable
 	oldClient, oldAgent, oldWorkspace, oldLocalWorkspace, oldAvailable := newPRClient, newTaskAgent, newPRWorkspace, newLocalPRWorkspace, prCommandsAvailable
 	t.Cleanup(func() {
+		prExtraCommandsAvailable = oldExtraAvailable
 		newPRClient, newTaskAgent, newPRWorkspace, newLocalPRWorkspace, prCommandsAvailable = oldClient, oldAgent, oldWorkspace, oldLocalWorkspace, oldAvailable
 	})
 	prCommandsAvailable = true
+	prExtraCommandsAvailable = true
 	newPRClient = func() (github.PRClient, error) {
 		return commandPRClient{github.PRSnapshot{Target: github.PRTarget{Owner: "o", Repo: "r", Number: 7}, State: "OPEN", HeadOID: "head", HeadRepo: "o/r", HeadRef: "update", BaseOID: "base", BaseRef: "main", Permission: "WRITE", Mergeable: "MERGEABLE", MergeState: "CLEAN", ChecksComplete: true, Checks: []github.PRCheck{{Check: github.Check{Name: "test", State: github.CheckFailed}}}}}, nil
 	}
