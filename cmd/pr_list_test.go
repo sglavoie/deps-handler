@@ -263,13 +263,15 @@ func TestPRListConcurrentFailureCancelsAndJoinsWorkers(t *testing.T) {
 		if started.Add(1) == 10 {
 			close(ready)
 		}
-		select {
-		case <-ready:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
 		if repo == "o/r00" {
-			return nil, failure
+			// Fail only once every worker has started. Other workers observe
+			// cancellation through one path, regardless of when they start waiting.
+			select {
+			case <-ready:
+				return nil, failure
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 		<-ctx.Done()
 		cancelled.Add(1)
