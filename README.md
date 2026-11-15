@@ -25,8 +25,9 @@ GitHub requests without agent reviews; `status --json` uses the same schema as
 Bare `dh` or `deps-handler` prints help, with a pointer to `status` on a terminal.
 It makes no network requests and needs no config. Piped bare output and explicit
 `--help` / `help` print help without the pointer. After `init --discover` writes
-the config, it lists the repositories found (up to 20 names) and suggests the
-full dry run; `--stdout` still prints only the config.
+the config, it lists the repositories found (up to 20 names) and suggests
+`status` for the compact overview and `dependabot` for the full dry run;
+`--stdout` still prints only the config.
 
 The `pr` commands [list and merge PRs](#list-open-prs),
 [review non-Dependabot PRs](#review-repair-and-merge-non-dependabot-prs),

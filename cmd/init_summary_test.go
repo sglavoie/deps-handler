@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -10,6 +11,40 @@ import (
 
 	"github.com/jedib0t/go-pretty/v6/text"
 )
+
+func TestDiscoverySummarySingularRepository(t *testing.T) {
+	var out bytes.Buffer
+	if err := discoverySummary(&out, []string{"acme/example"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.String(), "found 1 repository:\n  acme/example\n") {
+		t.Fatal(out.String())
+	}
+}
+
+func TestDiscoverySummaryNextCommands(t *testing.T) {
+	old, oldDiscover, oldArgs := ExampleConfig, discoverRepos, os.Args
+	t.Cleanup(func() { ExampleConfig, discoverRepos, os.Args = old, oldDiscover, oldArgs })
+	ExampleConfig = []byte("# Example config\nrepos:\n  # - acme/example\n")
+	discoverRepos = func(context.Context, []string) ([]string, error) {
+		return []string{"acme/example"}, nil
+	}
+	for _, name := range []string{"deps-handler", "dh"} {
+		t.Run(name, func(t *testing.T) {
+			os.Args = []string{filepath.Join(t.TempDir(), name)}
+			path := filepath.Join(t.TempDir(), "my config.yaml")
+			code, out, stderr := run("init", "--discover", "-c", path)
+			if code != 0 || stderr != "" {
+				t.Fatalf("init = %d, %q, %q", code, out, stderr)
+			}
+			for _, sub := range []string{"status", "dependabot"} {
+				if !strings.Contains(out, "`"+name+" "+sub+" -c '"+path+"'`") {
+					t.Errorf("missing %s command with config path: %s", sub, out)
+				}
+			}
+		})
+	}
+}
 
 func TestDiscoverySummaryLimitAndStdout(t *testing.T) {
 	old, oldDiscover := ExampleConfig, discoverRepos
@@ -24,7 +59,11 @@ func TestDiscoverySummaryLimitAndStdout(t *testing.T) {
 			discoverRepos = func(context.Context, []string) ([]string, error) { return repos, nil }
 			path := filepath.Join(t.TempDir(), "my config.yaml")
 			code, out, stderr := run("init", "--discover", "-c", path)
-			if code != 0 || stderr != "" || !strings.Contains(out, fmt.Sprintf("found %d repositories:", n)) {
+			count := fmt.Sprintf("found %d repositories:", n)
+			if n == 1 {
+				count = "found 1 repository:"
+			}
+			if code != 0 || stderr != "" || !strings.Contains(out, count) {
 				t.Fatalf("init = %d, %q, %q", code, out, stderr)
 			}
 			for _, repo := range repos[:min(20, n)] {

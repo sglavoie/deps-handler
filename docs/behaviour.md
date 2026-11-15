@@ -451,8 +451,9 @@ The terminal hint preserves an invoked `dh` symlink and an explicit config path.
 
 After writing a config, `init --discover` reports the total repository count and
 wraps up to 20 names, followed by `… and N more` if needed. Every discovered
-repository is still written to the config. The next command runs the full
-Dependabot dry run, preserving an explicit config path. `--stdout` prints only
+repository is still written to the config. The suggested next commands run
+`status` for the compact overview or `dependabot` for the full dry run, preserving
+an invoked `dh` symlink and an explicit config path. `--stdout` prints only
 the config, without discovery guidance or counts. Discovery does not fetch open
 PR counts; run `status` to see them.
 

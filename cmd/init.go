@@ -243,7 +243,11 @@ func withRepos(example []byte, repos []string) ([]byte, error) {
 
 // discoverySummary bounds the printed list; the config retains every name.
 func discoverySummary(out io.Writer, repos []string) error {
-	if _, err := fmt.Fprintf(out, "found %d repositories:\n", len(repos)); err != nil {
+	noun := "repositories"
+	if len(repos) == 1 {
+		noun = "repository"
+	}
+	if _, err := fmt.Fprintf(out, "found %d %s:\n", len(repos), noun); err != nil {
 		return err
 	}
 	var names []string
@@ -259,6 +263,7 @@ func discoverySummary(out io.Writer, repos []string) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(out, "try a full dry run with `%s`\n", report.Plain(displayCommand("dependabot")))
+	_, err := fmt.Fprintf(out, "see an overview with `%s`, or try a full dry run with `%s`\n",
+		report.Plain(displayCommand("status")), report.Plain(displayCommand("dependabot")))
 	return err
 }
