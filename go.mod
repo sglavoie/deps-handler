@@ -2,7 +2,7 @@ module github.com/sglavoie/deps-handler
 
 go 1.27.1
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0
