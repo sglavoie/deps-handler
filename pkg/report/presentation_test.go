@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -95,6 +96,84 @@ func TestEquivalentSuggestionsKeepEachCommand(t *testing.T) {
 	got := tableFindings(res)
 	if len(got) != 1 || got[0].Summary != "#1, #2: rebase stalled" || len(got[0].Suggestions) != 3 {
 		t.Fatalf("grouped: %+v", got)
+	}
+}
+
+func TestTableFindingsGroupedHeldUnknownGrammar(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, review := range []string{"", ", or run with --review"} {
+		for _, count := range []int{2, 3} {
+			t.Run(fmt.Sprintf("count=%d/review=%t", count, review != ""), func(t *testing.T) {
+				res := runner.RepoResult{Repo: "o/r", Policy: config.Builtin}
+				res.Policy.AgentReview = review != ""
+				for n := 204; n < 204+count; n++ {
+					res.Findings = append(res.Findings, policy.Finding{
+						Kind:    policy.FindingHeldUnknown,
+						PRs:     []int{n},
+						Summary: fmt.Sprintf("#%d is held only because Dependabot records no semver size for it (merge it by hand%s)", n, review),
+					})
+				}
+				before, err := json.Marshal(res)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var table, list, md bytes.Buffer
+				if err := RepoTable(&table, false, res); err != nil {
+					t.Fatal(err)
+				}
+				if err := Repo(&list, false, res); err != nil {
+					t.Fatal(err)
+				}
+				if err := Markdown(&md, false, res); err != nil {
+					t.Fatal(err)
+				}
+				for _, f := range res.Findings {
+					for name, output := range map[string]string{"table": table.String(), "list": list.String(), "markdown": md.String()} {
+						if !strings.Contains(output, f.Summary) {
+							t.Errorf("%s missing separate grammatical hold %q: %s", name, f.Summary, output)
+						}
+					}
+				}
+				after, err := json.Marshal(res)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(before, after) {
+					t.Fatal("rendering mutated the underlying findings or JSON")
+				}
+			})
+		}
+	}
+}
+
+func TestTableSuggestionsImmediatelyFollowFinding(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, kind := range []policy.FindingKind{policy.FindingReviewRequired, policy.FindingBehind, policy.FindingIncompatible} {
+		t.Run(string(kind), func(t *testing.T) {
+			res := runner.RepoResult{Findings: []policy.Finding{{
+				Kind: kind, Summary: "needs attention", PRs: []int{207, 208},
+				Details: []string{"extra context"}, Suggestions: []string{"first suggestion", "second suggestion"},
+			}}}
+			var table, list bytes.Buffer
+			if err := RepoTable(&table, false, res); err != nil {
+				t.Fatal(err)
+			}
+			if err := Repo(&list, false, res); err != nil {
+				t.Fatal(err)
+			}
+			prs := ""
+			if kind != policy.FindingIncompatible {
+				prs = "      PRs: #207, #208\n"
+			}
+			want := "    - needs attention — suggest:\n      first suggestion\n      second suggestion\n" + prs + "      - extra context\n"
+			if !strings.Contains(table.String(), want) {
+				t.Fatalf("suggestions must precede PRs and details: %s", table.String())
+			}
+			legacy := "    - needs attention\n" + prs + "      - extra context\n      suggest: first suggestion\n      suggest: second suggestion\n"
+			if !strings.Contains(list.String(), legacy) {
+				t.Fatalf("list layout changed: %s", list.String())
+			}
+		})
 	}
 }
 

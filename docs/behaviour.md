@@ -526,10 +526,19 @@ acme/billing  (squash, up to patch, checks required, write access)
       @dependabot ignore this patch version
 ```
 
-Equivalent findings share a line in their original order. Failing checks,
-agent assessments and findings with individual details stay separate. Each
-suggested command occupies its own indented line, with `suggest:` on the
-finding line. Distinct commands are retained when findings are grouped.
+Equivalent findings share a line in their original order. Unknown-size holds,
+failing checks, agent assessments and findings with individual details stay
+separate. Each suggested command occupies its own indented line, with `suggest:` on the
+finding line immediately above the suggestions. Any PR list and details follow
+the suggestions. For example, `just try dependabot -r gateway` includes:
+
+```text
+    - branch protection requires an approving review, which deps-handler never gives — suggest:
+      approve these PRs, or let Dependabot PRs merge without review
+      PRs: #207
+```
+
+Distinct commands are retained when findings are grouped.
 Commands beginning with `deps-handler` use `dh` when the executable's name is
 `dh` (including the installed symlink); shell aliases expanded to
 `deps-handler` cannot be detected.

@@ -165,16 +165,19 @@ func repoBodyView(w io.Writer, apply bool, res runner.RepoResult, s style, borde
 				suffix = " — " + s.paint(cyan, "suggest:")
 			}
 			fmt.Fprintf(w, "    %s %s%s\n", s.paint(yellow, "-"), s.paint("", f.Summary), suffix)
+			if bordered {
+				for _, sg := range f.Suggestions {
+					fmt.Fprintf(w, "      %s\n", s.paint("", invocationCommand(sg)))
+				}
+			}
 			if listsPRs(f.Kind) {
 				fmt.Fprintf(w, "      %s %s\n", s.paint(dim, "PRs:"), prList(f.PRs))
 			}
 			for _, d := range f.Details {
 				fmt.Fprintf(w, "      %s\n", s.paint(dim, "- "+d))
 			}
-			for _, sg := range f.Suggestions {
-				if bordered {
-					fmt.Fprintf(w, "      %s\n", s.paint("", invocationCommand(sg)))
-				} else {
+			if !bordered {
+				for _, sg := range f.Suggestions {
 					fmt.Fprintf(w, "      %s %s\n", s.paint(cyan, "suggest:"), s.paint("", sg))
 				}
 			}
@@ -427,6 +430,12 @@ func tableFindings(res runner.RepoResult) []policy.Finding {
 	keys := map[string]int{}
 	members := map[int][]string{}
 	for _, f := range res.Findings {
+		// Unknown-size holds use singular wording throughout their summary.
+		// Keep each intact rather than substituting multiple PR numbers.
+		if f.Kind == policy.FindingHeldUnknown {
+			out = append(out, f)
+			continue
+		}
 		if len(f.Details) > 0 || f.Kind == policy.FindingIncompatible || f.Kind == policy.FindingRepoCheck || f.Kind == policy.FindingAgentRejected || f.Kind == policy.FindingAgentFailed || len(f.PRs) != 1 {
 			out = append(out, f)
 			continue

@@ -731,6 +731,17 @@ acme/billing  (squash, up to patch, checks required, write access)
       @dependabot ignore this patch version
 ```
 
+Suggestions appear immediately below the finding, followed by any PR list
+or details. For example, `just try dependabot -r gateway` includes:
+
+```text
+    - branch protection requires an approving review, which deps-handler never gives — suggest:
+      approve these PRs, or let Dependabot PRs merge without review
+      PRs: #207
+```
+
+Unknown-size holds stay on separate lines to preserve their singular wording.
+
 Single-dependency titles use `name old → new` only when commit metadata
 explicitly supplies both versions. Groups and updates missing that metadata
 keep their original titles. The demo supplies optional previous-version
