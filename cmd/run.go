@@ -227,7 +227,11 @@ no repository of; and 130 when interrupted.`,
 					return err
 				}
 			case compact:
-				if err := report.Overview(out, shown, len(results)-len(shown), command("dependabot")); err != nil {
+				next := command("dependabot")
+				for _, o := range owners {
+					next += " --owner " + shellQuote(o)
+				}
+				if err := report.Overview(out, shown, len(results)-len(shown), next); err != nil {
 					return err
 				}
 			case !markdown:
@@ -257,9 +261,17 @@ no repository of; and 130 when interrupted.`,
 		c.Long = `Evaluate configured repositories without agent reviews or GitHub writes.
 Show one line per repository with open Dependabot PRs, totals and a next
 command. Repositories with errors or warnings remain visible. JSON uses
-the same result schema as dependabot --open --json.`
-		c.Example = "  deps-handler status\n  deps-handler status --json"
+the same result schema as dependabot --open --json.
+
+With --owner, only the configured repositories of the named owners are
+shown, leaving out those set to skip: true; the next command keeps the
+same --owner selection. Exits 2 for an --owner the config has no
+repository of.`
+		c.Example = "  deps-handler status\n  deps-handler status --owner acme\n  deps-handler status --json"
 		output = addOutputFlags(c, false)
+		c.Flags().StringSliceVar(&owners, "owner", nil, "only show the configured repos of these owners (repeatable)")
+		keepEmpty(c, "owner")
+		_ = c.RegisterFlagCompletionFunc("owner", completeFromConfig(func(r config.Repo) string { return r.Owner }))
 		c.Flags().Lookup("table").Usage = "print the compact text summary (default)"
 		c.Flags().Lookup("list").Usage = "print the compact text summary"
 		return c

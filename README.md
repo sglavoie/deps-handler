@@ -97,7 +97,7 @@ and scheduled jobs that used `run` to use `dependabot` with the same flags.
 ```bash
 deps-handler init                         # write an example config, then list your repos in it
 deps-handler init --discover              # or fill it with your repos that use Dependabot
-deps-handler status                       # compact, read-only Dependabot overview
+deps-handler status                       # compact, read-only Dependabot overview (--owner)
 deps-handler repos                        # effective policy per repo (--json, -r, --owner)
 deps-handler dependabot                   # dry run: report only
 deps-handler dependabot --apply           # merge safe PRs

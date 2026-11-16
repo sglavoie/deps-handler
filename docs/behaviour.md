@@ -437,6 +437,11 @@ observations needing attention, not additional PRs. No open PRs is a successful
 result. The next command is `dependabot --apply` when something can merge,
 otherwise `dependabot --open` for details. Explicit `-c` paths are preserved.
 
+`status --owner NAME` (repeatable) limits the overview to the configured
+repositories of those owners, as `dependabot --owner` does, and the next command
+keeps the same `--owner` flags. An owner the config has no repository of is a
+usage error (exit 2).
+
 `status --json` is identical to `dependabot --open --json`, with `apply: false`
 and complete repository results. It uses the shared output flags and conflict
 checks. Both `--table` (the default) and `--list` show the compact text view.

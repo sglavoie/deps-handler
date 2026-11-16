@@ -88,3 +88,29 @@ func TestStatusErrorsAndFormats(t *testing.T) {
 		t.Fatalf("read failure = %d, %s", code, out)
 	}
 }
+
+func TestStatusOwnerSelection(t *testing.T) {
+	fc := &statusClient{fakeClient: &fakeClient{repos: map[string]*github.Repo{
+		"acme/one":  testutil.Repo(testutil.PR(1)),
+		"other/two": testutil.Repo(testutil.PR(2)),
+	}}}
+	oldClient := newClient
+	t.Cleanup(func() { newClient = oldClient })
+	newClient = func() (github.Client, error) { return fc, nil }
+	cfg := writeConfig(t, "repos:\n  - acme/one\n  - other/two\n")
+	code, out, stderr := run("status", "-c", cfg, "--owner", "acme")
+	if code != 0 || stderr != "" || fc.writes.Load() != 0 {
+		t.Fatalf("status --owner = %d, %q, %q", code, out, stderr)
+	}
+	if !strings.Contains(out, "acme/one: 1 would merge") || strings.Contains(out, "other/two") {
+		t.Fatalf("owner filter not applied:\n%s", out)
+	}
+	if want := "next: deps-handler dependabot -c " + cfg + " --owner acme --apply"; !strings.Contains(out, want) {
+		t.Errorf("missing %q:\n%s", want, out)
+	}
+	for _, args := range [][]string{{"--owner", "nobody"}, {"--owner", ""}, {"--owner", "acme/one"}, {"--repo", "acme/one"}} {
+		if code, _, stderr := run(append([]string{"status", "-c", cfg}, args...)...); code != 2 {
+			t.Errorf("%v: code %d, %s", args, code, stderr)
+		}
+	}
+}
